@@ -1,0 +1,59 @@
+import type { TaskItem, TaskItems } from "@/types/queue";
+import { isUndefined, assign } from "radashi";
+import resort from "./resort";
+
+/**
+ * @author aokihu <aokihu@gmail.com>
+ * @class TaskQueue
+ * @classdesc 核心任务队列对象
+ *            提供推入任务/推出任务/任务自动排列等功能
+ *            是内核中执行任务的唯一管道
+ */
+export class TaskQueue {
+  // FIFO任务数组
+  #tasks: TaskItems = [];
+
+  /* 构造函数 */
+  constructor() {
+    this.#tasks = [];
+  }
+
+  /* --- Public --- */
+
+  /**
+   * 添加新的任务到队列中
+   * @param task 新添加的任务,由buildTaskItem组装,这里不检查数据的安全和完整
+   */
+  public async addTask(task: TaskItem) {
+    this.#tasks.push(task);
+    resort(this.#tasks);
+  }
+
+  /**
+   * 从队列中获取可以工作的任务
+   * @description 这个方法是runtime从队列中获取任务的唯一途径
+   *              获取任务之后这个任务就会弹出队列
+   */
+  public async getWorkableTask() {}
+
+  /**
+   * 更新任务
+   * @param taskId 需要更新的任务id
+   * @param newStatus 任务的新状态
+   * @throws {Error} 任务未找到
+   * @throws {Error} 更新失败,无效的属性字段,只能更新updatedAt和state
+   * @description 这里只能更新任务的updatedAt/state等时间和状态信息,其他数据都是不可修改的
+   */
+  public updateTask(
+    taskId: string,
+    newStatus: Record<"updatedAt" | "state", unknown>,
+  ) {
+    const task = this.#tasks.find((t) => t.id === taskId);
+    if (isUndefined(task)) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    newStatus.updatedAt && (task.updatedAt = newStatus.updatedAt as number);
+    newStatus.state && (task.state = newStatus.state as string);
+  }
+}
