@@ -1,6 +1,7 @@
 import type { TaskItem, TaskItems } from "@/types/queue";
 import { isUndefined, assign } from "radashi";
 import resort from "./resort";
+import type { AppContext } from "@/types/app";
 
 /**
  * @author aokihu <aokihu@gmail.com>
@@ -10,12 +11,28 @@ import resort from "./resort";
  *            是内核中执行任务的唯一管道
  */
 export class TaskQueue {
+  // 全局App上下文对象
+  #appContext: AppContext;
   // FIFO任务数组
-  #tasks: TaskItems = [];
+  #tasks: TaskItems;
+  // 重排定时器
+  #resortTime: Timer | undefined;
+  // 定时延时时间间隔
+  static RESORT_INTERVAL = 500; /*ms*/
 
   /* 构造函数 */
-  constructor() {
+  constructor(appContext: AppContext) {
+    this.#appContext = appContext;
     this.#tasks = [];
+  }
+
+  /* --- Private --- */
+
+  #resort() {
+    if (this.#resortTime) clearTimeout(this.#resortTime);
+    this.#resortTime = setTimeout(() => {
+      resort(this.#tasks);
+    }, TaskQueue.RESORT_INTERVAL);
   }
 
   /* --- Public --- */
@@ -26,7 +43,7 @@ export class TaskQueue {
    */
   public async addTask(task: TaskItem) {
     this.#tasks.push(task);
-    resort(this.#tasks);
+    this.#resort();
   }
 
   /**
@@ -34,7 +51,11 @@ export class TaskQueue {
    * @description 这个方法是runtime从队列中获取任务的唯一途径
    *              获取任务之后这个任务就会弹出队列
    */
-  public async getWorkableTask() {}
+  public async getWorkableTask() {
+    const task = this.#tasks.shift();
+    this.#resort();
+    return task;
+  }
 
   /**
    * 更新任务
@@ -52,8 +73,9 @@ export class TaskQueue {
     if (isUndefined(task)) {
       throw new Error(`Task not found: ${taskId}`);
     }
-
     newStatus.updatedAt && (task.updatedAt = newStatus.updatedAt as number);
     newStatus.state && (task.state = newStatus.state as string);
+
+    this.#resort();
   }
 }
