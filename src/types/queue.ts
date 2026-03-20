@@ -60,6 +60,7 @@ export type RawTaskItem = {
   source: Source; // 任务来源,区分内源任务还是外源任务
   priority: number; // 队列项目优先级,数字越小优先级越高,默认为2
   /* --- 用户输入 --- */
+  eventTarget: EventTarget | undefined; // HTTP API 的事件出发对象,通过这个对象当task发生变化,或者输出改变的时候触发
   channel: Channel;
   payload: Payload[]; // 队列项目中的负载数据,这些数据来自于用户的输入,格式可以是文本或者图片;也可以来自core内部的提示消息
   /* --- 任务时间 --- */

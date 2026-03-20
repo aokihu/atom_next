@@ -21,6 +21,7 @@ export const buildTaskItem = (
     state: "",
     priority: params.priority ?? 2,
     payload: params.payload ?? [],
+    eventTarget: params.eventTarget ?? null,
     channel: params.channel ?? { domain: "tui" },
     createdAt: now,
     updatedAt: now,

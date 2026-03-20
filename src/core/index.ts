@@ -5,19 +5,13 @@
  */
 
 import type { TaskItem } from "@/types/queue";
+import { TaskQueue, buildTaskItem } from "./queue";
+import type { AppContext } from "@/types/app";
 
-/* ----------------------------- */
-/*         内部私有变量和函数       */
-/* ----------------------------- */
+export class Core {
+  #taskQueue: TaskQueue;
 
-/* ----------------------------- */
-/*           公开方法             */
-/* ----------------------------- */
-
-export const useCore = () => {
-  const self = {
-    addTask() {},
-  };
-
-  return self;
-};
+  constructor(appContext: AppContext) {
+    this.#taskQueue = new TaskQueue(appContext);
+  }
+}

@@ -26,6 +26,7 @@ const buildTask = ({
   createdAt,
   updatedAt,
   state: "",
+  eventTarget: undefined,
   source: "external",
   channel: { domain: "tui" },
   payload: [{ type: "text", data: id }],

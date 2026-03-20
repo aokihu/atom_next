@@ -6,3 +6,4 @@
  */
 
 export { buildTaskItem } from "./task";
+export { TaskQueue } from "./queue";
