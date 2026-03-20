@@ -1,4 +1,5 @@
 import { parseArgs, type ParseArgsConfig } from "node:util";
+import { isAbsolute, resolve } from "node:path";
 import { isNullish } from "radashi";
 import { withDefault } from "@/libs";
 
@@ -144,13 +145,31 @@ export const parseArguments = (args: string[]): BootArguments => {
     return `${process.cwd()}/config.json`;
   });
 
-  const workspace = withDefault<string>(values.workspace, () => {
-    return process.cwd();
-  });
+  const workspace = withDefault<string>(
+    () => {
+      if (values.workspace) {
+        let workspace = values.workspace;
+        if (!isAbsolute(workspace)) {
+          workspace = resolve(process.cwd(), workspace);
+        }
+        return workspace;
+      }
+    },
+    () => {
+      return process.cwd();
+    },
+  );
 
-  const sandbox = withDefault<string>(values.sandbox, () => {
-    return `${process.cwd()}/sandbox`;
-  });
+  const sandbox = withDefault<string>(
+    () => {
+      if (values.sandbox) {
+        return `${workspace}/${values.sandbox}`;
+      }
+    },
+    () => {
+      return `${workspace}/sandbox`;
+    },
+  );
 
   const serverUrl = withDefault<string>(values["server-url"], "");
 
