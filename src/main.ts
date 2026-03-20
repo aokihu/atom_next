@@ -3,7 +3,6 @@
  * @version 1.0.0
  */
 
-import { parseArguments } from "./bootstrap/cli";
+import { bootstrap } from "@/bootstrap";
 
-const args = parseArguments(Bun.argv.slice(2));
-console.log(args);
+bootstrap();
