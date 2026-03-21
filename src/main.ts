@@ -4,7 +4,8 @@
  */
 
 import type { AppContext } from "./types/app";
-import { bootstrap } from "@/bootstrap";
+import { APIPort } from "./api";
+import { tryBootstrap } from "@/bootstrap";
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
 
@@ -13,7 +14,18 @@ const appContext: AppContext = {
   serviceManager,
 };
 
-const runtimeService = new RuntimeService(appContext);
-serviceManager.register(runtimeService);
+// 注册服务
+serviceManager.register(new RuntimeService(appContext));
 
-bootstrap(appContext);
+// 等待Bootstrap启动
+console.log("booting...");
+const [err, _] = await tryBootstrap(appContext);
+
+// 启动服务
+await serviceManager.startAllServices((name: string) => {
+  console.log(`Service ${name} started`);
+});
+
+console.log("boot success");
+
+new APIPort(8787);

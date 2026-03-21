@@ -3,4 +3,9 @@
  * @version 1.0.0
  */
 
-export { bootstrap } from "./bootstrap";
+import { tryit } from "radashi";
+import { bootstrap } from "./bootstrap";
+import { parseConfigFile } from "./config";
+
+export const tryBootstrap = tryit(bootstrap);
+export const tryParseConfigFile = tryit(parseConfigFile);

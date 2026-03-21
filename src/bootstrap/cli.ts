@@ -174,7 +174,6 @@ export const parseArguments = (args: string[]): BootArguments => {
   );
 
   const serverUrl = withDefault<string>(parsed["server-url"], "");
-
   const address = withDefault<string>(parsed.address, "127.0.0.1");
   const port = withDefault<number>(() => {
     if (parsed.port) return Number(parsed.port);

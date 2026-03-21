@@ -20,7 +20,6 @@ export const collectEnvFiles = (workspaceDir: PathLike) =>
 
 export const parseEnvFiles = (workspaceDir: PathLike) => {
   const envFiles = collectEnvFiles(workspaceDir);
-
   const env: Record<string, string> = {};
 
   envFiles.map((file) => {

@@ -23,12 +23,16 @@ export class ServiceManager {
     return this.#services.get(name) as T | undefined;
   }
 
-  public async start(cb?: (name: string) => never) {
+  /**
+   * 启动所有的已经注册的服务
+   * @param cb 当一个服务启动的时候触发的返回函数,参数是启动的服务名称
+   * @returns 所有服务启动结果的 Promise
+   */
+  public async startAllServices(cb?: (name: string) => void) {
     const tasks = this.#services.values().map((s) => {
       cb?.(s.name);
       return s.start();
     });
-    await Promise.allSettled(tasks);
-    cb?.("All service");
+    return Promise.allSettled(tasks);
   }
 }
