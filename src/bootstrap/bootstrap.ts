@@ -7,13 +7,10 @@ import { parseEnvFiles } from "./env";
 
 export const bootstrap = () => {
   /* --- 命令行解析 --- */
-  const args = parseArguments(Bun.argv.slice(2));
-  console.log(args);
+  const cliArgs = parseArguments(Bun.argv.slice(2));
 
   /* --- 解析环境文件 --- */
-  const envs = parseEnvFiles(args.workspace);
-
-  console.log(envs);
+  const env = parseEnvFiles(cliArgs.workspace);
 
   /* --- 解析配置文件 --- */
 

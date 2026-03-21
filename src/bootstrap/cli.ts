@@ -53,8 +53,8 @@ type BootArguments = Omit<
 /**
  * 显示帮助信息
  */
-const showHelp = () => {
-  const helpText = `
+const printHelp = () => {
+  const help = `
 Atom Next - AI 驱动的开发工具
 
 用法: atom [选项]
@@ -79,10 +79,10 @@ Atom Next - AI 驱动的开发工具
   atom --mode tui --server-url ws://localhost:8787  # 只启动 TUI 连接到指定服务器
   atom --port 9000              # 指定 Server 端口
 `;
-  console.log(helpText);
+  console.log(help);
 };
 
-const options: ParseArgsConfig["options"] = {
+const cliOpts: ParseArgsConfig["options"] = {
   version: {
     type: "boolean",
     short: "v",
@@ -119,40 +119,42 @@ const options: ParseArgsConfig["options"] = {
   },
 };
 
-type argNames = keyof typeof options;
+type argNames = keyof typeof cliOpts;
 
 export const parseArguments = (args: string[]): BootArguments => {
-  const values = parseArgs({ args, options })
+  const parsed = parseArgs({ args, options: cliOpts })
     .values as Partial<ParsedArguments>;
 
-  if (values.version) {
+  if (parsed.version) {
     console.log("v 0.0.1");
     process.exit(0);
   }
 
-  if (values.help) {
-    showHelp();
+  if (parsed.help) {
+    printHelp();
     process.exit(0);
   }
 
   /* --- 整理解析后的参数值 --- */
   const mode = withDefault<string>(() => {
-    const $mode = values.mode;
-    if (!isNullish($mode) && ["tui", "server"].includes($mode)) return $mode;
+    const rawMode = parsed.mode;
+    if (!isNullish(rawMode) && ["tui", "server"].includes(rawMode)) {
+      return rawMode;
+    }
   }, "both");
 
-  const config = withDefault<string>(values.config, () => {
+  const config = withDefault<string>(parsed.config, () => {
     return `${process.cwd()}/config.json`;
   });
 
-  const workspace = withDefault<string>(
+  const workspaceDir = withDefault<string>(
     () => {
-      if (values.workspace) {
-        let workspace = values.workspace;
-        if (!isAbsolute(workspace)) {
-          workspace = resolve(process.cwd(), workspace);
+      if (parsed.workspace) {
+        let dir = parsed.workspace;
+        if (!isAbsolute(dir)) {
+          dir = resolve(process.cwd(), dir);
         }
-        return workspace;
+        return dir;
       }
     },
     () => {
@@ -160,34 +162,34 @@ export const parseArguments = (args: string[]): BootArguments => {
     },
   );
 
-  const sandbox = withDefault<string>(
+  const sandboxDir = withDefault<string>(
     () => {
-      if (values.sandbox) {
-        return `${workspace}/${values.sandbox}`;
+      if (parsed.sandbox) {
+        return `${workspaceDir}/${parsed.sandbox}`;
       }
     },
     () => {
-      return `${workspace}/sandbox`;
+      return `${workspaceDir}/sandbox`;
     },
   );
 
-  const serverUrl = withDefault<string>(values["server-url"], "");
+  const serverUrl = withDefault<string>(parsed["server-url"], "");
 
-  const address = withDefault<string>(values.address, "127.0.0.1");
+  const address = withDefault<string>(parsed.address, "127.0.0.1");
   const port = withDefault<number>(() => {
-    if (values.port) return Number(values.port);
+    if (parsed.port) return Number(parsed.port);
   }, 8787);
 
   /* --- 组装启动参数 --- */
-  const bootArguments: BootArguments = {
+  const bootArgs: BootArguments = {
     mode,
     config,
-    workspace,
-    sandbox,
+    workspace: workspaceDir,
+    sandbox: sandboxDir,
     serverUrl,
     address,
     port,
   };
 
-  return bootArguments;
+  return bootArgs;
 };
