@@ -7,7 +7,7 @@ import { strict } from "node:assert";
 import fs from "node:fs";
 import { access } from "node:fs/promises";
 
-type ConfigFileScheme = {
+export type ConfigFileScheme = {
   version: 2;
   // LLM供应商和模型配置
   providers: any;
@@ -19,7 +19,7 @@ type ConfigFileScheme = {
 };
 
 /* 默认的配置参数 */
-const DefaultConfig: ConfigFileScheme = {
+export const DefaultConfig: ConfigFileScheme = {
   version: 2,
   providers: {},
   gateway: {
@@ -36,7 +36,7 @@ const DefaultConfig: ConfigFileScheme = {
 export const parseConfigFile: (
   path: PathLike,
   strict?: boolean,
-) => Promise<object> = async (path, strict = false) => {
+) => Promise<ConfigFileScheme> = async (path, strict = false) => {
   // 检查配置文件是否存在
   if (!(await Bun.file(path as string).exists()) && strict) {
     throw new Error("Config file not found");

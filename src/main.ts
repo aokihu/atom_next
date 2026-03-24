@@ -12,10 +12,13 @@ import { startAPIServer } from "@/api/";
 async function main() {
   // 开始启动器
   const [err, args] = await tryBootstrap();
+  if (err || !args) {
+    throw err ?? new Error("Bootstrap failed");
+  }
 
   // 启动系统运行时环境服务
   const runtime = new RuntimeService();
-  runtime.loadEnv(args?.env).loadConfig(args?.config);
+  runtime.loadEnv(args.env).loadConfig(args.config);
 
   // 启动服务管理器
   const serviceManager = new ServiceManager();
@@ -24,7 +27,7 @@ async function main() {
 
   // 启动API服务器
   await startAPIServer({
-    port: args?.env["PORT"],
+    port: args.env["PORT"],
     onBeforeStart: ({ port, hostname }) => {
       console.log("API server: http://%s:%d", hostname, port);
     },

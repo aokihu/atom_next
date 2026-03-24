@@ -6,14 +6,30 @@
 import { mapKeys } from "radashi";
 import { camelToSnake } from "@/libs/string";
 import { parseArguments } from "./cli";
+import { DefaultConfig, type ConfigFileScheme } from "./config";
 import { parseEnvFiles } from "./env";
 import { tryParseConfigFile } from "./";
 
+/* ---------------- */
+/*      类型定义     */
+/* ---------------- */
+
+type ParsedCliArguments = ReturnType<typeof parseArguments>;
+type CliRuntimeArguments = Omit<ParsedCliArguments, "config">;
+type CliEnvValue = CliRuntimeArguments[keyof CliRuntimeArguments];
+type EnvFileValue = ReturnType<typeof parseEnvFiles>[string];
+
+type BootstrapEnv = Record<string, EnvFileValue | CliEnvValue>;
+
 // 启动器返回值
-type BootstrapResult = {
-  env: any;
-  config: any;
+export type BootstrapResult = {
+  env: BootstrapEnv;
+  config: ConfigFileScheme;
 };
+
+/* ---------------- */
+/*      启动逻辑     */
+/* ---------------- */
 
 /**
  * 启动器
@@ -27,18 +43,20 @@ export const bootstrap = async (): Promise<BootstrapResult> => {
   const envArgs = parseEnvFiles(cliArgs.workspace);
 
   /* --- 解析配置文件 --- */
-  const [err, configArgs] = await tryParseConfigFile(
+  const [, configArgs] = await tryParseConfigFile(
     cliArgs.workspace + "/config.json",
   );
 
   // 启动参数和环境变量需要合并成统一的运行时环境变量
   const { config, ...rest } = cliArgs;
-  const bootEnvArgs = mapKeys(rest, (k) => camelToSnake(k).toUpperCase());
-  const mergedEnv = { ...envArgs, ...bootEnvArgs };
+  const bootEnvArgs: Record<string, CliEnvValue> = mapKeys(rest, (k) =>
+    camelToSnake(k).toUpperCase(),
+  );
+  const mergedEnv: BootstrapEnv = { ...envArgs, ...bootEnvArgs };
 
   // 返回启动环境变量,给启动阶段的其他方法调用
   return {
     env: mergedEnv,
-    config: configArgs,
+    config: configArgs ?? structuredClone(DefaultConfig),
   };
 };
