@@ -4,11 +4,9 @@
 
 import { isNullish, isNumber } from "radashi";
 import type { Core } from "@/core";
+import { DEFAULT_HOST, DEFAULT_PORT } from "@constant";
 import type { ServiceManager } from "@/libs/service-manage";
 import { tryFindAvaliablePort } from "@/libs";
-
-const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_PORT = 8787;
 
 type StartAPIServerParams = {
   port?: number | string; // 启动端口

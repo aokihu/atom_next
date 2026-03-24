@@ -5,8 +5,7 @@
 import type { PathLike } from "bun";
 import { existsSync } from "node:fs";
 import { config } from "dotenv";
-
-const ENV_FILES = [".env.debug", ".env.dev", ".env", ".env.local"];
+import { ENV_FILES } from "@constant";
 
 /**
  * 给定指定的路径,返回所有的环境文件完整路径

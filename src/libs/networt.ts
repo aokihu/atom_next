@@ -2,12 +2,9 @@
  * 本地网络工具函数
  */
 
+import { DEFAULT_HOST, DEFAULT_PORT, MAX_PORT } from "@constant";
 import { createServer } from "node:net";
 import { tryit } from "radashi";
-
-const DEFAULT_PORT = 8787;
-const MAX_PORT = 65535;
-const LOCAL_HOST = "127.0.0.1";
 
 async function canUsePort(port: number, host: string) {
   return new Promise<boolean>((resolve) => {
@@ -34,7 +31,10 @@ async function canUsePort(port: number, host: string) {
  * @param host 监听地址,默认127.0.0.1
  * @returns 返回第一个可用端口
  */
-async function findAvaliablePort(startPort = DEFAULT_PORT, host = LOCAL_HOST) {
+async function findAvaliablePort(
+  startPort = DEFAULT_PORT,
+  host = DEFAULT_HOST,
+) {
   if (!Number.isInteger(startPort) || startPort < 1 || startPort > MAX_PORT) {
     throw new RangeError(`Invalid start port: ${startPort}`);
   }
