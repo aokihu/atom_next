@@ -31,21 +31,20 @@ async function canUsePort(port: number, host: string) {
  * @param host 监听地址,默认127.0.0.1
  * @returns 返回第一个可用端口
  */
-async function findAvaliablePort(
-  startPort = DEFAULT_PORT,
-  host = DEFAULT_HOST,
-) {
-  if (!Number.isInteger(startPort) || startPort < 1 || startPort > MAX_PORT) {
-    throw new RangeError(`Invalid start port: ${startPort}`);
+async function findAvaliablePort() {
+  if (
+    !Number.isInteger(DEFAULT_PORT) ||
+    DEFAULT_PORT < 1 ||
+    DEFAULT_PORT > MAX_PORT
+  ) {
+    throw new RangeError(`Invalid start port: ${DEFAULT_PORT}`);
   }
 
-  for (let port = startPort; port <= MAX_PORT; port += 1) {
-    if (await canUsePort(port, host)) {
-      return port;
-    }
+  for (let port = DEFAULT_PORT; port <= MAX_PORT; port += 1) {
+    if (await canUsePort(port, DEFAULT_HOST)) return port;
   }
 
-  throw new Error(`No available port found from ${startPort}`);
+  throw new Error(`No available port found from ${DEFAULT_PORT}`);
 }
 
 export const tryFindAvaliablePort = tryit(findAvaliablePort);

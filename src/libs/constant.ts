@@ -3,6 +3,7 @@
  */
 
 export const DEFAULT_HOST = "127.0.0.1";
+export const UNAVAILIBLE_PORT = -1;
 export const DEFAULT_PORT = 8787;
 export const MAX_PORT = 65535;
 

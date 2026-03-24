@@ -27,9 +27,13 @@ async function main() {
 
   // 启动API服务器
   await startAPIServer({
-    port: args.env["PORT"],
-    onBeforeStart: ({ port, hostname }) => {
+    port: Number(args.env["PORT"]) as number,
+    onAfterStart: ({ port, hostname }) => {
       console.log("API server: http://%s:%d", hostname, port);
+    },
+    onFailed: (message, terminate) => {
+      console.error("API server failed: %s", message);
+      terminate && process.exit(1);
     },
   });
 }

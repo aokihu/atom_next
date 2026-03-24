@@ -2,62 +2,66 @@
  * HTTP API接口
  */
 
-import { isNullish, isNumber } from "radashi";
+import { isNullish, isNumber, type Err } from "radashi";
 import type { Core } from "@/core";
-import { DEFAULT_HOST, DEFAULT_PORT } from "@constant";
+import { DEFAULT_HOST, UNAVAILIBLE_PORT } from "@constant";
 import type { ServiceManager } from "@/libs/service-manage";
 import { tryFindAvaliablePort } from "@/libs";
 
 type StartAPIServerParams = {
-  port?: number | string; // 启动端口
+  port?: number; // 启动端口
   core?: Core;
   serviceManager?: ServiceManager;
-  onBeforeStart?: (param: { hostname: string; port: number }) => void;
+  onAfterStart?: (param: { hostname: string; port: number }) => void;
+  onFailed?: (message: string, terminate?: boolean) => void;
 };
 
-const resolveStartPort = (port?: number | string) => {
-  if (isNullish(port) || port === "") {
-    return DEFAULT_PORT;
+/**
+ * 获取端口
+ * @param port 用户传入的指定的端口号,但是不能保证这个端口一定可以运行
+ * @returns 返回一个可以使用的端口号
+ */
+const resolvePort = async (port?: number): Promise<number> => {
+  // 用户没有传入端口号的情况,需要尝试自动获取一个可以执行的端口
+  if (isNullish(port) || isNaN(port) || port === UNAVAILIBLE_PORT) {
+    const [err, availablePort] = await tryFindAvaliablePort();
+    if (err) throw err;
+    return availablePort;
   }
-
-  const resolvedPort = isNumber(port) ? port : Number(port);
-  if (!Number.isInteger(resolvedPort) || resolvedPort < 1) {
-    throw new RangeError(`Invalid API port: ${port}`);
-  }
-
-  return resolvedPort;
+  return port;
 };
 
 /**
  * 启动API接口服务
  */
-export const startAPIServer = async (params: StartAPIServerParams) => {
-  const { port, core, serviceManager, onBeforeStart } = params;
-
+export const startAPIServer = async ({
+  port,
+  core,
+  serviceManager,
+  onAfterStart,
+  onFailed,
+}: StartAPIServerParams) => {
   /* --- 设置启动端口 --- */
-  const startPort = resolveStartPort(port);
-  const [err, availablePort] = await tryFindAvaliablePort(
-    startPort,
-    DEFAULT_HOST,
-  );
-
-  if (!isNullish(err) || isNullish(availablePort)) {
-    throw err ?? new Error(`No available port found from ${startPort}`);
-  }
-
-  // 启动之前尝试将服务器信息传递给外部打印
-  onBeforeStart?.({ port: availablePort, hostname: DEFAULT_HOST });
+  const listenPort = await resolvePort(port);
 
   /* --- 启动API服务器 --- */
-  const server = Bun.serve({
-    port: availablePort,
-    hostname: DEFAULT_HOST,
-    routes: {
-      "/ping": {
-        GET: () => {
-          return new Response("pong");
+  try {
+    const server = Bun.serve({
+      port: listenPort,
+      hostname: DEFAULT_HOST,
+      routes: {
+        "/ping": {
+          GET: () => {
+            return new Response("pong");
+          },
         },
       },
-    },
-  });
+    });
+
+    // 启动之后尝试将服务器信息传递给外部打印
+    onAfterStart?.({ port: listenPort, hostname: DEFAULT_HOST });
+  } catch (err) {
+    onFailed?.((err as Error).message, true);
+  } finally {
+  }
 };

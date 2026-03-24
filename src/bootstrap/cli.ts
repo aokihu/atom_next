@@ -2,6 +2,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { isAbsolute, resolve } from "node:path";
 import { isNullish } from "radashi";
 import { withDefault } from "@/libs";
+import { DEFAULT_HOST, UNAVAILIBLE_PORT } from "@constant";
 
 type Mode = "tui" | "server" | "both";
 
@@ -111,11 +112,11 @@ const cliOpts: ParseArgsConfig["options"] = {
   },
   address: {
     type: "string",
-    default: "127.0.0.1",
+    default: DEFAULT_HOST,
   },
   port: {
     type: "string",
-    default: "8787",
+    default: String(UNAVAILIBLE_PORT),
   },
 };
 
@@ -174,10 +175,11 @@ export const parseArguments = (args: string[]): BootArguments => {
   );
 
   const serverUrl = withDefault<string>(parsed["server-url"], "");
-  const address = withDefault<string>(parsed.address, "127.0.0.1");
-  const port = withDefault<number>(() => {
-    if (parsed.port) return Number(parsed.port);
-  }, 8787);
+  const address = withDefault<string>(parsed.address, DEFAULT_HOST);
+  const port = withDefault<number>(
+    () => (parsed.port ? Number(parsed.port) : undefined),
+    UNAVAILIBLE_PORT,
+  );
 
   /* --- 组装启动参数 --- */
   const bootArgs: BootArguments = {
