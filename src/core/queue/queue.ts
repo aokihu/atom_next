@@ -11,14 +11,11 @@ import type { AppContext } from "@/types/app";
  *            是内核中执行任务的唯一管道
  */
 export class TaskQueue {
-  // 全局App上下文对象
-  #appContext: AppContext;
   // 不同权重的任务队列
   #queues: Map<number, TaskItems>;
 
   /* 构造函数 */
-  constructor(appContext: AppContext) {
-    this.#appContext = appContext;
+  constructor() {
     this.#queues = new Map();
   }
 

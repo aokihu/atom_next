@@ -10,12 +10,15 @@ import { get } from "radashi";
 export class RuntimeService extends BaseService {
   #env: Map<string, number | string>;
   #config: object;
+  #startedAt: number;
 
-  constructor(appContext: AppContext) {
-    super(appContext);
+  constructor() {
+    super();
     this._name = "runtime";
     this.#env = new Map();
     this.#config = {};
+
+    this.#startedAt = Date.now();
   }
 
   override async start() {}
@@ -53,6 +56,7 @@ export class RuntimeService extends BaseService {
     Object.entries(rawEnv).forEach(([key, val]) => {
       this.#env.set(key, val);
     });
+    return this;
   }
 
   /**
@@ -61,5 +65,16 @@ export class RuntimeService extends BaseService {
    */
   public loadConfig(rawConfig: object) {
     this.#config = structuredClone(rawConfig);
+    return this;
+  }
+
+  /**
+   * 获取运行时健康信息
+   */
+  public getHealth() {
+    return {
+      startedAt: this.#startedAt,
+      startup: Date.now() - this.#startedAt,
+    };
   }
 }

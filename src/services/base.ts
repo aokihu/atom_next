@@ -7,20 +7,21 @@
 import type { AppContext } from "@/types/app";
 
 export class BaseService {
+  protected _appContext: AppContext | undefined;
   protected _name: string;
-  private _appContext: AppContext;
 
-  constructor(appContext: AppContext) {
+  constructor() {
+    this._appContext = undefined;
     this._name = "base";
-    this._appContext = appContext;
   }
 
   public get name() {
     return this._name;
   }
 
-  public get appContext() {
-    return this._appContext;
+  // 当注册Service时候执行的回掉方法
+  public onRegister(ctx: AppContext) {
+    this._appContext = ctx;
   }
 
   public async start() {

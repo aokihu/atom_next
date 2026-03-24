@@ -4,28 +4,31 @@
  */
 
 import type { AppContext } from "./types/app";
-import { APIPort } from "./api";
 import { tryBootstrap } from "@/bootstrap";
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
+import { startAPIServer } from "@/api/";
 
-const serviceManager = new ServiceManager();
-const appContext: AppContext = {
-  serviceManager,
-};
+async function main() {
+  // 开始启动器
+  const [err, args] = await tryBootstrap();
 
-// 注册服务
-serviceManager.register(new RuntimeService(appContext));
+  // 启动系统运行时环境服务
+  const runtime = new RuntimeService();
+  runtime.loadEnv(args?.env).loadConfig(args?.config);
 
-// 等待Bootstrap启动
-console.log("booting...");
-const [err, _] = await tryBootstrap(appContext);
+  // 启动服务管理器
+  const serviceManager = new ServiceManager();
+  serviceManager.register(runtime);
+  await serviceManager.startAllServices();
 
-// 启动服务
-await serviceManager.startAllServices((name: string) => {
-  console.log(`Service ${name} started`);
-});
+  // 启动API服务器
+  await startAPIServer({
+    port: args?.env["PORT"],
+    onBeforeStart: ({ port, hostname }) => {
+      console.log("API server: http://%s:%d", hostname, port);
+    },
+  });
+}
 
-console.log("boot success");
-
-new APIPort(8787);
+main();

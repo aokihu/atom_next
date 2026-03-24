@@ -1,5 +1,7 @@
+import { Core } from "@/core";
 import { ServiceManager } from "@/libs/service-manage";
 
 export type AppContext = {
-  readonly serviceManager: ServiceManager;
+  core: Core;
+  serviceManager: ServiceManager;
 };

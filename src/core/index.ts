@@ -9,9 +9,11 @@ import { TaskQueue, buildTaskItem } from "./queue";
 import type { AppContext } from "@/types/app";
 
 export class Core {
+  #appContext: AppContext;
   #taskQueue: TaskQueue;
 
   constructor(appContext: AppContext) {
-    this.#taskQueue = new TaskQueue(appContext);
+    this.#appContext = appContext;
+    this.#taskQueue = new TaskQueue();
   }
 }
