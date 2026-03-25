@@ -60,13 +60,11 @@ export class RuntimeService extends BaseService {
   }
 
   /**
-   * 设置环境变量值
-   * @param envKey 环境变量 Key
-   * @param envVal 环境变量 Value
-   * @returns 返回runtime实例对象
+   * 设置API端口号
+   * @param port
    */
-  public setEnv(envKey: string, envVal: number | string) {
-    this.#env.set(envKey, envVal);
+  public setPort(port: number) {
+    this.#env.set("PORT", port);
     return this;
   }
 
