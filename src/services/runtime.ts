@@ -60,6 +60,17 @@ export class RuntimeService extends BaseService {
   }
 
   /**
+   * 设置环境变量值
+   * @param envKey 环境变量 Key
+   * @param envVal 环境变量 Value
+   * @returns 返回runtime实例对象
+   */
+  public setEnv(envKey: string, envVal: number | string) {
+    this.#env.set(envKey, envVal);
+    return this;
+  }
+
+  /**
    * 加载配置参数
    * @param rawConfig 从Bootstrap中提供的配置
    */

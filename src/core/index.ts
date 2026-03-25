@@ -7,13 +7,14 @@
 import type { TaskItem } from "@/types/queue";
 import { TaskQueue, buildTaskItem } from "./queue";
 import type { AppContext } from "@/types/app";
+import type { ServiceManager } from "@/libs/service-manage";
 
 export class Core {
-  #appContext: AppContext;
+  #serviceManager: ServiceManager;
   #taskQueue: TaskQueue;
 
-  constructor(appContext: AppContext) {
-    this.#appContext = appContext;
+  constructor(serviceManager: ServiceManager) {
+    this.#serviceManager = serviceManager;
     this.#taskQueue = new TaskQueue();
   }
 }
