@@ -5,7 +5,7 @@
  */
 
 import type { TaskItem } from "@/types/queue";
-import { TaskQueue, buildTaskItem } from "./queue";
+import { TaskQueue } from "../queue";
 import type { AppContext } from "@/types/app";
 import type { ServiceManager } from "@/libs/service-manage";
 

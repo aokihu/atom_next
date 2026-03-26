@@ -54,6 +54,8 @@ export type RawTaskItem = {
   id: string; // 任务的ID,使用UUID格式,每个任务都是独立不相同的
   chainId: string; // 链式任务ID,比如会话太长需要继续执行,那么可以根据这个id推断出主任务,默认值与id相同
   parentId: string | undefined; // 父任务ID,如果有派生任务那么记录父任务的ID,如果没有则为undfiend
+  sessionId: string; // 会话ID
+  chatId: string; // 会话中对话ID
   /* --- 任务状态 --- */
   state: string;
   /* --- 任务元数据 --- */

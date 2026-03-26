@@ -5,13 +5,14 @@
  *
  */
 
-import type { APIEventNames, UUID, Session } from "@/types/api";
-import { ServiceManager } from "@/libs/service-manage";
-import { tryit } from "radashi";
-import { Core } from "@/core";
-import { SessionManager } from "@/api/session";
-import { startServer } from "@/api/server";
+import type { BunRequest } from "bun";
+import type { APIEventNames } from "@/types/api";
 import { EventEmitter } from "node:events";
+import { tryit } from "radashi";
+import { ServiceManager } from "@/libs/service-manage";
+import { Core } from "@/core";
+import { SessionManager } from "./session";
+import { startServer } from "./server";
 
 export class APIServer extends EventEmitter {
   /* ----- 内部私有属性 ----- */
@@ -38,8 +39,6 @@ export class APIServer extends EventEmitter {
   /*      Private        */
   /* ------------------- */
 
-  /* ----- 启动服务器 ----- */
-
   /**
    * 启动API HTTP服务器
    * @public
@@ -50,9 +49,21 @@ export class APIServer extends EventEmitter {
     host: string;
     port: number;
   }> {
-    const { server, host, port: listenPort } = await startServer(port);
+    const { server, host, port: listenPort } = await startServer(this, port);
     this.#server = server;
     return { host, port: listenPort };
+  }
+
+  handlePing() {
+    return new Response("pong");
+  }
+
+  handleGetHealth() {
+    return new Response("ok");
+  }
+
+  handleCreateSession(request: BunRequest) {
+    return new Response("session");
   }
 
   /* -------------------- */

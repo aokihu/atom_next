@@ -1,7 +1,5 @@
 import type { TaskItem, TaskItems } from "@/types/queue";
-import { isUndefined, isArray, isNullish } from "radashi";
-import resort from "./resort";
-import type { AppContext } from "@/types/app";
+import { isNullish } from "radashi";
 
 /**
  * @author aokihu <aokihu@gmail.com>
