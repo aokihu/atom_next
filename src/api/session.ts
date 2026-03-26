@@ -1,15 +1,410 @@
-import type { UUID } from "@/types/api";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { ServiceManager } from "@/libs/service-manage";
+import type { RuntimeService } from "@/services/runtime";
+import type {
+  ArchivedSession,
+  Chat,
+  ChatChunk,
+  ChatMessage,
+  PollChatResult,
+  Session,
+  SessionStatus,
+  UUID,
+} from "@/types/api";
+
+const IDLE_AFTER_MS = 5 * 60 * 1000;
+const ARCHIVE_AFTER_MS = 30 * 60 * 1000;
+
+export class SessionConfigError extends Error {}
+export class SessionNotFoundError extends Error {}
+export class ChatNotFoundError extends Error {}
+export class SessionStateError extends Error {}
 
 /**
  * API Session管理器
  */
 
 export class SessionManager {
+  #serviceManager: ServiceManager;
+  #sessions: Map<UUID, Session>;
+
+  /* -------------------- */
+  /*      Constructor     */
+  /* -------------------- */
+
+  constructor(serviceManager: ServiceManager) {
+    this.#serviceManager = serviceManager;
+    this.#sessions = new Map();
+  }
+
+  /* -------------------- */
+  /*       Private        */
+  /* -------------------- */
+
+  #touchSession(session: Session) {
+    session.updatedAt = Date.now();
+  }
+
+  #resolveRuntime(): RuntimeService {
+    const runtime =
+      this.#serviceManager.getService<RuntimeService>("runtime");
+
+    if (!runtime) {
+      throw new SessionConfigError("Runtime service not found");
+    }
+
+    return runtime;
+  }
+
+  #resolveWorkspace(): string {
+    const workspace = this.#resolveRuntime().getEnv("WORKSPACE");
+
+    if (typeof workspace !== "string" || workspace.trim() === "") {
+      throw new SessionConfigError("WORKSPACE env not found");
+    }
+
+    return workspace;
+  }
+
+  #resolveArchiveDir() {
+    return join(this.#resolveWorkspace(), "sessions");
+  }
+
+  #resolveArchivePath(sessionId: UUID) {
+    return join(this.#resolveArchiveDir(), `${sessionId}.json`);
+  }
+
+  async #ensureArchiveDir() {
+    await mkdir(this.#resolveArchiveDir(), { recursive: true });
+  }
+
+  #serializeSession(session: Session): ArchivedSession {
+    return {
+      ...session,
+      status: "archived",
+      archivedAt: session.archivedAt ?? Date.now(),
+      chats: Object.fromEntries(session.chats.entries()),
+    };
+  }
+
+  #deserializeSession(raw: ArchivedSession): Session {
+    return {
+      ...raw,
+      status: raw.status === "archived" ? "idle" : raw.status,
+      chats: new Map(Object.entries(raw.chats) as Array<[UUID, Chat]>),
+    };
+  }
+
+  #mergeChatChunks(chunks: ChatChunk[]): ChatMessage {
+    const data = chunks.map((chunk) => chunk.data);
+    const createdAt = chunks.at(-1)?.createdAt ?? Date.now();
+
+    return {
+      createdAt,
+      data: data.every((item) => typeof item === "string")
+        ? data.join("")
+        : data,
+    };
+  }
+
+  #refreshSessionStatus(session: Session): SessionStatus {
+    const hasActiveChat = [...session.chats.values()].some(
+      (chat) => chat.status === "pending" || chat.status === "streaming",
+    );
+
+    if (hasActiveChat) {
+      session.status = "active";
+      return session.status;
+    }
+
+    const lastActivity = Math.max(
+      session.createdAt,
+      session.updatedAt,
+      session.lastPolledAt ?? 0,
+    );
+
+    session.status = Date.now() - lastActivity >= IDLE_AFTER_MS
+      ? "idle"
+      : "active";
+
+    return session.status;
+  }
+
+  #isSessionArchivable(session: Session) {
+    if (
+      [...session.chats.values()].some(
+        (chat) => chat.status === "pending" || chat.status === "streaming",
+      )
+    ) {
+      return false;
+    }
+
+    if (this.#refreshSessionStatus(session) !== "idle") {
+      return false;
+    }
+
+    return Date.now() - session.createdAt >= ARCHIVE_AFTER_MS;
+  }
+
+  async #resolveSession(sessionId: UUID): Promise<Session> {
+    const session = this.#sessions.get(sessionId);
+
+    if (session) {
+      this.#refreshSessionStatus(session);
+      return session;
+    }
+
+    return await this.unarchive(sessionId);
+  }
+
+  #resolveChat(session: Session, chatId: UUID): Chat {
+    const chat = session.chats.get(chatId);
+
+    if (!chat) {
+      throw new ChatNotFoundError(`Chat not found: ${chatId}`);
+    }
+
+    return chat;
+  }
+
+  #createChunk(data: any): ChatChunk {
+    return {
+      id: Bun.randomUUIDv7(),
+      createdAt: Date.now(),
+      data,
+    };
+  }
+
   /* -------------------- */
   /*       Public         */
   /* -------------------- */
 
-  public archive(sessionId: UUID) {}
+  public async addSession(): Promise<UUID> {
+    this.#resolveWorkspace();
 
-  public unarchive(sessionId: UUID) {}
+    const sessionId = Bun.randomUUIDv7();
+    const now = Date.now();
+
+    const session = {
+      sessionId,
+      status: "active",
+      chats: new Map(),
+      createdAt: now,
+      updatedAt: now,
+    } satisfies Session;
+
+    this.#sessions.set(sessionId, session);
+    return sessionId;
+  }
+
+  public async createChat(sessionId: UUID, chatId: UUID) {
+    const session = await this.#resolveSession(sessionId);
+    const existingChat = session.chats.get(chatId);
+
+    if (existingChat) {
+      return existingChat;
+    }
+
+    const now = Date.now();
+    const chat = {
+      chatId,
+      createdAt: now,
+      updatedAt: now,
+      status: "pending",
+    } satisfies Chat;
+
+    session.chats.set(chatId, chat);
+    this.#touchSession(session);
+    session.status = "active";
+
+    return chat;
+  }
+
+  public async appendChatChunk(sessionId: UUID, chatId: UUID, data: any) {
+    const session = await this.#resolveSession(sessionId);
+    const chat = this.#resolveChat(session, chatId);
+    const nextChunk = this.#createChunk(data);
+    const now = Date.now();
+
+    if (chat.status === "completed" || chat.status === "failed") {
+      throw new SessionStateError(
+        `Cannot append chunk to chat in '${chat.status}' status`,
+      );
+    }
+
+    const nextChat = chat.status === "streaming"
+      ? {
+          ...chat,
+          updatedAt: now,
+          chunks: [...chat.chunks, nextChunk],
+        }
+      : {
+          chatId: chat.chatId,
+          createdAt: chat.createdAt,
+          updatedAt: now,
+          status: "streaming" as const,
+          chunks: [nextChunk],
+        };
+
+    session.chats.set(chatId, nextChat);
+    this.#touchSession(session);
+    session.status = "active";
+
+    return nextChat;
+  }
+
+  public async completeChat(sessionId: UUID, chatId: UUID) {
+    const session = await this.#resolveSession(sessionId);
+    const chat = this.#resolveChat(session, chatId);
+    const now = Date.now();
+
+    if (chat.status === "completed") {
+      return chat;
+    }
+
+    if (chat.status === "failed") {
+      throw new SessionStateError("Cannot complete a failed chat");
+    }
+
+    const chunks = chat.status === "streaming" ? chat.chunks : [];
+    const nextChat = {
+      chatId: chat.chatId,
+      createdAt: chat.createdAt,
+      updatedAt: now,
+      finishedAt: now,
+      status: "completed" as const,
+      message: this.#mergeChatChunks(chunks),
+    };
+
+    session.chats.set(chatId, nextChat);
+    this.#touchSession(session);
+    this.#refreshSessionStatus(session);
+
+    return nextChat;
+  }
+
+  public async failChat(
+    sessionId: UUID,
+    chatId: UUID,
+    error: { message: string; code?: string },
+  ) {
+    const session = await this.#resolveSession(sessionId);
+    const chat = this.#resolveChat(session, chatId);
+    const now = Date.now();
+
+    if (chat.status === "failed") {
+      return chat;
+    }
+
+    if (chat.status === "completed") {
+      throw new SessionStateError("Cannot fail a completed chat");
+    }
+
+    const nextChat = {
+      chatId: chat.chatId,
+      createdAt: chat.createdAt,
+      updatedAt: now,
+      status: "failed" as const,
+      error,
+    };
+
+    session.chats.set(chatId, nextChat);
+    this.#touchSession(session);
+    this.#refreshSessionStatus(session);
+
+    return nextChat;
+  }
+
+  public async pollChat(
+    sessionId: UUID,
+    chatId: UUID,
+  ): Promise<PollChatResult> {
+    const session = await this.#resolveSession(sessionId);
+    const chat = this.#resolveChat(session, chatId);
+
+    session.lastPolledAt = Date.now();
+    this.#touchSession(session);
+    this.#refreshSessionStatus(session);
+
+    const result: PollChatResult = {
+      sessionId,
+      sessionStatus: session.status,
+      chatId,
+      chatStatus: chat.status,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+    };
+
+    if (chat.status === "streaming") {
+      result.chunks = chat.chunks;
+    }
+
+    if (chat.status === "completed") {
+      result.message = chat.message;
+    }
+
+    if (chat.status === "failed") {
+      result.error = chat.error;
+    }
+
+    return result;
+  }
+
+  public async archive(sessionId: UUID) {
+    const session = this.#sessions.get(sessionId);
+
+    if (!session) {
+      const file = Bun.file(this.#resolveArchivePath(sessionId));
+      if (await file.exists()) {
+        return;
+      }
+      throw new SessionNotFoundError(`Session not found: ${sessionId}`);
+    }
+
+    if (!this.#isSessionArchivable(session)) {
+      throw new SessionStateError(`Session is not archivable: ${sessionId}`);
+    }
+
+    await this.#ensureArchiveDir();
+
+    session.archivedAt = Date.now();
+    session.status = "archived";
+
+    const raw = this.#serializeSession(session);
+    await Bun.write(
+      this.#resolveArchivePath(sessionId),
+      JSON.stringify(raw, null, 2),
+    );
+
+    this.#sessions.delete(sessionId);
+  }
+
+  public async unarchive(sessionId: UUID) {
+    const existingSession = this.#sessions.get(sessionId);
+    if (existingSession) {
+      return existingSession;
+    }
+
+    const file = Bun.file(this.#resolveArchivePath(sessionId));
+    if (!(await file.exists())) {
+      throw new SessionNotFoundError(`Session not found: ${sessionId}`);
+    }
+
+    const raw = await file.json() as ArchivedSession;
+    const session = this.#deserializeSession(raw);
+    this.#sessions.set(sessionId, session);
+
+    return session;
+  }
+
+  public async archiveExpiredSessions() {
+    const tasks = [...this.#sessions.entries()].map(async ([sessionId, session]) => {
+      if (this.#isSessionArchivable(session)) {
+        await this.archive(sessionId);
+      }
+    });
+
+    await Promise.all(tasks);
+  }
 }

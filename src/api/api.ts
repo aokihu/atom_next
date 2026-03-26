@@ -5,13 +5,17 @@
  *
  */
 
-import type { BunRequest } from "bun";
 import type { APIEventNames } from "@/types/api";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
 import { Core } from "@/core";
-import { SessionManager } from "./session";
+import {
+  ChatNotFoundError,
+  SessionConfigError,
+  SessionManager,
+  SessionNotFoundError,
+} from "./session";
 import { startServer } from "./server";
 
 export class APIServer extends EventEmitter {
@@ -27,7 +31,7 @@ export class APIServer extends EventEmitter {
 
     this.#core = core;
     this.#serviceManager = serviceManager;
-    this.#sessionManager = new SessionManager();
+    this.#sessionManager = new SessionManager(this.#serviceManager);
 
     /* --- 设置监听事件 --- */
     this.addListener("chat-updated" satisfies APIEventNames, () => {});
@@ -62,8 +66,39 @@ export class APIServer extends EventEmitter {
     return new Response("ok");
   }
 
-  handleCreateSession(request: BunRequest) {
-    return new Response("session");
+  #buildJsonResponse(body: unknown, status = 200) {
+    return Response.json(body, { status });
+  }
+
+  #handleSessionError(err: unknown) {
+    if (err instanceof SessionNotFoundError || err instanceof ChatNotFoundError) {
+      return this.#buildJsonResponse({ error: err.message }, 404);
+    }
+
+    if (err instanceof SessionConfigError) {
+      return this.#buildJsonResponse({ error: err.message }, 500);
+    }
+
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return this.#buildJsonResponse({ error: message }, 500);
+  }
+
+  async handleCreateSession(_request: Request) {
+    try {
+      const sessionId = await this.#sessionManager.addSession();
+      return this.#buildJsonResponse({ sessionId }, 201);
+    } catch (err) {
+      return this.#handleSessionError(err);
+    }
+  }
+
+  async handlePollChat(_request: Request, sessionId: string, chatId: string) {
+    try {
+      const result = await this.#sessionManager.pollChat(sessionId, chatId);
+      return this.#buildJsonResponse(result);
+    } catch (err) {
+      return this.#handleSessionError(err);
+    }
   }
 
   /* -------------------- */

@@ -2,7 +2,7 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "private": true,
   "scripts": {
     "build:bin": "bun build ./src/main.ts --compile --outfile ./dist/atom"
@@ -12,7 +12,7 @@
     "radashi": "^12.7.2"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "dotenv": "^17.3.1"

@@ -54,9 +54,18 @@ export async function startServer(
           // 创建新的会话
           POST: (req) => context.handleCreateSession(req),
         },
-        // "/session/:id": {},
-        // "/chat": {},
-        // "/chat/:id": {},
+        "/session/:sessionId/chat/:chatId": {
+          // 轮询获取指定chat的最新数据
+          GET: (req) =>
+            context.handlePollChat(
+              req,
+              req.params.sessionId,
+              req.params.chatId,
+            ),
+        },
+      },
+      fetch() {
+        return new Response("Not Found", { status: 404 });
       },
     });
 
