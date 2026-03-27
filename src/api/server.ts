@@ -26,6 +26,14 @@ async function resolvePort(port?: number): Promise<number> {
  * 启动API HTTP服务器
  * @param port 要监听的端口，未指定时自动查找可用端口
  * @returns 服务器实例和地址信息
+ * @description
+ * 路由说明
+ * GET /ping 测试服务器是否工作的接口
+ * GET /health 获取服务器健康信息的接口
+ * POST /session 创建新的会话
+ * POST /session/forcestop 强制停止所有会话,正在执行的任务也需要终止执行,这是一个保险功能,给用户一个可以强制终止执行的命令
+ * POST /session/:sessionId/chat 提交新的chat请求
+ * GET /session/:sessionId/chat/:chatId 轮询获取指定chat的最新数据
  */
 export async function startServer(
   context: APIServer,
@@ -53,6 +61,10 @@ export async function startServer(
         "/session": {
           // 创建新的会话
           POST: (req) => context.handleCreateSession(req),
+        },
+        "/session/:sessionId/chat": {
+          // 提交新的chat请求
+          POST: (req) => context.handleSubmitChat(req, req.params.sessionId),
         },
         "/session/:sessionId/chat/:chatId": {
           // 轮询获取指定chat的最新数据

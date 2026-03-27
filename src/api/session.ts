@@ -12,6 +12,7 @@ import type {
   SessionStatus,
   UUID,
 } from "@/types/api";
+import { isString } from "radashi";
 
 const IDLE_AFTER_MS = 5 * 60 * 1000;
 const ARCHIVE_AFTER_MS = 30 * 60 * 1000;
@@ -46,9 +47,8 @@ export class SessionManager {
     session.updatedAt = Date.now();
   }
 
-  #resolveRuntime(): RuntimeService {
-    const runtime =
-      this.#serviceManager.getService<RuntimeService>("runtime");
+  #getRuntime(): RuntimeService {
+    const runtime = this.#serviceManager.getService<RuntimeService>("runtime");
 
     if (!runtime) {
       throw new SessionConfigError("Runtime service not found");
@@ -57,26 +57,26 @@ export class SessionManager {
     return runtime;
   }
 
-  #resolveWorkspace(): string {
-    const workspace = this.#resolveRuntime().getEnv("WORKSPACE");
+  #getWorkspace(): string {
+    const workspace = this.#getRuntime().getEnv<string>("WORKSPACE");
 
-    if (typeof workspace !== "string" || workspace.trim() === "") {
+    if (!isString(workspace) || workspace.trim() === "") {
       throw new SessionConfigError("WORKSPACE env not found");
     }
 
     return workspace;
   }
 
-  #resolveArchiveDir() {
-    return join(this.#resolveWorkspace(), "sessions");
+  get #archiveDir() {
+    return join(this.#getWorkspace(), "sessions");
   }
 
-  #resolveArchivePath(sessionId: UUID) {
-    return join(this.#resolveArchiveDir(), `${sessionId}.json`);
+  #archivePath(sessionId: UUID) {
+    return join(this.#archiveDir, `${sessionId}.json`);
   }
 
   async #ensureArchiveDir() {
-    await mkdir(this.#resolveArchiveDir(), { recursive: true });
+    await mkdir(this.#archiveDir, { recursive: true });
   }
 
   #serializeSession(session: Session): ArchivedSession {
@@ -108,7 +108,7 @@ export class SessionManager {
     };
   }
 
-  #refreshSessionStatus(session: Session): SessionStatus {
+  #syncSessionStatus(session: Session): SessionStatus {
     const hasActiveChat = [...session.chats.values()].some(
       (chat) => chat.status === "pending" || chat.status === "streaming",
     );
@@ -124,14 +124,13 @@ export class SessionManager {
       session.lastPolledAt ?? 0,
     );
 
-    session.status = Date.now() - lastActivity >= IDLE_AFTER_MS
-      ? "idle"
-      : "active";
+    session.status =
+      Date.now() - lastActivity >= IDLE_AFTER_MS ? "idle" : "active";
 
     return session.status;
   }
 
-  #isSessionArchivable(session: Session) {
+  #canArchiveSession(session: Session) {
     if (
       [...session.chats.values()].some(
         (chat) => chat.status === "pending" || chat.status === "streaming",
@@ -140,25 +139,25 @@ export class SessionManager {
       return false;
     }
 
-    if (this.#refreshSessionStatus(session) !== "idle") {
+    if (this.#syncSessionStatus(session) !== "idle") {
       return false;
     }
 
     return Date.now() - session.createdAt >= ARCHIVE_AFTER_MS;
   }
 
-  async #resolveSession(sessionId: UUID): Promise<Session> {
+  async #loadSession(sessionId: UUID): Promise<Session> {
     const session = this.#sessions.get(sessionId);
 
     if (session) {
-      this.#refreshSessionStatus(session);
+      this.#syncSessionStatus(session);
       return session;
     }
 
     return await this.unarchive(sessionId);
   }
 
-  #resolveChat(session: Session, chatId: UUID): Chat {
+  #getChat(session: Session, chatId: UUID): Chat {
     const chat = session.chats.get(chatId);
 
     if (!chat) {
@@ -180,8 +179,8 @@ export class SessionManager {
   /*       Public         */
   /* -------------------- */
 
-  public async addSession(): Promise<UUID> {
-    this.#resolveWorkspace();
+  public async createSession(): Promise<UUID> {
+    this.#getWorkspace();
 
     const sessionId = Bun.randomUUIDv7();
     const now = Date.now();
@@ -199,7 +198,7 @@ export class SessionManager {
   }
 
   public async createChat(sessionId: UUID, chatId: UUID) {
-    const session = await this.#resolveSession(sessionId);
+    const session = await this.#loadSession(sessionId);
     const existingChat = session.chats.get(chatId);
 
     if (existingChat) {
@@ -221,9 +220,9 @@ export class SessionManager {
     return chat;
   }
 
-  public async appendChatChunk(sessionId: UUID, chatId: UUID, data: any) {
-    const session = await this.#resolveSession(sessionId);
-    const chat = this.#resolveChat(session, chatId);
+  public async appendChunk(sessionId: UUID, chatId: UUID, data: any) {
+    const session = await this.#loadSession(sessionId);
+    const chat = this.#getChat(session, chatId);
     const nextChunk = this.#createChunk(data);
     const now = Date.now();
 
@@ -233,19 +232,20 @@ export class SessionManager {
       );
     }
 
-    const nextChat = chat.status === "streaming"
-      ? {
-          ...chat,
-          updatedAt: now,
-          chunks: [...chat.chunks, nextChunk],
-        }
-      : {
-          chatId: chat.chatId,
-          createdAt: chat.createdAt,
-          updatedAt: now,
-          status: "streaming" as const,
-          chunks: [nextChunk],
-        };
+    const nextChat =
+      chat.status === "streaming"
+        ? {
+            ...chat,
+            updatedAt: now,
+            chunks: [...chat.chunks, nextChunk],
+          }
+        : {
+            chatId: chat.chatId,
+            createdAt: chat.createdAt,
+            updatedAt: now,
+            status: "streaming" as const,
+            chunks: [nextChunk],
+          };
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
@@ -255,8 +255,8 @@ export class SessionManager {
   }
 
   public async completeChat(sessionId: UUID, chatId: UUID) {
-    const session = await this.#resolveSession(sessionId);
-    const chat = this.#resolveChat(session, chatId);
+    const session = await this.#loadSession(sessionId);
+    const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
     if (chat.status === "completed") {
@@ -279,7 +279,7 @@ export class SessionManager {
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
-    this.#refreshSessionStatus(session);
+    this.#syncSessionStatus(session);
 
     return nextChat;
   }
@@ -289,8 +289,8 @@ export class SessionManager {
     chatId: UUID,
     error: { message: string; code?: string },
   ) {
-    const session = await this.#resolveSession(sessionId);
-    const chat = this.#resolveChat(session, chatId);
+    const session = await this.#loadSession(sessionId);
+    const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
     if (chat.status === "failed") {
@@ -311,7 +311,7 @@ export class SessionManager {
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
-    this.#refreshSessionStatus(session);
+    this.#syncSessionStatus(session);
 
     return nextChat;
   }
@@ -320,12 +320,12 @@ export class SessionManager {
     sessionId: UUID,
     chatId: UUID,
   ): Promise<PollChatResult> {
-    const session = await this.#resolveSession(sessionId);
-    const chat = this.#resolveChat(session, chatId);
+    const session = await this.#loadSession(sessionId);
+    const chat = this.#getChat(session, chatId);
 
     session.lastPolledAt = Date.now();
     this.#touchSession(session);
-    this.#refreshSessionStatus(session);
+    this.#syncSessionStatus(session);
 
     const result: PollChatResult = {
       sessionId,
@@ -355,14 +355,14 @@ export class SessionManager {
     const session = this.#sessions.get(sessionId);
 
     if (!session) {
-      const file = Bun.file(this.#resolveArchivePath(sessionId));
+      const file = Bun.file(this.#archivePath(sessionId));
       if (await file.exists()) {
         return;
       }
       throw new SessionNotFoundError(`Session not found: ${sessionId}`);
     }
 
-    if (!this.#isSessionArchivable(session)) {
+    if (!this.#canArchiveSession(session)) {
       throw new SessionStateError(`Session is not archivable: ${sessionId}`);
     }
 
@@ -372,10 +372,7 @@ export class SessionManager {
     session.status = "archived";
 
     const raw = this.#serializeSession(session);
-    await Bun.write(
-      this.#resolveArchivePath(sessionId),
-      JSON.stringify(raw, null, 2),
-    );
+    await Bun.write(this.#archivePath(sessionId), JSON.stringify(raw, null, 2));
 
     this.#sessions.delete(sessionId);
   }
@@ -386,12 +383,12 @@ export class SessionManager {
       return existingSession;
     }
 
-    const file = Bun.file(this.#resolveArchivePath(sessionId));
+    const file = Bun.file(this.#archivePath(sessionId));
     if (!(await file.exists())) {
       throw new SessionNotFoundError(`Session not found: ${sessionId}`);
     }
 
-    const raw = await file.json() as ArchivedSession;
+    const raw = (await file.json()) as ArchivedSession;
     const session = this.#deserializeSession(raw);
     this.#sessions.set(sessionId, session);
 
@@ -399,11 +396,13 @@ export class SessionManager {
   }
 
   public async archiveExpiredSessions() {
-    const tasks = [...this.#sessions.entries()].map(async ([sessionId, session]) => {
-      if (this.#isSessionArchivable(session)) {
-        await this.archive(sessionId);
-      }
-    });
+    const tasks = [...this.#sessions.entries()].map(
+      async ([sessionId, session]) => {
+        if (this.#canArchiveSession(session)) {
+          await this.archive(sessionId);
+        }
+      },
+    );
 
     await Promise.all(tasks);
   }

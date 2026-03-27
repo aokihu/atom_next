@@ -5,11 +5,13 @@
  *
  */
 
+import type { BunRequest } from "bun";
 import type { APIEventNames } from "@/types/api";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
 import { Core } from "@/core";
+import { buildTaskItem } from "@/libs";
 import {
   ChatNotFoundError,
   SessionConfigError,
@@ -71,7 +73,10 @@ export class APIServer extends EventEmitter {
   }
 
   #handleSessionError(err: unknown) {
-    if (err instanceof SessionNotFoundError || err instanceof ChatNotFoundError) {
+    if (
+      err instanceof SessionNotFoundError ||
+      err instanceof ChatNotFoundError
+    ) {
       return this.#buildJsonResponse({ error: err.message }, 404);
     }
 
@@ -83,22 +88,43 @@ export class APIServer extends EventEmitter {
     return this.#buildJsonResponse({ error: message }, 500);
   }
 
-  async handleCreateSession(_request: Request) {
+  async handleCreateSession(_request: BunRequest) {
     try {
-      const sessionId = await this.#sessionManager.addSession();
+      const sessionId = await this.#sessionManager.createSession();
       return this.#buildJsonResponse({ sessionId }, 201);
     } catch (err) {
       return this.#handleSessionError(err);
     }
   }
 
-  async handlePollChat(_request: Request, sessionId: string, chatId: string) {
+  async handlePollChat(
+    _request: BunRequest,
+    sessionId: string,
+    chatId: string,
+  ) {
     try {
       const result = await this.#sessionManager.pollChat(sessionId, chatId);
       return this.#buildJsonResponse(result);
     } catch (err) {
       return this.#handleSessionError(err);
     }
+  }
+
+  async handleSubmitChat(_request: BunRequest, sessionId: string) {
+    const chatId = Bun.randomUUIDv7();
+    const eventTarget = this as unknown as EventTarget;
+
+    const task = buildTaskItem({
+      chatId,
+      sessionId,
+      eventTarget,
+    });
+
+    this.#core.addTask(task);
+
+    return this.#buildJsonResponse({
+      chatId,
+    });
   }
 
   /* -------------------- */

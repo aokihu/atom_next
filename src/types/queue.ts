@@ -70,6 +70,11 @@ export type RawTaskItem = {
   updatedAt: number; // 任务更新的时间,可用于调试
 };
 
+export type BuildTaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
+  Partial<
+    Pick<RawTaskItem, "priority" | "payload" | "eventTarget" | "channel">
+  >;
+
 export type TaskItems = Array<TaskItem>;
 
 /**

@@ -3,7 +3,7 @@
  * @author aokihu <aokihu@gmail.com>
  * @version 1.0.0
  */
-import type { AppContext } from "@/types/app";
+import { isUndefined } from "radashi";
 import { BaseService } from "@/services/base";
 import { get } from "radashi";
 
@@ -28,8 +28,11 @@ export class RuntimeService extends BaseService {
    * @param env 环境变量名称
    * @returns 返回环境变量或者undefined
    */
-  public getEnv(env: string) {
-    return this.#env.get(env);
+  public getEnv<T extends string | number>(env: string): T {
+    if (isUndefined(this.#env.get(env))) {
+      throw new Error(`Environment variable ${env} not found`);
+    }
+    return this.#env.get(env) as T;
   }
 
   public getAllEnvs() {

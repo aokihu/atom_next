@@ -10,6 +10,13 @@ import type { TaskItem } from "@/types/queue";
 // 创建一个简单的 AppContext
 const mockAppContext: AppContext = {};
 
+const createTask = (overrides = {}) =>
+  buildTaskItem({
+    sessionId: "session-1",
+    chatId: "chat-1",
+    ...overrides,
+  });
+
 // 辅助函数：构建测试任务（不使用 Proxy 包装，方便测试）
 const buildTestTask = (
   id: string,
@@ -20,6 +27,8 @@ const buildTestTask = (
     id,
     chainId: overrides.chainId ?? id,
     parentId: overrides.parentId ?? id,
+    sessionId: overrides.sessionId ?? `session-${id}`,
+    chatId: overrides.chatId ?? `chat-${id}`,
     source: overrides.source ?? "external",
     state: overrides.state ?? "",
     priority: overrides.priority ?? 2,
@@ -45,7 +54,7 @@ describe("TaskQueue", () => {
     });
 
     test("adds a task to the queue and retrieves it successfully", async () => {
-      const task = buildTaskItem({});
+      const task = createTask();
       await taskQueue.addTask(task);
 
       const retrieved = await taskQueue.getWorkableTask();
@@ -55,7 +64,8 @@ describe("TaskQueue", () => {
 
     test("gets a normal workable task from queue", async () => {
       const normalTask = buildTaskItem({
-        source: "external",
+        sessionId: "session-normal",
+        chatId: "chat-normal",
         priority: 2,
         payload: [{ type: "text", data: "Hello, this is a normal task" }],
         channel: { domain: "tui" },
@@ -71,7 +81,7 @@ describe("TaskQueue", () => {
     });
 
     test("returns undefined when queue is empty after retrieving all tasks", async () => {
-      const task = buildTaskItem({});
+      const task = createTask();
       await taskQueue.addTask(task);
 
       await taskQueue.getWorkableTask();
@@ -161,7 +171,7 @@ describe("TaskQueue", () => {
 
   describe("updateTask", () => {
     test("updates task state successfully", async () => {
-      const task = buildTaskItem({});
+      const task = createTask();
       await taskQueue.addTask(task);
 
       const newState = "processing";
@@ -171,7 +181,7 @@ describe("TaskQueue", () => {
     });
 
     test("automatically updates updatedAt timestamp", async () => {
-      const task = buildTaskItem({});
+      const task = createTask();
       const originalUpdatedAt = task.updatedAt;
 
       // 等待一小段时间确保时间戳不同
@@ -238,9 +248,9 @@ describe("TaskQueue", () => {
   describe("multiple tasks operations", () => {
     test("handles multiple tasks correctly", async () => {
       const tasks = [
-        buildTaskItem({ priority: 1 }),
-        buildTaskItem({ priority: 2 }),
-        buildTaskItem({ priority: 1 }),
+        createTask({ priority: 1 }),
+        createTask({ priority: 2 }),
+        createTask({ priority: 1 }),
       ];
 
       for (const task of tasks) {
@@ -287,7 +297,8 @@ describe("TaskQueue", () => {
 
     test("works with tasks created with buildTaskItem", async () => {
       const customTask = buildTaskItem({
-        source: "internal",
+        sessionId: "session-custom",
+        chatId: "chat-custom",
         priority: 1,
         payload: [{ type: "text", data: "custom data" }],
       });
@@ -296,7 +307,7 @@ describe("TaskQueue", () => {
       const retrieved = await taskQueue.getWorkableTask();
 
       expect(retrieved?.id).toEqual(customTask.id);
-      expect(retrieved?.source).toBe("internal");
+      expect(retrieved?.source).toBe("external");
       expect(retrieved?.priority).toBe(1);
     });
 

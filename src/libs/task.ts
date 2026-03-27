@@ -4,7 +4,7 @@
  */
 
 import { isNullish } from "radashi";
-import type { TaskItem, RawTaskItem } from "@/types/queue";
+import type { BuildTaskItemInput, TaskItem } from "@/types/queue";
 
 type SettableTaskItemKeys = "updatedAt" | "state";
 const SETTABLE_KEYS = new Set<SettableTaskItemKeys>(["updatedAt", "state"]);
@@ -24,11 +24,10 @@ const defineReadonlyTaskItem = (task: TaskItem): TaskItem => {
 
 /**
  * 构造一个任务对象
+ * @description 这里只接收创建外部任务所需的最小输入
  * @returns 返回构造好的任务对象
  */
-export const buildTaskItem = (
-  params: Partial<Omit<RawTaskItem, "id">>,
-): TaskItem => {
+export const buildTaskItem = (params: BuildTaskItemInput): TaskItem => {
   if (isNullish(params.sessionId)) {
     throw new Error("sessionId is required");
   }
@@ -41,11 +40,11 @@ export const buildTaskItem = (
 
   const task = {
     id,
-    chainId: params.chainId ?? id,
-    parentId: params.parentId ?? id,
-    sessionId: params.sessionId ?? "",
-    chatId: params.chatId ?? "",
-    source: params.source ?? "external",
+    chainId: id,
+    parentId: id,
+    sessionId: params.sessionId,
+    chatId: params.chatId,
+    source: "external" as const,
     state: "",
     priority: params.priority ?? 2,
     payload: params.payload ?? [],
