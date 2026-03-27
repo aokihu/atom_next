@@ -1,4 +1,5 @@
 import type { TaskItem, TaskItems } from "@/types/queue";
+import { TaskState } from "@/types/queue";
 import { isNullish } from "radashi";
 
 /**
@@ -68,7 +69,7 @@ export class TaskQueue {
    * @throws {Error} 更新失败,无效的属性字段,只能更新updatedAt和state
    * @description 这里只能更新任务的updatedAt/state等时间和状态信息,其他数据都是不可修改的
    */
-  public updateTask(taskId: string, newStatus: Record<"state", unknown>) {
+  public updateTask(taskId: string, newStatus: Record<"state", TaskState>) {
     const tasks = [...this.#queues.values()].flat();
     const task = tasks.find((t) => t.id === taskId);
 
@@ -76,7 +77,7 @@ export class TaskQueue {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    newStatus.state && (task.state = newStatus.state as string);
+    task.state = newStatus.state;
     task.updatedAt = Date.now();
     task.eventTarget?.dispatchEvent(new CustomEvent("update-task", {}));
   }

@@ -4,7 +4,12 @@
  */
 
 import { isNullish } from "radashi";
-import type { BuildTaskItemInput, TaskItem } from "@/types/queue";
+import {
+  TaskSource,
+  TaskState,
+  type BuildTaskItemInput,
+  type TaskItem,
+} from "@/types/queue";
 
 type SettableTaskItemKeys = "updatedAt" | "state";
 const SETTABLE_KEYS = new Set<SettableTaskItemKeys>(["updatedAt", "state"]);
@@ -44,8 +49,8 @@ export const buildTaskItem = (params: BuildTaskItemInput): TaskItem => {
     parentId: id,
     sessionId: params.sessionId,
     chatId: params.chatId,
-    source: "external" as const,
-    state: "",
+    source: TaskSource.EXTERNAL,
+    state: TaskState.WAITING,
     priority: params.priority ?? 2,
     payload: params.payload ?? [],
     eventTarget: params.eventTarget ?? null,

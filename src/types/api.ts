@@ -1,11 +1,9 @@
-import type { RawTaskItem } from "./queue";
-
-export type UUID = string;
+import type { UUID } from "./index";
+import { TaskState, type RawTaskItem } from "./queue";
 
 export type APIEventNames = "chat-updated" | "chat-finished" | "chat-failed";
 
 export type SessionStatus = "active" | "idle" | "archived";
-export type ChatStatus = "pending" | "streaming" | "completed" | "failed";
 
 export type ChatChunk = {
   id: UUID;
@@ -22,33 +20,42 @@ type BaseChat = {
   chatId: UUID;
   createdAt: number;
   updatedAt: number;
-  status: ChatStatus;
+  status: TaskState;
+};
+
+export type WaitingChat = BaseChat & {
+  status: TaskState.WAITING;
 };
 
 export type PendingChat = BaseChat & {
-  status: "pending";
+  status: TaskState.PENDING;
 };
 
 export type StreamingChat = BaseChat & {
-  status: "streaming";
+  status: TaskState.WORKING;
   chunks: ChatChunk[];
 };
 
 export type CompletedChat = BaseChat & {
-  status: "completed";
+  status: TaskState.COMPLETE;
   finishedAt: number;
   message: ChatMessage;
 };
 
 export type FailedChat = BaseChat & {
-  status: "failed";
+  status: TaskState.FAILED;
   error: {
     message: string;
     code?: string;
   };
 };
 
-export type Chat = PendingChat | StreamingChat | CompletedChat | FailedChat;
+export type Chat =
+  | WaitingChat
+  | PendingChat
+  | StreamingChat
+  | CompletedChat
+  | FailedChat;
 
 export type Session = {
   sessionId: UUID;
@@ -68,7 +75,7 @@ export type PollChatResult = {
   sessionId: UUID;
   sessionStatus: SessionStatus;
   chatId: UUID;
-  chatStatus: ChatStatus;
+  chatStatus: TaskState;
   createdAt: number;
   updatedAt: number;
   chunks?: ChatChunk[];

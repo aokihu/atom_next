@@ -5,7 +5,7 @@ import { TaskQueue } from "@/core/queue/queue";
 import { buildTaskItem } from "@/core/queue/task";
 import resort from "@/core/queue/resort";
 import type { AppContext } from "@/types/app";
-import type { TaskItem } from "@/types/queue";
+import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
 
 // 创建一个简单的 AppContext
 const mockAppContext: AppContext = {};
@@ -29,8 +29,8 @@ const buildTestTask = (
     parentId: overrides.parentId ?? id,
     sessionId: overrides.sessionId ?? `session-${id}`,
     chatId: overrides.chatId ?? `chat-${id}`,
-    source: overrides.source ?? "external",
-    state: overrides.state ?? "",
+    source: overrides.source ?? TaskSource.EXTERNAL,
+    state: overrides.state ?? TaskState.WAITING,
     priority: overrides.priority ?? 2,
     eventTarget: overrides.eventTarget ?? undefined,
     payload: overrides.payload ?? [],
@@ -76,7 +76,7 @@ describe("TaskQueue", () => {
 
       expect(retrievedTask).toBeDefined();
       expect(retrievedTask?.id).toBe(normalTask.id);
-      expect(retrievedTask?.source).toBe("external");
+      expect(retrievedTask?.source).toBe(TaskSource.EXTERNAL);
       expect(retrievedTask?.priority).toBe(2);
     });
 
@@ -174,7 +174,7 @@ describe("TaskQueue", () => {
       const task = createTask();
       await taskQueue.addTask(task);
 
-      const newState = "processing";
+      const newState = TaskState.WORKING;
       taskQueue.updateTask(task.id, { state: newState });
 
       expect(task.state).toBe(newState);
@@ -188,7 +188,7 @@ describe("TaskQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 1));
 
       await taskQueue.addTask(task);
-      taskQueue.updateTask(task.id, { state: "updated" });
+      taskQueue.updateTask(task.id, { state: TaskState.WORKING });
 
       expect(task.updatedAt).toBeGreaterThan(originalUpdatedAt);
     });
@@ -204,7 +204,7 @@ describe("TaskQueue", () => {
       const task = buildTestTask("task-with-event", { eventTarget });
       await taskQueue.addTask(task);
 
-      taskQueue.updateTask(task.id, { state: "updated" });
+      taskQueue.updateTask(task.id, { state: TaskState.WORKING });
 
       expect(eventFired).toBe(true);
     });
@@ -216,14 +216,14 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(task);
 
       expect(() => {
-        taskQueue.updateTask(task.id, { state: "updated" });
+        taskQueue.updateTask(task.id, { state: TaskState.WORKING });
       }).not.toThrow();
     });
 
     test("throws error when task not found", () => {
       expect(() => {
         taskQueue.updateTask("non-existent-id", {
-          state: "test",
+          state: TaskState.WORKING,
         });
       }).toThrow("Task not found: non-existent-id");
     });
@@ -236,12 +236,12 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(lowPriorityTask);
 
       expect(() => {
-        taskQueue.updateTask("high-task", { state: "processing-high" });
-        taskQueue.updateTask("low-task", { state: "processing-low" });
+        taskQueue.updateTask("high-task", { state: TaskState.WORKING });
+        taskQueue.updateTask("low-task", { state: TaskState.FAILED });
       }).not.toThrow();
 
-      expect(highPriorityTask.state).toBe("processing-high");
-      expect(lowPriorityTask.state).toBe("processing-low");
+      expect(highPriorityTask.state).toBe(TaskState.WORKING);
+      expect(lowPriorityTask.state).toBe(TaskState.FAILED);
     });
   });
 
@@ -291,7 +291,7 @@ describe("TaskQueue", () => {
       expect(result).toBeUndefined();
 
       expect(() => {
-        taskQueue.updateTask("invalid-id", { state: "test" });
+        taskQueue.updateTask("invalid-id", { state: TaskState.WORKING });
       }).toThrow();
     });
 
@@ -307,7 +307,7 @@ describe("TaskQueue", () => {
       const retrieved = await taskQueue.getWorkableTask();
 
       expect(retrieved?.id).toEqual(customTask.id);
-      expect(retrieved?.source).toBe("external");
+      expect(retrieved?.source).toBe(TaskSource.EXTERNAL);
       expect(retrieved?.priority).toBe(1);
     });
 

@@ -1,4 +1,22 @@
-type Source = "external" | "internal"; // 任务来源,来自于core的是内部,除此以外都是外部来源
+import type { UUID } from ".";
+
+// 任务来源
+// - EXTERNAL: 外部任务,由外部系统提交的任务
+// - INTERNAL: 内部任务,由core内部系统提交的任务
+export enum TaskSource {
+  EXTERNAL = "external",
+  INTERNAL = "internal",
+}
+
+// 任务状态
+export enum TaskState {
+  WAITING = "waiting", // 任务进入到队列排队
+  PENDING = "pending", // 任务正在被Core Runtime处理,准备数据提交等待上传
+  WORKING = "working", // 任务正在被Core Runtime处理,正在被transport上传到LLM执行
+  COMPLETE = "complete", // 任务已完成
+  FAILED = "failed", // 任务执行失败
+  FOLLOW_UP = "follow_up", // 任务没有办法一次性完成执行,需要跟进任务
+}
 
 type Payload =
   | {
@@ -51,15 +69,15 @@ type SettableTaskItemKeys = "updatedAt" | "state";
 
 export type RawTaskItem = {
   /* --- 任务身份ID --- */
-  id: string; // 任务的ID,使用UUID格式,每个任务都是独立不相同的
-  chainId: string; // 链式任务ID,比如会话太长需要继续执行,那么可以根据这个id推断出主任务,默认值与id相同
-  parentId: string | undefined; // 父任务ID,如果有派生任务那么记录父任务的ID,如果没有则为undfiend
-  sessionId: string; // 会话ID
-  chatId: string; // 会话中对话ID
+  id: UUID; // 任务的ID,使用UUID格式,每个任务都是独立不相同的
+  chainId: UUID; // 链式任务ID,比如会话太长需要继续执行,那么可以根据这个id推断出主任务,默认值与id相同
+  parentId: UUID | undefined; // 父任务ID,如果有派生任务那么记录父任务的ID,如果没有则为undfiend
+  sessionId: UUID; // 会话ID
+  chatId: UUID; // 会话中对话ID
   /* --- 任务状态 --- */
-  state: string;
+  state: TaskState;
   /* --- 任务元数据 --- */
-  source: Source; // 任务来源,区分内源任务还是外源任务
+  source: TaskSource; // 任务来源,区分内源任务还是外源任务
   priority: number; // 队列项目优先级,数字越小优先级越高,默认为2
   /* --- 用户输入 --- */
   eventTarget: EventTarget | undefined; // HTTP API 的事件出发对象,通过这个对象当task发生变化,或者输出改变的时候触发
@@ -88,5 +106,5 @@ export type TaskItem = {
   >]: RawTaskItem[K];
 } & {
   updatedAt: number;
-  state: string;
+  state: TaskState;
 };

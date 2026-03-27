@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import resort from "@/core/queue/resort";
-import type { TaskItem } from "@/types/queue";
+import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
 
 type TaskParams = Pick<TaskItem, "id"> &
   Partial<
@@ -22,12 +22,14 @@ const buildTask = ({
   id,
   chainId,
   parentId,
+  sessionId: `${id}-session`,
+  chatId: `${id}-chat`,
   priority,
   createdAt,
   updatedAt,
-  state: "",
+  state: TaskState.WAITING,
   eventTarget: undefined,
-  source: "external",
+  source: TaskSource.EXTERNAL,
   channel: { domain: "tui" },
   payload: [{ type: "text", data: id }],
 });

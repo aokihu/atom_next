@@ -11,8 +11,9 @@ import type {
   PollChatResult,
   Session,
   SessionStatus,
-  UUID,
 } from "@/types/api";
+import type { UUID } from "@/types";
+import { TaskState } from "@/types/queue";
 import { isString } from "radashi";
 
 const IDLE_AFTER_MS = 5 * 60 * 1000;
@@ -110,7 +111,10 @@ export class SessionManager {
 
   #syncSessionStatus(session: Session): SessionStatus {
     const hasActiveChat = [...session.chats.values()].some(
-      (chat) => chat.status === "pending" || chat.status === "streaming",
+      (chat) =>
+        chat.status === TaskState.WAITING ||
+        chat.status === TaskState.PENDING ||
+        chat.status === TaskState.WORKING,
     );
 
     if (hasActiveChat) {
@@ -133,7 +137,10 @@ export class SessionManager {
   #canArchiveSession(session: Session) {
     if (
       [...session.chats.values()].some(
-        (chat) => chat.status === "pending" || chat.status === "streaming",
+        (chat) =>
+          chat.status === TaskState.WAITING ||
+          chat.status === TaskState.PENDING ||
+          chat.status === TaskState.WORKING,
       )
     ) {
       return false;
@@ -212,7 +219,7 @@ export class SessionManager {
       chatId,
       createdAt: now,
       updatedAt: now,
-      status: "pending",
+      status: TaskState.WAITING,
     } satisfies Chat;
 
     session.chats.set(chatId, chat);
@@ -228,14 +235,16 @@ export class SessionManager {
     const nextChunk = this.#createChunk(data);
     const now = Date.now();
 
-    if (chat.status === "completed" || chat.status === "failed") {
+    if (
+      chat.status === TaskState.COMPLETE || chat.status === TaskState.FAILED
+    ) {
       throw buildError(`Cannot append chunk to chat in '${chat.status}' status`, {
         cause: ErrorCause.InvalidState,
       });
     }
 
     const nextChat =
-      chat.status === "streaming"
+      chat.status === TaskState.WORKING
         ? {
             ...chat,
             updatedAt: now,
@@ -245,7 +254,7 @@ export class SessionManager {
             chatId: chat.chatId,
             createdAt: chat.createdAt,
             updatedAt: now,
-            status: "streaming" as const,
+            status: TaskState.WORKING as TaskState.WORKING,
             chunks: [nextChunk],
           };
 
@@ -261,23 +270,23 @@ export class SessionManager {
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
-    if (chat.status === "completed") {
+    if (chat.status === TaskState.COMPLETE) {
       return chat;
     }
 
-    if (chat.status === "failed") {
+    if (chat.status === TaskState.FAILED) {
       throw buildError("Cannot complete a failed chat", {
         cause: ErrorCause.InvalidState,
       });
     }
 
-    const chunks = chat.status === "streaming" ? chat.chunks : [];
+    const chunks = chat.status === TaskState.WORKING ? chat.chunks : [];
     const nextChat = {
       chatId: chat.chatId,
       createdAt: chat.createdAt,
       updatedAt: now,
       finishedAt: now,
-      status: "completed" as const,
+      status: TaskState.COMPLETE as TaskState.COMPLETE,
       message: this.#mergeChatChunks(chunks),
     };
 
@@ -297,11 +306,11 @@ export class SessionManager {
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
-    if (chat.status === "failed") {
+    if (chat.status === TaskState.FAILED) {
       return chat;
     }
 
-    if (chat.status === "completed") {
+    if (chat.status === TaskState.COMPLETE) {
       throw buildError("Cannot fail a completed chat", {
         cause: ErrorCause.InvalidState,
       });
@@ -311,7 +320,7 @@ export class SessionManager {
       chatId: chat.chatId,
       createdAt: chat.createdAt,
       updatedAt: now,
-      status: "failed" as const,
+      status: TaskState.FAILED as TaskState.FAILED,
       error,
     };
 
@@ -342,15 +351,15 @@ export class SessionManager {
       updatedAt: chat.updatedAt,
     };
 
-    if (chat.status === "streaming") {
+    if (chat.status === TaskState.WORKING) {
       result.chunks = chat.chunks;
     }
 
-    if (chat.status === "completed") {
+    if (chat.status === TaskState.COMPLETE) {
       result.message = chat.message;
     }
 
-    if (chat.status === "failed") {
+    if (chat.status === TaskState.FAILED) {
       result.error = chat.error;
     }
 

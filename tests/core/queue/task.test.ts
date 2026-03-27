@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildTaskItem } from "@/core/queue/task";
-import type { TaskItem } from "@/types/queue";
+import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
 
 const createTask = (overrides = {}) =>
   buildTaskItem({
@@ -19,8 +19,8 @@ describe("buildTaskItem", () => {
     expect(task.id.length).toBeGreaterThan(0);
     expect(task.chainId).toBe(task.id);
     expect(task.parentId).toBe(task.id);
-    expect(task.source).toBe("external");
-    expect(task.state).toBe("");
+    expect(task.source).toBe(TaskSource.EXTERNAL);
+    expect(task.state).toBe(TaskState.WAITING);
     expect(task.priority).toBe(2);
     expect(task.payload).toEqual([]);
     expect(task.channel).toEqual({ domain: "tui" });
@@ -40,7 +40,7 @@ describe("buildTaskItem", () => {
 
     expect(task.sessionId).toBe("session-1");
     expect(task.chatId).toBe("chat-1");
-    expect(task.source).toBe("external");
+    expect(task.source).toBe(TaskSource.EXTERNAL);
     expect(task.priority).toBe(1);
     expect(task.payload).toEqual(customPayload);
     expect(task.channel).toEqual(customChannel);
@@ -55,7 +55,7 @@ describe("buildTaskItem", () => {
 
   test("allows modifying state property", () => {
     const task = createTask();
-    const newState = "processing";
+    const newState = TaskState.WORKING;
 
     expect(() => {
       task.state = newState;
@@ -103,7 +103,7 @@ describe("buildTaskItem", () => {
     const task = createTask();
 
     expect(() => {
-      (task as any).source = "internal";
+      (task as any).source = TaskSource.INTERNAL;
     }).toThrow("Attempted to assign to readonly property.");
   });
 
@@ -133,7 +133,7 @@ describe("buildTaskItem", () => {
 
   test("can modify state and updatedAt together", () => {
     const task = createTask();
-    const newState = "completed";
+    const newState = TaskState.COMPLETE;
     const newTime = Date.now() + 5000;
 
     expect(() => {
