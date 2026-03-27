@@ -5,8 +5,7 @@
  */
 
 import type { TaskItem } from "@/types/queue";
-import { TaskQueue, buildTaskItem } from "./queue";
-import type { AppContext } from "@/types/app";
+import { TaskQueue } from "./queue";
 import type { ServiceManager } from "@/libs/service-manage";
 
 export class Core {
@@ -26,5 +25,7 @@ export class Core {
    * 向内核添加任务,这个任务由buildTasl
    * @param task
    */
-  addTask(task: TaskItem) {}
+  async addTask(task: TaskItem) {
+    await this.#taskQueue.addTask(task);
+  }
 }

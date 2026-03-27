@@ -26,5 +26,7 @@ export class Core {
    * 向内核添加任务,这个任务由buildTasl
    * @param task
    */
-  addTask(task: TaskItem) {}
+  addTask(task: TaskItem) {
+    this.#taskQueue.addTask(task);
+  }
 }

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { buildError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import type {
@@ -16,11 +17,6 @@ import { isString } from "radashi";
 
 const IDLE_AFTER_MS = 5 * 60 * 1000;
 const ARCHIVE_AFTER_MS = 30 * 60 * 1000;
-
-export class SessionConfigError extends Error {}
-export class SessionNotFoundError extends Error {}
-export class ChatNotFoundError extends Error {}
-export class SessionStateError extends Error {}
 
 /**
  * API Session管理器
@@ -51,7 +47,9 @@ export class SessionManager {
     const runtime = this.#serviceManager.getService<RuntimeService>("runtime");
 
     if (!runtime) {
-      throw new SessionConfigError("Runtime service not found");
+      throw buildError("Runtime service not found", {
+        cause: ErrorCause.Config,
+      });
     }
 
     return runtime;
@@ -61,7 +59,9 @@ export class SessionManager {
     const workspace = this.#getRuntime().getEnv<string>("WORKSPACE");
 
     if (!isString(workspace) || workspace.trim() === "") {
-      throw new SessionConfigError("WORKSPACE env not found");
+      throw buildError("WORKSPACE env not found", {
+        cause: ErrorCause.Config,
+      });
     }
 
     return workspace;
@@ -161,7 +161,9 @@ export class SessionManager {
     const chat = session.chats.get(chatId);
 
     if (!chat) {
-      throw new ChatNotFoundError(`Chat not found: ${chatId}`);
+      throw buildError(`Chat not found: ${chatId}`, {
+        cause: ErrorCause.NotFound,
+      });
     }
 
     return chat;
@@ -227,9 +229,9 @@ export class SessionManager {
     const now = Date.now();
 
     if (chat.status === "completed" || chat.status === "failed") {
-      throw new SessionStateError(
-        `Cannot append chunk to chat in '${chat.status}' status`,
-      );
+      throw buildError(`Cannot append chunk to chat in '${chat.status}' status`, {
+        cause: ErrorCause.InvalidState,
+      });
     }
 
     const nextChat =
@@ -264,7 +266,9 @@ export class SessionManager {
     }
 
     if (chat.status === "failed") {
-      throw new SessionStateError("Cannot complete a failed chat");
+      throw buildError("Cannot complete a failed chat", {
+        cause: ErrorCause.InvalidState,
+      });
     }
 
     const chunks = chat.status === "streaming" ? chat.chunks : [];
@@ -298,7 +302,9 @@ export class SessionManager {
     }
 
     if (chat.status === "completed") {
-      throw new SessionStateError("Cannot fail a completed chat");
+      throw buildError("Cannot fail a completed chat", {
+        cause: ErrorCause.InvalidState,
+      });
     }
 
     const nextChat = {
@@ -359,11 +365,15 @@ export class SessionManager {
       if (await file.exists()) {
         return;
       }
-      throw new SessionNotFoundError(`Session not found: ${sessionId}`);
+      throw buildError(`Session not found: ${sessionId}`, {
+        cause: ErrorCause.NotFound,
+      });
     }
 
     if (!this.#canArchiveSession(session)) {
-      throw new SessionStateError(`Session is not archivable: ${sessionId}`);
+      throw buildError(`Session is not archivable: ${sessionId}`, {
+        cause: ErrorCause.InvalidState,
+      });
     }
 
     await this.#ensureArchiveDir();
@@ -385,7 +395,9 @@ export class SessionManager {
 
     const file = Bun.file(this.#archivePath(sessionId));
     if (!(await file.exists())) {
-      throw new SessionNotFoundError(`Session not found: ${sessionId}`);
+      throw buildError(`Session not found: ${sessionId}`, {
+        cause: ErrorCause.NotFound,
+      });
     }
 
     const raw = (await file.json()) as ArchivedSession;

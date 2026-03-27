@@ -1,3 +1,5 @@
+import type { RawTaskItem } from "./queue";
+
 export type UUID = string;
 
 export type APIEventNames = "chat-updated" | "chat-finished" | "chat-failed";
@@ -75,4 +77,10 @@ export type PollChatResult = {
     message: string;
     code?: string;
   };
+};
+
+export type SubmitChatRequestBody = {
+  payload: RawTaskItem["payload"];
+  priority?: number;
+  channel?: RawTaskItem["channel"];
 };
