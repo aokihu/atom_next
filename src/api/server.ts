@@ -8,6 +8,10 @@ import { tryFindAvaliablePort } from "@/libs";
 import { isNullish } from "radashi";
 import type { APIServer } from "./api";
 
+/* ==================== */
+/*  Private Functions   */
+/* ==================== */
+
 /**
  * 解析可用的启动端口
  * @param port 要监听的端口，未指定时自动查找可用端口
@@ -21,6 +25,10 @@ async function resolvePort(port?: number): Promise<number> {
   }
   return port;
 }
+
+/* ==================== */
+/*  Public Functions    */
+/* ==================== */
 
 /**
  * 启动API HTTP服务器

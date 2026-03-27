@@ -17,12 +17,14 @@ import { startServer } from "./server";
 import { parseSubmitChatBody } from "./utils/submit-chat";
 
 export class APIServer extends EventEmitter {
-  /* ----- 内部私有属性 ----- */
+  /* ==================== 私有属性 ==================== */
 
   #core: Core; // 内核对象
   #serviceManager: ServiceManager; // 服务管理器
   #sessionManager: SessionManager; // Session管理器
   #server: ReturnType<typeof Bun.serve> | undefined; // API HTTP 服务器
+
+  /* ==================== 构造函数 ==================== */
 
   constructor(core: Core, serviceManager: ServiceManager) {
     super();
@@ -37,17 +39,15 @@ export class APIServer extends EventEmitter {
     this.addListener("chat-failed" satisfies APIEventNames, () => {});
   }
 
-  /* ------------------- */
-  /*      Private        */
-  /* ------------------- */
+  /* ==================== 私有方法 ==================== */
 
   /**
    * 启动API HTTP服务器
-   * @public
+   * @private
    * @param port 要监听的端口，未指定时自动查找可用端口
    * @returns 服务器的地址和端口号
    */
-  private async start(port?: number): Promise<{
+  async #start(port?: number): Promise<{
     host: string;
     port: number;
   }> {
@@ -56,22 +56,26 @@ export class APIServer extends EventEmitter {
     return { host, port: listenPort };
   }
 
-  handlePing() {
-    return new Response("pong");
-  }
-
-  handleGetHealth() {
-    return new Response("ok");
-  }
-
+  /**
+   * 转换为JSON响应
+   * @private
+   */
   #toJsonResponse(body: unknown, status = 200) {
     return Response.json(body, { status });
   }
 
+  /**
+   * 转换为400错误响应
+   * @private
+   */
   #toBadRequestResponse(message: string) {
     return this.#toJsonResponse({ error: message }, 400);
   }
 
+  /**
+   * 解析提交聊天请求
+   * @private
+   */
   async #parseSubmitChatRequest(
     request: BunRequest,
   ): Promise<SubmitChatRequestBody> {
@@ -84,6 +88,10 @@ export class APIServer extends EventEmitter {
     return parseSubmitChatBody(body);
   }
 
+  /**
+   * 处理Session错误
+   * @private
+   */
   #handleSessionError(err: unknown) {
     if (hasErrorCause(err, ErrorCause.NotFound)) {
       return this.#toJsonResponse({ error: err.message }, 404);
@@ -101,6 +109,28 @@ export class APIServer extends EventEmitter {
     return this.#toJsonResponse({ error: message }, 500);
   }
 
+  /* ==================== 公开方法 ==================== */
+
+  /**
+   * 处理ping请求
+   * @public
+   */
+  handlePing() {
+    return new Response("pong");
+  }
+
+  /**
+   * 处理健康检查请求
+   * @public
+   */
+  handleGetHealth() {
+    return new Response("ok");
+  }
+
+  /**
+   * 处理创建Session请求
+   * @public
+   */
   async handleCreateSession(_request: BunRequest) {
     try {
       const sessionId = await this.#sessionManager.createSession();
@@ -110,6 +140,10 @@ export class APIServer extends EventEmitter {
     }
   }
 
+  /**
+   * 处理轮询聊天状态请求
+   * @public
+   */
   async handlePollChat(
     _request: BunRequest,
     sessionId: string,
@@ -123,6 +157,10 @@ export class APIServer extends EventEmitter {
     }
   }
 
+  /**
+   * 处理提交聊天请求
+   * @public
+   */
   async handleSubmitChat(request: BunRequest, sessionId: string) {
     try {
       const chatId = Bun.randomUUIDv7();
@@ -149,14 +187,11 @@ export class APIServer extends EventEmitter {
     }
   }
 
-  /* -------------------- */
-  /*        Public        */
-  /* -------------------- */
-
   /**
    * 尝试启动服务器
+   * @public
    * @param port 要监听的端口，未指定时自动查找可用端口
    * @returns 服务器的地址和端口号
    */
-  tryStart = tryit((port?: number) => this.start(port));
+  tryStart = tryit((port?: number) => this.#start(port));
 }

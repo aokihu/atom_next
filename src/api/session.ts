@@ -1,13 +1,8 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { buildError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import type {
-  ArchivedSession,
   Chat,
-  ChatChunk,
-  ChatMessage,
   PollChatResult,
   Session,
   SessionStatus,
@@ -15,30 +10,54 @@ import type {
 import type { UUID } from "@/types";
 import { TaskState } from "@/types/queue";
 import { isString } from "radashi";
+import {
+  hasArchivedSession,
+  readArchivedSession,
+  writeArchivedSession,
+} from "./utils/session-archive";
+import {
+  buildCompletedChat,
+  buildFailedChat,
+  buildWaitingChat,
+  buildWorkingChat,
+  createChatChunk,
+  mergeChatChunks,
+} from "./utils/chat";
+
+/* ==================== */
+/*     Constants        */
+/* ==================== */
 
 const IDLE_AFTER_MS = 5 * 60 * 1000;
 const ARCHIVE_AFTER_MS = 30 * 60 * 1000;
 
+/* ==================== */
+/*     Class            */
+/* ==================== */
+
 /**
  * API Session管理器
  */
-
 export class SessionManager {
+  /* ==================== */
+  /*  Private Properties  */
+  /* ==================== */
+
   #serviceManager: ServiceManager;
   #sessions: Map<UUID, Session>;
 
-  /* -------------------- */
-  /*      Constructor     */
-  /* -------------------- */
+  /* ==================== */
+  /*   Public Constructor */
+  /* ==================== */
 
   constructor(serviceManager: ServiceManager) {
     this.#serviceManager = serviceManager;
     this.#sessions = new Map();
   }
 
-  /* -------------------- */
-  /*       Private        */
-  /* -------------------- */
+  /* ==================== */
+  /*   Private Methods    */
+  /* ==================== */
 
   #touchSession(session: Session) {
     session.updatedAt = Date.now();
@@ -66,47 +85,6 @@ export class SessionManager {
     }
 
     return workspace;
-  }
-
-  get #archiveDir() {
-    return join(this.#getWorkspace(), "sessions");
-  }
-
-  #archivePath(sessionId: UUID) {
-    return join(this.#archiveDir, `${sessionId}.json`);
-  }
-
-  async #ensureArchiveDir() {
-    await mkdir(this.#archiveDir, { recursive: true });
-  }
-
-  #serializeSession(session: Session): ArchivedSession {
-    return {
-      ...session,
-      status: "archived",
-      archivedAt: session.archivedAt ?? Date.now(),
-      chats: Object.fromEntries(session.chats.entries()),
-    };
-  }
-
-  #deserializeSession(raw: ArchivedSession): Session {
-    return {
-      ...raw,
-      status: raw.status === "archived" ? "idle" : raw.status,
-      chats: new Map(Object.entries(raw.chats) as Array<[UUID, Chat]>),
-    };
-  }
-
-  #mergeChatChunks(chunks: ChatChunk[]): ChatMessage {
-    const data = chunks.map((chunk) => chunk.data);
-    const createdAt = chunks.at(-1)?.createdAt ?? Date.now();
-
-    return {
-      createdAt,
-      data: data.every((item) => typeof item === "string")
-        ? data.join("")
-        : data,
-    };
   }
 
   #syncSessionStatus(session: Session): SessionStatus {
@@ -176,17 +154,9 @@ export class SessionManager {
     return chat;
   }
 
-  #createChunk(data: any): ChatChunk {
-    return {
-      id: Bun.randomUUIDv7(),
-      createdAt: Date.now(),
-      data,
-    };
-  }
-
-  /* -------------------- */
-  /*       Public         */
-  /* -------------------- */
+  /* ==================== */
+  /*   Public Methods     */
+  /* ==================== */
 
   public async createSession(): Promise<UUID> {
     this.#getWorkspace();
@@ -215,12 +185,7 @@ export class SessionManager {
     }
 
     const now = Date.now();
-    const chat = {
-      chatId,
-      createdAt: now,
-      updatedAt: now,
-      status: TaskState.WAITING,
-    } satisfies Chat;
+    const chat = buildWaitingChat(chatId, now);
 
     session.chats.set(chatId, chat);
     this.#touchSession(session);
@@ -232,31 +197,22 @@ export class SessionManager {
   public async appendChunk(sessionId: UUID, chatId: UUID, data: any) {
     const session = await this.#loadSession(sessionId);
     const chat = this.#getChat(session, chatId);
-    const nextChunk = this.#createChunk(data);
+    const nextChunk = createChatChunk(data);
     const now = Date.now();
 
     if (
-      chat.status === TaskState.COMPLETE || chat.status === TaskState.FAILED
+      chat.status === TaskState.COMPLETE ||
+      chat.status === TaskState.FAILED
     ) {
-      throw buildError(`Cannot append chunk to chat in '${chat.status}' status`, {
-        cause: ErrorCause.InvalidState,
-      });
+      throw buildError(
+        `Cannot append chunk to chat in '${chat.status}' status`,
+        {
+          cause: ErrorCause.InvalidState,
+        },
+      );
     }
 
-    const nextChat =
-      chat.status === TaskState.WORKING
-        ? {
-            ...chat,
-            updatedAt: now,
-            chunks: [...chat.chunks, nextChunk],
-          }
-        : {
-            chatId: chat.chatId,
-            createdAt: chat.createdAt,
-            updatedAt: now,
-            status: TaskState.WORKING as TaskState.WORKING,
-            chunks: [nextChunk],
-          };
+    const nextChat = buildWorkingChat(chat, nextChunk, now);
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
@@ -281,14 +237,7 @@ export class SessionManager {
     }
 
     const chunks = chat.status === TaskState.WORKING ? chat.chunks : [];
-    const nextChat = {
-      chatId: chat.chatId,
-      createdAt: chat.createdAt,
-      updatedAt: now,
-      finishedAt: now,
-      status: TaskState.COMPLETE as TaskState.COMPLETE,
-      message: this.#mergeChatChunks(chunks),
-    };
+    const nextChat = buildCompletedChat(chat, mergeChatChunks(chunks), now);
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
@@ -316,13 +265,7 @@ export class SessionManager {
       });
     }
 
-    const nextChat = {
-      chatId: chat.chatId,
-      createdAt: chat.createdAt,
-      updatedAt: now,
-      status: TaskState.FAILED as TaskState.FAILED,
-      error,
-    };
+    const nextChat = buildFailedChat(chat, error, now);
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
@@ -368,10 +311,10 @@ export class SessionManager {
 
   public async archive(sessionId: UUID) {
     const session = this.#sessions.get(sessionId);
+    const workspace = this.#getWorkspace();
 
     if (!session) {
-      const file = Bun.file(this.#archivePath(sessionId));
-      if (await file.exists()) {
+      if (await hasArchivedSession(workspace, sessionId)) {
         return;
       }
       throw buildError(`Session not found: ${sessionId}`, {
@@ -385,13 +328,9 @@ export class SessionManager {
       });
     }
 
-    await this.#ensureArchiveDir();
-
     session.archivedAt = Date.now();
     session.status = "archived";
-
-    const raw = this.#serializeSession(session);
-    await Bun.write(this.#archivePath(sessionId), JSON.stringify(raw, null, 2));
+    await writeArchivedSession(workspace, session);
 
     this.#sessions.delete(sessionId);
   }
@@ -402,15 +341,14 @@ export class SessionManager {
       return existingSession;
     }
 
-    const file = Bun.file(this.#archivePath(sessionId));
-    if (!(await file.exists())) {
+    const session = await readArchivedSession(this.#getWorkspace(), sessionId);
+
+    if (!session) {
       throw buildError(`Session not found: ${sessionId}`, {
         cause: ErrorCause.NotFound,
       });
     }
 
-    const raw = (await file.json()) as ArchivedSession;
-    const session = this.#deserializeSession(raw);
     this.#sessions.set(sessionId, session);
 
     return session;
