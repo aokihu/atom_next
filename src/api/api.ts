@@ -6,7 +6,8 @@
  */
 
 import type { BunRequest } from "bun";
-import type { APIEventNames, SubmitChatRequestBody } from "@/types/api";
+import type { SubmitChatRequestBody } from "@/types/api";
+import { APIEvents } from "@/types/api";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
@@ -34,9 +35,9 @@ export class APIServer extends EventEmitter {
     this.#sessionManager = new SessionManager(this.#serviceManager);
 
     /* --- 设置监听事件 --- */
-    this.addListener("chat-updated" satisfies APIEventNames, () => {});
-    this.addListener("chat-finished" satisfies APIEventNames, () => {});
-    this.addListener("chat-failed" satisfies APIEventNames, () => {});
+    this.addListener(APIEvents.CHAT_UPDATED, () => {});
+    this.addListener(APIEvents.CHAT_FINISHED, () => {});
+    this.addListener(APIEvents.CHAT_FAILED, () => {});
   }
 
   /* ==================== 私有方法 ==================== */
@@ -167,11 +168,11 @@ export class APIServer extends EventEmitter {
       const taskInput = await this.#parseSubmitChatRequest(request);
 
       await this.#sessionManager.createChat(sessionId, chatId);
-
+      const eventTarget = this;
       const task = buildTaskItem({
         chatId,
         sessionId,
-        eventTarget: new EventTarget(),
+        eventTarget,
         ...taskInput,
       });
 

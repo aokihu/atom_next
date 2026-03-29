@@ -1,14 +1,9 @@
 import { buildError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
-import type {
-  Chat,
-  PollChatResult,
-  Session,
-  SessionStatus,
-} from "@/types/api";
+import type { Chat, PollChatResult, Session } from "@/types/api";
+import { ChatStatus, SessionStatus } from "@/types/api";
 import type { UUID } from "@/types";
-import { TaskState } from "@/types/queue";
 import { isString } from "radashi";
 import {
   hasArchivedSession,
@@ -90,13 +85,13 @@ export class SessionManager {
   #syncSessionStatus(session: Session): SessionStatus {
     const hasActiveChat = [...session.chats.values()].some(
       (chat) =>
-        chat.status === TaskState.WAITING ||
-        chat.status === TaskState.PENDING ||
-        chat.status === TaskState.WORKING,
+        chat.status === ChatStatus.WAITING ||
+        chat.status === ChatStatus.PENDING ||
+        chat.status === ChatStatus.PROCESSING,
     );
 
     if (hasActiveChat) {
-      session.status = "active";
+      session.status = SessionStatus.ACTIVE;
       return session.status;
     }
 
@@ -107,7 +102,9 @@ export class SessionManager {
     );
 
     session.status =
-      Date.now() - lastActivity >= IDLE_AFTER_MS ? "idle" : "active";
+      Date.now() - lastActivity >= IDLE_AFTER_MS
+        ? SessionStatus.IDLE
+        : SessionStatus.ACTIVE;
 
     return session.status;
   }
@@ -116,15 +113,15 @@ export class SessionManager {
     if (
       [...session.chats.values()].some(
         (chat) =>
-          chat.status === TaskState.WAITING ||
-          chat.status === TaskState.PENDING ||
-          chat.status === TaskState.WORKING,
+          chat.status === ChatStatus.WAITING ||
+          chat.status === ChatStatus.PENDING ||
+          chat.status === ChatStatus.PROCESSING,
       )
     ) {
       return false;
     }
 
-    if (this.#syncSessionStatus(session) !== "idle") {
+    if (this.#syncSessionStatus(session) !== SessionStatus.IDLE) {
       return false;
     }
 
@@ -166,7 +163,7 @@ export class SessionManager {
 
     const session = {
       sessionId,
-      status: "active",
+      status: SessionStatus.ACTIVE,
       chats: new Map(),
       createdAt: now,
       updatedAt: now,
@@ -189,7 +186,7 @@ export class SessionManager {
 
     session.chats.set(chatId, chat);
     this.#touchSession(session);
-    session.status = "active";
+    session.status = SessionStatus.ACTIVE;
 
     return chat;
   }
@@ -201,8 +198,8 @@ export class SessionManager {
     const now = Date.now();
 
     if (
-      chat.status === TaskState.COMPLETE ||
-      chat.status === TaskState.FAILED
+      chat.status === ChatStatus.COMPLETE ||
+      chat.status === ChatStatus.FAILED
     ) {
       throw buildError(
         `Cannot append chunk to chat in '${chat.status}' status`,
@@ -216,7 +213,7 @@ export class SessionManager {
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);
-    session.status = "active";
+    session.status = SessionStatus.ACTIVE;
 
     return nextChat;
   }
@@ -226,17 +223,17 @@ export class SessionManager {
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
-    if (chat.status === TaskState.COMPLETE) {
+    if (chat.status === ChatStatus.COMPLETE) {
       return chat;
     }
 
-    if (chat.status === TaskState.FAILED) {
+    if (chat.status === ChatStatus.FAILED) {
       throw buildError("Cannot complete a failed chat", {
         cause: ErrorCause.InvalidState,
       });
     }
 
-    const chunks = chat.status === TaskState.WORKING ? chat.chunks : [];
+    const chunks = chat.status === ChatStatus.PROCESSING ? chat.chunks : [];
     const nextChat = buildCompletedChat(chat, mergeChatChunks(chunks), now);
 
     session.chats.set(chatId, nextChat);
@@ -255,11 +252,11 @@ export class SessionManager {
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
-    if (chat.status === TaskState.FAILED) {
+    if (chat.status === ChatStatus.FAILED) {
       return chat;
     }
 
-    if (chat.status === TaskState.COMPLETE) {
+    if (chat.status === ChatStatus.COMPLETE) {
       throw buildError("Cannot fail a completed chat", {
         cause: ErrorCause.InvalidState,
       });
@@ -294,15 +291,15 @@ export class SessionManager {
       updatedAt: chat.updatedAt,
     };
 
-    if (chat.status === TaskState.WORKING) {
+    if (chat.status === ChatStatus.PROCESSING) {
       result.chunks = chat.chunks;
     }
 
-    if (chat.status === TaskState.COMPLETE) {
+    if (chat.status === ChatStatus.COMPLETE) {
       result.message = chat.message;
     }
 
-    if (chat.status === TaskState.FAILED) {
+    if (chat.status === ChatStatus.FAILED) {
       result.error = chat.error;
     }
 
@@ -329,7 +326,7 @@ export class SessionManager {
     }
 
     session.archivedAt = Date.now();
-    session.status = "archived";
+    session.status = SessionStatus.ARCHIVED;
     await writeArchivedSession(workspace, session);
 
     this.#sessions.delete(sessionId);

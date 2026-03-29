@@ -1,10 +1,12 @@
 // @ts-nocheck
 import { describe, expect, test, beforeEach } from "bun:test";
+import { EventEmitter } from "node:events";
 
 import { TaskQueue } from "@/core/queue/queue";
 import { buildTaskItem } from "@/core/queue/task";
 import resort from "@/core/queue/resort";
 import type { AppContext } from "@/types/app";
+import { APIEvents, ChatStatus } from "@/types/api";
 import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
 
 // 创建一个简单的 AppContext
@@ -88,6 +90,37 @@ describe("TaskQueue", () => {
       const empty = await taskQueue.getWorkableTask();
 
       expect(empty).toBeUndefined();
+    });
+
+    test("emits chat-updated when adding an external task", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("task-with-event", { eventTarget });
+
+      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+        events.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+
+      expect(events).toEqual([{ status: ChatStatus.WAITING }]);
+    });
+
+    test("does not emit chat-updated when adding an internal task", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("internal-task", {
+        eventTarget,
+        source: TaskSource.INTERNAL,
+      });
+
+      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+        events.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+
+      expect(events).toHaveLength(0);
     });
   });
 
@@ -174,7 +207,7 @@ describe("TaskQueue", () => {
       const task = createTask();
       await taskQueue.addTask(task);
 
-      const newState = TaskState.WORKING;
+      const newState = TaskState.PROCESSING;
       taskQueue.updateTask(task.id, { state: newState });
 
       expect(task.state).toBe(newState);
@@ -188,25 +221,42 @@ describe("TaskQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 1));
 
       await taskQueue.addTask(task);
-      taskQueue.updateTask(task.id, { state: TaskState.WORKING });
+      taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
 
       expect(task.updatedAt).toBeGreaterThan(originalUpdatedAt);
     });
 
-    test("dispatches update-task event when eventTarget exists", async () => {
-      let eventFired = false;
-      const eventTarget = new EventTarget();
+    test("emits chat-updated when task state becomes processing", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("task-with-event", { eventTarget });
 
-      eventTarget.addEventListener("update-task", () => {
-        eventFired = true;
+      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+        events.push(payload);
       });
 
-      const task = buildTestTask("task-with-event", { eventTarget });
       await taskQueue.addTask(task);
+      taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
 
-      taskQueue.updateTask(task.id, { state: TaskState.WORKING });
+      expect(events).toEqual([
+        { status: ChatStatus.WAITING },
+        { status: ChatStatus.PROCESSING },
+      ]);
+    });
 
-      expect(eventFired).toBe(true);
+    test("emits chat-finished when task state becomes complete", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("task-complete", { eventTarget });
+
+      eventTarget.on(APIEvents.CHAT_FINISHED, (payload) => {
+        events.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+      taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
+
+      expect(events).toEqual([{ status: ChatStatus.COMPLETE }]);
     });
 
     test("does not throw when task has no eventTarget", async () => {
@@ -216,14 +266,14 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(task);
 
       expect(() => {
-        taskQueue.updateTask(task.id, { state: TaskState.WORKING });
+        taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
       }).not.toThrow();
     });
 
     test("throws error when task not found", () => {
       expect(() => {
         taskQueue.updateTask("non-existent-id", {
-          state: TaskState.WORKING,
+          state: TaskState.PROCESSING,
         });
       }).toThrow("Task not found: non-existent-id");
     });
@@ -236,11 +286,11 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(lowPriorityTask);
 
       expect(() => {
-        taskQueue.updateTask("high-task", { state: TaskState.WORKING });
+        taskQueue.updateTask("high-task", { state: TaskState.PROCESSING });
         taskQueue.updateTask("low-task", { state: TaskState.FAILED });
       }).not.toThrow();
 
-      expect(highPriorityTask.state).toBe(TaskState.WORKING);
+      expect(highPriorityTask.state).toBe(TaskState.PROCESSING);
       expect(lowPriorityTask.state).toBe(TaskState.FAILED);
     });
   });
@@ -291,7 +341,7 @@ describe("TaskQueue", () => {
       expect(result).toBeUndefined();
 
       expect(() => {
-        taskQueue.updateTask("invalid-id", { state: TaskState.WORKING });
+        taskQueue.updateTask("invalid-id", { state: TaskState.PROCESSING });
       }).toThrow();
     });
 

@@ -55,7 +55,7 @@ describe("buildTaskItem", () => {
 
   test("allows modifying state property", () => {
     const task = createTask();
-    const newState = TaskState.WORKING;
+    const newState = TaskState.PROCESSING;
 
     expect(() => {
       task.state = newState;

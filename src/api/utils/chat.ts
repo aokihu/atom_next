@@ -12,8 +12,8 @@ import type {
   StreamingChat,
   WaitingChat,
 } from "@/types/api";
+import { ChatStatus } from "@/types/api";
 import type { UUID } from "@/types";
-import { TaskState } from "@/types/queue";
 import { isString, last } from "radashi";
 
 /* ==================== */
@@ -66,7 +66,7 @@ export const buildWaitingChat = (
     chatId,
     createdAt: now,
     updatedAt: now,
-    status: TaskState.WAITING,
+    status: ChatStatus.WAITING,
   };
 };
 
@@ -82,7 +82,7 @@ export const buildWorkingChat = (
   chunk: ChatChunk,
   updatedAt = Date.now(),
 ): StreamingChat => {
-  if (chat.status === TaskState.WORKING) {
+  if (chat.status === ChatStatus.PROCESSING) {
     return {
       ...chat,
       updatedAt,
@@ -94,7 +94,7 @@ export const buildWorkingChat = (
     chatId: chat.chatId,
     createdAt: chat.createdAt,
     updatedAt,
-    status: TaskState.WORKING,
+    status: ChatStatus.PROCESSING,
     chunks: [chunk],
   };
 };
@@ -116,7 +116,7 @@ export const buildCompletedChat = (
     createdAt: chat.createdAt,
     updatedAt: finishedAt,
     finishedAt,
-    status: TaskState.COMPLETE,
+    status: ChatStatus.COMPLETE,
     message,
   };
 };
@@ -137,7 +137,7 @@ export const buildFailedChat = (
     chatId: chat.chatId,
     createdAt: chat.createdAt,
     updatedAt,
-    status: TaskState.FAILED,
+    status: ChatStatus.FAILED,
     error,
   };
 };

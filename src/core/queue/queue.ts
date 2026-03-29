@@ -1,4 +1,10 @@
+import {
+  APIEvents,
+  parseTaskStateToChatStatus,
+  type Chat,
+} from "@/types/api";
 import type { TaskItem, TaskItems } from "@/types/queue";
+import { TaskSource } from "@/types/queue";
 import { TaskState } from "@/types/queue";
 import { isNullish } from "radashi";
 
@@ -32,6 +38,51 @@ export class TaskQueue {
     return this.#queues.get(priority)!;
   }
 
+  /**
+   * 根据任务状态推断要发送的API事件
+   * @param state 任务状态
+   * @returns 对应的事件名
+   */
+  #parseTaskEvent(state: TaskState) {
+    if (
+      state === TaskState.WAITING ||
+      state === TaskState.PENDING ||
+      state === TaskState.PROCESSING
+    ) {
+      return APIEvents.CHAT_UPDATED;
+    }
+
+    if (state === TaskState.COMPLETE) {
+      return APIEvents.CHAT_FINISHED;
+    }
+
+    if (state === TaskState.FAILED) {
+      return APIEvents.CHAT_FAILED;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 向API事件对象同步任务状态
+   * @param task 当前任务
+   */
+  #syncTaskState(task: TaskItem) {
+    if (task.source !== TaskSource.EXTERNAL || isNullish(task.eventTarget)) {
+      return;
+    }
+
+    const event = this.#parseTaskEvent(task.state);
+    const status = parseTaskStateToChatStatus(task.state);
+    if (isNullish(event) || isNullish(status)) {
+      return;
+    }
+
+    task.eventTarget.emit(event, {
+      status,
+    } satisfies Partial<Chat>);
+  }
+
   /* --- Public --- */
 
   /**
@@ -42,6 +93,7 @@ export class TaskQueue {
     const { priority } = task;
     const queue = this.#getOrCreateQueue(priority);
     queue.push(task);
+    this.#syncTaskState(task);
   }
 
   /**
@@ -79,6 +131,6 @@ export class TaskQueue {
 
     task.state = newStatus.state;
     task.updatedAt = Date.now();
-    task.eventTarget?.dispatchEvent(new CustomEvent("update-task", {}));
+    this.#syncTaskState(task);
   }
 }
