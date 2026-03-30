@@ -54,15 +54,18 @@ export const mergeChatChunks = (chunks: ChatChunk[]): ChatMessage => {
 
 /**
  * 构建一个等待状态的 Chat
+ * @param sessionId 会话的 UUID
  * @param chatId Chat 的 UUID
  * @param now 创建时间戳，默认为当前时间
  * @returns WaitingChat 对象
  */
 export const buildWaitingChat = (
+  sessionId: UUID,
   chatId: UUID,
   now = Date.now(),
 ): WaitingChat => {
   return {
+    sessionId,
     chatId,
     createdAt: now,
     updatedAt: now,
@@ -91,6 +94,7 @@ export const buildWorkingChat = (
   }
 
   return {
+    sessionId: chat.sessionId,
     chatId: chat.chatId,
     createdAt: chat.createdAt,
     updatedAt,
@@ -112,6 +116,7 @@ export const buildCompletedChat = (
   finishedAt = Date.now(),
 ): CompletedChat => {
   return {
+    sessionId: chat.sessionId,
     chatId: chat.chatId,
     createdAt: chat.createdAt,
     updatedAt: finishedAt,
@@ -134,6 +139,7 @@ export const buildFailedChat = (
   updatedAt = Date.now(),
 ): FailedChat => {
   return {
+    sessionId: chat.sessionId,
     chatId: chat.chatId,
     createdAt: chat.createdAt,
     updatedAt,

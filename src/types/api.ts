@@ -33,6 +33,7 @@ export type ChatMessage = {
 };
 
 type BaseChat = {
+  sessionId: UUID;
   chatId: UUID;
   createdAt: number;
   updatedAt: number;

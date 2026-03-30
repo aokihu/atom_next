@@ -1,13 +1,3 @@
-import {
-  APIEvents,
-  parseTaskStateToChatStatus,
-  type Chat,
-} from "@/types/api";
-import type { TaskItem, TaskItems } from "@/types/queue";
-import { TaskSource } from "@/types/queue";
-import { TaskState } from "@/types/queue";
-import { isNullish } from "radashi";
-
 /**
  * @author aokihu <aokihu@gmail.com>
  * @class TaskQueue
@@ -15,16 +5,32 @@ import { isNullish } from "radashi";
  *            提供推入任务/推出任务/任务自动排列等功能
  *            是内核中执行任务的唯一管道
  */
+
+import { APIEvents, parseTaskStateToChatStatus, type Chat } from "@/types/api";
+import type { TaskItem, TaskItems } from "@/types/queue";
+import { TaskSource } from "@/types/queue";
+import { TaskState } from "@/types/queue";
+import { isNullish } from "radashi";
+
 export class TaskQueue {
+  /* ==================== */
+  /*  Private Properties  */
+  /* ==================== */
+
   // 不同权重的任务队列
   #queues: Map<number, TaskItems>;
 
-  /* 构造函数 */
+  /* ==================== */
+  /*  Constructor         */
+  /* ==================== */
+
   constructor() {
     this.#queues = new Map();
   }
 
-  /* --- Private --- */
+  /* ==================== */
+  /*  Private Methods     */
+  /* ==================== */
 
   /**
    * 获取对应优先级的队列或者创建一个对应优先级的队列
@@ -79,11 +85,15 @@ export class TaskQueue {
     }
 
     task.eventTarget.emit(event, {
+
+      chatId: task.chatId,
       status,
     } satisfies Partial<Chat>);
   }
 
-  /* --- Public --- */
+  /* ==================== */
+  /*  Public Methods      */
+  /* ==================== */
 
   /**
    * 添加新的任务到队列中

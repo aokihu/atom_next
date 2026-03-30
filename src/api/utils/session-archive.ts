@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ArchivedSession, Chat, Session } from "@/types/api";
+import { SessionStatus } from "@/types/api";
 import type { UUID } from "@/types";
 
 const SESSION_ARCHIVE_DIR = "sessions";
@@ -15,23 +16,20 @@ const ensureSessionArchiveDir = async (workspace: string) => {
   await mkdir(getSessionArchiveDir(workspace), { recursive: true });
 };
 
-export const serializeArchivedSession = (
-  session: Session,
-): ArchivedSession => {
+export const serializeArchivedSession = (session: Session): ArchivedSession => {
   return {
     ...session,
-    status: "archived",
+    status: SessionStatus.ARCHIVED,
     archivedAt: session.archivedAt ?? Date.now(),
     chats: Object.fromEntries(session.chats.entries()),
   };
 };
 
-export const deserializeArchivedSession = (
-  raw: ArchivedSession,
-): Session => {
+export const deserializeArchivedSession = (raw: ArchivedSession): Session => {
   return {
     ...raw,
-    status: raw.status === "archived" ? "idle" : raw.status,
+    status:
+      raw.status === SessionStatus.ARCHIVED ? SessionStatus.IDLE : raw.status,
     chats: new Map(Object.entries(raw.chats) as Array<[UUID, Chat]>),
   };
 };

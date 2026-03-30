@@ -182,7 +182,7 @@ export class SessionManager {
     }
 
     const now = Date.now();
-    const chat = buildWaitingChat(chatId, now);
+    const chat = buildWaitingChat(sessionId, chatId, now);
 
     session.chats.set(chatId, chat);
     this.#touchSession(session);
