@@ -1,5 +1,6 @@
 import type { UUID, ISOTimeString, EmptyString } from "@/types";
 import { TaskSource, type TaskItem } from "@/types/queue";
+import type { PathLike } from "bun";
 
 /**
  * ISO 8601 标准时间格式类型
@@ -29,11 +30,15 @@ export class Runtime {
     round: number;
   }[];
   #context: RuntimeContext;
+  #systemRules: string;
 
   constructor() {
     // [Milestone 0.1]
     // 这里暂时不对session数组做任何处理
     this.#taskSessions = [];
+
+    // 系统规则提示词
+    this.#systemRules = "";
 
     this.#context = {
       meta: {
@@ -80,19 +85,51 @@ export class Runtime {
   }
 
   /**
-   * 将任务中用户的传入信息转化成提示词
+   * 将任务转化成提示词
+   * @description 从task.payload字段中提取用户的输入信息
+   *              整理之后输出,当前只出了文本格式的数据
    */
   #convertTaskToPrompt() {
-    const task = this.#currentTask;
-    return [].join("\n");
+    const { payload } = this.#currentTask as TaskItem;
+    return payload
+      .filter((p) => p.type === "text")
+      .map((p) => p.data)
+      .join("\n");
+  }
+
+  /* ==================== */
+  /*        Public        */
+  /* ==================== */
+
+  /**
+   * 从文件中加载系统规则
+   * @param file 系统规则文件路径
+   */
+  public async loadSystemRules(file: string) {
+    if (await Bun.file(file).exists()) {
+      const content = await Bun.file(file).text();
+      this.#systemRules = content;
+    } else {
+      this.#systemRules = "";
+      throw new Error(`System rules file not found: ${file}`);
+    }
   }
 
   /**
-   * 输出提示词
-   * @description 整合RuntimeContext和用户输入的完整的会话提示词
+   * 输出系统提示词
+   * @description 输出来自Runtime Context的数据和系统内部强制规范提示词文本
+   * @returns 系统提示词文本
    */
-  public exportPrompt() {
+  public exportSystemPrompt() {
     const runtimePrompt = this.#convertContextToPrompt();
-    const taskPrompt = this.#convertTaskToPrompt();
+    return `${this.#systemRules}\n${runtimePrompt}`;
+  }
+
+  /**
+   * 输出用户输入提示词
+   * @returns 用户输入提示词文本
+   */
+  public exportUserPrompt() {
+    return this.#convertTaskToPrompt();
   }
 }

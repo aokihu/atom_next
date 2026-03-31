@@ -51,7 +51,7 @@ describe("TaskQueue", () => {
 
   describe("basic operations", () => {
     test("creates an empty queue", async () => {
-      const task = await taskQueue.getWorkableTask();
+      const task = await taskQueue.activateWorkableTask();
       expect(task).toBeUndefined();
     });
 
@@ -59,7 +59,7 @@ describe("TaskQueue", () => {
       const task = createTask();
       await taskQueue.addTask(task);
 
-      const retrieved = await taskQueue.getWorkableTask();
+      const retrieved = await taskQueue.activateWorkableTask();
       expect(retrieved).toBeDefined();
       expect(retrieved?.id).toBe(task.id);
     });
@@ -74,7 +74,7 @@ describe("TaskQueue", () => {
       });
 
       await taskQueue.addTask(normalTask);
-      const retrievedTask = await taskQueue.getWorkableTask();
+      const retrievedTask = await taskQueue.activateWorkableTask();
 
       expect(retrievedTask).toBeDefined();
       expect(retrievedTask?.id).toBe(normalTask.id);
@@ -86,8 +86,8 @@ describe("TaskQueue", () => {
       const task = createTask();
       await taskQueue.addTask(task);
 
-      await taskQueue.getWorkableTask();
-      const empty = await taskQueue.getWorkableTask();
+      await taskQueue.activateWorkableTask();
+      const empty = await taskQueue.activateWorkableTask();
 
       expect(empty).toBeUndefined();
     });
@@ -103,7 +103,9 @@ describe("TaskQueue", () => {
 
       await taskQueue.addTask(task);
 
-      expect(events).toEqual([{ status: ChatStatus.WAITING }]);
+      expect(events).toEqual([
+        expect.objectContaining({ status: ChatStatus.WAITING }),
+      ]);
     });
 
     test("does not emit chat-updated when adding an internal task", async () => {
@@ -136,9 +138,9 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(highPriorityTask);
 
       // 获取顺序应该是：高 -> 中 -> 低
-      const task1 = await taskQueue.getWorkableTask();
-      const task2 = await taskQueue.getWorkableTask();
-      const task3 = await taskQueue.getWorkableTask();
+      const task1 = await taskQueue.activateWorkableTask();
+      const task2 = await taskQueue.activateWorkableTask();
+      const task3 = await taskQueue.activateWorkableTask();
 
       expect(task1?.id).toBe("high");
       expect(task2?.id).toBe("medium");
@@ -154,9 +156,9 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(task2);
       await taskQueue.addTask(task3);
 
-      const retrieved1 = await taskQueue.getWorkableTask();
-      const retrieved2 = await taskQueue.getWorkableTask();
-      const retrieved3 = await taskQueue.getWorkableTask();
+      const retrieved1 = await taskQueue.activateWorkableTask();
+      const retrieved2 = await taskQueue.activateWorkableTask();
+      const retrieved3 = await taskQueue.activateWorkableTask();
 
       expect(retrieved1?.id).toBe("task1");
       expect(retrieved2?.id).toBe("task2");
@@ -172,7 +174,7 @@ describe("TaskQueue", () => {
 
       const retrievedIds = [];
       for (let i = 0; i < 5; i++) {
-        const task = await taskQueue.getWorkableTask();
+        const task = await taskQueue.activateWorkableTask();
         if (task) retrievedIds.push(task.id);
       }
 
@@ -192,9 +194,9 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(buildTestTask("p3", { priority: 3 }));
       await taskQueue.addTask(buildTestTask("p1", { priority: 1 }));
 
-      const task1 = await taskQueue.getWorkableTask();
-      const task2 = await taskQueue.getWorkableTask();
-      const task3 = await taskQueue.getWorkableTask();
+      const task1 = await taskQueue.activateWorkableTask();
+      const task2 = await taskQueue.activateWorkableTask();
+      const task3 = await taskQueue.activateWorkableTask();
 
       expect(task1?.id).toBe("p1");
       expect(task2?.id).toBe("p3");
@@ -239,8 +241,8 @@ describe("TaskQueue", () => {
       taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
 
       expect(events).toEqual([
-        { status: ChatStatus.WAITING },
-        { status: ChatStatus.PROCESSING },
+        expect.objectContaining({ status: ChatStatus.WAITING }),
+        expect.objectContaining({ status: ChatStatus.PROCESSING }),
       ]);
     });
 
@@ -256,7 +258,9 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(task);
       taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
 
-      expect(events).toEqual([{ status: ChatStatus.COMPLETE }]);
+      expect(events).toEqual([
+        expect.objectContaining({ status: ChatStatus.COMPLETE }),
+      ]);
     });
 
     test("does not throw when task has no eventTarget", async () => {
@@ -293,6 +297,51 @@ describe("TaskQueue", () => {
       expect(highPriorityTask.state).toBe(TaskState.PROCESSING);
       expect(lowPriorityTask.state).toBe(TaskState.FAILED);
     });
+
+    test("can update an active task after activation", async () => {
+      const task = buildTestTask("active-task");
+
+      await taskQueue.addTask(task);
+      await taskQueue.activateWorkableTask();
+
+      expect(() => {
+        taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
+      }).not.toThrow();
+
+      expect(task.state).toBe(TaskState.PROCESSING);
+    });
+  });
+
+  describe("activateWorkableTask", () => {
+    test("moves task from waiting queue to active queue and marks it pending", async () => {
+      const task = buildTestTask("pending-task");
+
+      await taskQueue.addTask(task);
+      const activatedTask = await taskQueue.activateWorkableTask();
+      const nextTask = await taskQueue.activateWorkableTask();
+
+      expect(activatedTask?.id).toBe(task.id);
+      expect(activatedTask?.state).toBe(TaskState.PENDING);
+      expect(nextTask).toBeUndefined();
+    });
+
+    test("emits chat-updated when task becomes pending", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("pending-event-task", { eventTarget });
+
+      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+        events.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+      await taskQueue.activateWorkableTask();
+
+      expect(events).toEqual([
+        expect.objectContaining({ status: ChatStatus.WAITING }),
+        expect.objectContaining({ status: ChatStatus.PENDING }),
+      ]);
+    });
   });
 
   describe("multiple tasks operations", () => {
@@ -309,7 +358,7 @@ describe("TaskQueue", () => {
 
       const retrievedTasks = [];
       for (let i = 0; i < tasks.length; i++) {
-        const task = await taskQueue.getWorkableTask();
+        const task = await taskQueue.activateWorkableTask();
         if (task) retrievedTasks.push(task);
       }
 
@@ -318,26 +367,26 @@ describe("TaskQueue", () => {
 
     test("can interleave add and get operations", async () => {
       await taskQueue.addTask(buildTestTask("task1", { priority: 2 }));
-      const task1 = await taskQueue.getWorkableTask();
+      const task1 = await taskQueue.activateWorkableTask();
       expect(task1?.id).toBe("task1");
 
       await taskQueue.addTask(buildTestTask("task2", { priority: 2 }));
       await taskQueue.addTask(buildTestTask("task3", { priority: 1 }));
 
-      const task2 = await taskQueue.getWorkableTask();
+      const task2 = await taskQueue.activateWorkableTask();
       expect(task2?.id).toBe("task3"); // 优先级1的先出
 
-      const task3 = await taskQueue.getWorkableTask();
+      const task3 = await taskQueue.activateWorkableTask();
       expect(task3?.id).toBe("task2");
 
-      const task4 = await taskQueue.getWorkableTask();
+      const task4 = await taskQueue.activateWorkableTask();
       expect(task4).toBeUndefined();
     });
   });
 
   describe("edge cases", () => {
     test("handles empty queue operations gracefully", async () => {
-      const result = await taskQueue.getWorkableTask();
+      const result = await taskQueue.activateWorkableTask();
       expect(result).toBeUndefined();
 
       expect(() => {
@@ -354,7 +403,7 @@ describe("TaskQueue", () => {
       });
 
       await taskQueue.addTask(customTask);
-      const retrieved = await taskQueue.getWorkableTask();
+      const retrieved = await taskQueue.activateWorkableTask();
 
       expect(retrieved?.id).toEqual(customTask.id);
       expect(retrieved?.source).toBe(TaskSource.EXTERNAL);
@@ -366,9 +415,9 @@ describe("TaskQueue", () => {
       await taskQueue.addTask(buildTestTask("p10", { priority: 10 }));
       await taskQueue.addTask(buildTestTask("p1", { priority: 1 }));
 
-      const task1 = await taskQueue.getWorkableTask();
-      const task2 = await taskQueue.getWorkableTask();
-      const task3 = await taskQueue.getWorkableTask();
+      const task1 = await taskQueue.activateWorkableTask();
+      const task2 = await taskQueue.activateWorkableTask();
+      const task3 = await taskQueue.activateWorkableTask();
 
       expect(task1?.id).toBe("p1");
       expect(task2?.id).toBe("p5");
