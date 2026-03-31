@@ -3,7 +3,7 @@
  * @version 1.0.0
  */
 
-import { mapKeys } from "radashi";
+import { isUndefined } from "radashi";
 import { camelToSnake } from "@/libs/string";
 import { parseArguments } from "./cli";
 import { DefaultConfig, type ConfigFileScheme } from "./config";
@@ -49,8 +49,10 @@ export const bootstrap = async (): Promise<BootstrapResult> => {
 
   // 启动参数和环境变量需要合并成统一的运行时环境变量
   const { config, ...rest } = cliArgs;
-  const bootEnvArgs: Record<string, CliEnvValue> = mapKeys(rest, (k) =>
-    camelToSnake(k).toUpperCase(),
+  const bootEnvArgs: Record<string, CliEnvValue> = Object.fromEntries(
+    Object.entries(rest)
+      .filter(([, value]) => !isUndefined(value))
+      .map(([key, value]) => [camelToSnake(key).toUpperCase(), value]),
   );
   const mergedEnv: BootstrapEnv = { ...envArgs, ...bootEnvArgs };
 

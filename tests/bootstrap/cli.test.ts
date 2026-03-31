@@ -23,7 +23,7 @@ describe("parseArguments - direct function tests", () => {
 
     expect(result.mode).toBe("both");
     expect(result.address).toBe("127.0.0.1");
-    expect(result.port).toBe(8787);
+    expect(result.port).toBeUndefined();
     expect(result.config).toBe("/test/dir/config.json");
     expect(result.workspace).toBe("/test/dir");
     expect(result.sandbox).toBe("/test/dir/sandbox");
@@ -207,7 +207,7 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.result.mode).toBe("both");
     expect(parsed.result.address).toBe("127.0.0.1");
-    expect(parsed.result.port).toBe(8787);
+    expect(parsed.result.port).toBeUndefined();
   });
 
   test("runs helper script with --version and captures exit", async () => {
