@@ -51,6 +51,9 @@ async function main() {
   /* ----- 启动TUI ----- */
 
   /* ----- 启动Gateway ----- */
+
+  /* ----- 启动core ----- */
+  core.runloop();
 }
 
 main();

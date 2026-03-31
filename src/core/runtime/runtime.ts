@@ -98,7 +98,15 @@ export class Runtime {
   }
 
   /* ==================== */
-  /*        Public        */
+  /* Public getter/setter */
+  /* ==================== */
+
+  set currentTask(task: TaskItem) {
+    this.#currentTask = task;
+  }
+
+  /* ==================== */
+  /*   Public Methods     */
   /* ==================== */
 
   /**
@@ -120,7 +128,7 @@ export class Runtime {
    * @description 输出来自Runtime Context的数据和系统内部强制规范提示词文本
    * @returns 系统提示词文本
    */
-  public exportSystemPrompt() {
+  public exportSystemPrompt(): string {
     const runtimePrompt = this.#convertContextToPrompt();
     return `${this.#systemRules}\n${runtimePrompt}`;
   }
@@ -129,7 +137,23 @@ export class Runtime {
    * 输出用户输入提示词
    * @returns 用户输入提示词文本
    */
-  public exportUserPrompt() {
+  public exportUserPrompt(): string {
     return this.#convertTaskToPrompt();
   }
+
+  /**
+   * 输出提示词
+   * @returns 返回一个数组,第一个元素是系统提示词,第二个元素是用户提示词
+   */
+  public exportPrompts(): [string, string] {
+    const systemPrompt = this.exportSystemPrompt();
+    const userPrompt = this.exportUserPrompt();
+    return [systemPrompt, userPrompt];
+  }
+
+  /**
+   * 解析LLM返回的Request请求
+   * @param requestText LLM返回的Request请求
+   */
+  public parseLLMRequest(requestText: string) {}
 }

@@ -6,8 +6,13 @@
  */
 
 import type { BunRequest } from "bun";
-import type { SubmitChatRequestBody } from "@/types/api";
-import { APIEvents } from "@/types/api";
+import type {
+  ChatFailedEventPayload,
+  ChatFinishedEventPayload,
+  ChatUpdatedEventPayload,
+  SubmitChatRequestBody,
+} from "@/types/api";
+import { APIEvents, ChatStatus } from "@/types/api";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
@@ -35,9 +40,15 @@ export class APIServer extends EventEmitter {
     this.#sessionManager = new SessionManager(this.#serviceManager);
 
     /* --- 设置监听事件 --- */
-    this.addListener(APIEvents.CHAT_UPDATED, () => {});
-    this.addListener(APIEvents.CHAT_FINISHED, () => {});
-    this.addListener(APIEvents.CHAT_FAILED, () => {});
+    this.addListener(APIEvents.CHAT_UPDATED, (payload) => {
+      void this.#syncChatUpdated(payload as ChatUpdatedEventPayload);
+    });
+    this.addListener(APIEvents.CHAT_FINISHED, (payload) => {
+      void this.#syncChatFinished(payload as ChatFinishedEventPayload);
+    });
+    this.addListener(APIEvents.CHAT_FAILED, (payload) => {
+      void this.#syncChatFailed(payload as ChatFailedEventPayload);
+    });
   }
 
   /* ==================== 私有方法 ==================== */
@@ -108,6 +119,63 @@ export class APIServer extends EventEmitter {
 
     const message = err instanceof Error ? err.message : "Unknown error";
     return this.#toJsonResponse({ error: message }, 500);
+  }
+
+  async #syncChatUpdated(payload: ChatUpdatedEventPayload) {
+    try {
+      if (payload.status === ChatStatus.PENDING) {
+        await this.#sessionManager.markChatPending(
+          payload.sessionId,
+          payload.chatId,
+        );
+        return;
+      }
+
+      if (
+        payload.status === ChatStatus.PROCESSING &&
+        Object.hasOwn(payload, "chunk")
+      ) {
+        await this.#sessionManager.appendChunk(
+          payload.sessionId,
+          payload.chatId,
+          payload.chunk,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to sync chat update: %s", error);
+    }
+  }
+
+  async #syncChatFinished(payload: Partial<ChatFinishedEventPayload>) {
+    if (!payload.sessionId || !payload.chatId || !payload.message) {
+      return;
+    }
+
+    try {
+      await this.#sessionManager.completeChat(
+        payload.sessionId,
+        payload.chatId,
+        payload.message,
+      );
+    } catch (error) {
+      console.error("Failed to sync finished chat: %s", error);
+    }
+  }
+
+  async #syncChatFailed(payload: Partial<ChatFailedEventPayload>) {
+    if (!payload.sessionId || !payload.chatId || !payload.error) {
+      return;
+    }
+
+    try {
+      await this.#sessionManager.failChat(
+        payload.sessionId,
+        payload.chatId,
+        payload.error,
+      );
+    } catch (error) {
+      console.error("Failed to sync failed chat: %s", error);
+    }
   }
 
   /* ==================== 公开方法 ==================== */

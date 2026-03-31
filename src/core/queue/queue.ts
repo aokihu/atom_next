@@ -151,6 +151,7 @@ export class TaskQueue {
     }
 
     task.eventTarget.emit(event, {
+      sessionId: task.sessionId,
       chatId: task.chatId,
       status,
     } satisfies Partial<Chat>);

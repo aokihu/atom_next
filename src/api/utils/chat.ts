@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   CompletedChat,
   FailedChat,
+  PendingChat,
   StreamingChat,
   WaitingChat,
 } from "@/types/api";
@@ -70,6 +71,25 @@ export const buildWaitingChat = (
     createdAt: now,
     updatedAt: now,
     status: ChatStatus.WAITING,
+  };
+};
+
+/**
+ * 构建一个挂起状态的 Chat
+ * @param chat 原始 Chat 对象
+ * @param updatedAt 更新时间戳，默认为当前时间
+ * @returns PendingChat 对象
+ */
+export const buildPendingChat = (
+  chat: Chat,
+  updatedAt = Date.now(),
+): PendingChat => {
+  return {
+    sessionId: chat.sessionId,
+    chatId: chat.chatId,
+    createdAt: chat.createdAt,
+    updatedAt,
+    status: ChatStatus.PENDING,
   };
 };
 

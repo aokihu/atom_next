@@ -109,6 +109,27 @@ export type SubmitChatRequestBody = {
   channel?: RawTaskItem["channel"];
 };
 
+export type ChatUpdatedEventPayload = {
+  sessionId: UUID;
+  chatId: UUID;
+  status: ChatStatus.WAITING | ChatStatus.PENDING | ChatStatus.PROCESSING;
+  chunk?: ChatChunk["data"];
+};
+
+export type ChatFinishedEventPayload = {
+  sessionId: UUID;
+  chatId: UUID;
+  status: ChatStatus.COMPLETE;
+  message: ChatMessage;
+};
+
+export type ChatFailedEventPayload = {
+  sessionId: UUID;
+  chatId: UUID;
+  status: ChatStatus.FAILED;
+  error: FailedChat["error"];
+};
+
 export const parseTaskStateToChatStatus = (
   state: TaskState,
 ): ChatStatus | undefined => {

@@ -1,7 +1,7 @@
 import { buildError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
-import type { Chat, PollChatResult, Session } from "@/types/api";
+import type { Chat, ChatMessage, PollChatResult, Session } from "@/types/api";
 import { ChatStatus, SessionStatus } from "@/types/api";
 import type { UUID } from "@/types";
 import { isString } from "radashi";
@@ -13,6 +13,7 @@ import {
 import {
   buildCompletedChat,
   buildFailedChat,
+  buildPendingChat,
   buildWaitingChat,
   buildWorkingChat,
   createChatChunk,
@@ -218,7 +219,33 @@ export class SessionManager {
     return nextChat;
   }
 
-  public async completeChat(sessionId: UUID, chatId: UUID) {
+  public async markChatPending(sessionId: UUID, chatId: UUID) {
+    const session = await this.#loadSession(sessionId);
+    const chat = this.#getChat(session, chatId);
+    const now = Date.now();
+
+    if (
+      chat.status === ChatStatus.COMPLETE ||
+      chat.status === ChatStatus.FAILED ||
+      chat.status === ChatStatus.PROCESSING
+    ) {
+      return chat;
+    }
+
+    const nextChat = buildPendingChat(chat, now);
+
+    session.chats.set(chatId, nextChat);
+    this.#touchSession(session);
+    session.status = SessionStatus.ACTIVE;
+
+    return nextChat;
+  }
+
+  public async completeChat(
+    sessionId: UUID,
+    chatId: UUID,
+    message?: ChatMessage,
+  ) {
     const session = await this.#loadSession(sessionId);
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
@@ -234,7 +261,11 @@ export class SessionManager {
     }
 
     const chunks = chat.status === ChatStatus.PROCESSING ? chat.chunks : [];
-    const nextChat = buildCompletedChat(chat, mergeChatChunks(chunks), now);
+    const nextChat = buildCompletedChat(
+      chat,
+      message ?? mergeChatChunks(chunks),
+      now,
+    );
 
     session.chats.set(chatId, nextChat);
     this.#touchSession(session);

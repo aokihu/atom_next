@@ -1,5 +1,15 @@
 import type { TaskItem } from "@/types/queue";
 import type { ServiceManager } from "@/libs/service-manage";
+import {
+  APIEvents,
+  ChatStatus,
+  type ChatFailedEventPayload,
+  type ChatFinishedEventPayload,
+  type ChatUpdatedEventPayload,
+} from "@/types/api";
+import { TaskState } from "@/types/queue";
+
+import { sleep } from "radashi";
 import { TaskQueue } from "../queue";
 import { Runtime } from "../runtime";
 import { Transport } from "../transport";
@@ -12,7 +22,8 @@ export class Core {
   #runtime: Runtime;
   #transport: Transport;
 
-  #activeTimer: NodeJS.Timeout | null = null;
+  #activedTask: TaskItem | undefined = undefined; // 当前激活的任务
+  #activeTimer: NodeJS.Timeout | null = null; // 定时检查激活任务计时器
 
   constructor(serviceManager: ServiceManager) {
     this.#serviceManager = serviceManager;
@@ -26,47 +37,96 @@ export class Core {
   /* ==================== */
 
   /**
-   * 清理已存在的激活定时器
+   * 空任务循环
+   * @description 当队列中没有任何任务的时候执行该循环
    */
-  #clearActivateTaskTimer() {
-    if (!this.#activeTimer) return;
-
-    clearTimeout(this.#activeTimer);
-    this.#activeTimer = null;
+  async #emptyRunloop() {
+    await sleep(500);
+    this.runloop();
   }
 
   /**
-   * 延迟再次尝试激活任务
-   * @description 这里只负责调度下一次激活，不处理任务本身
+   * 执行任务流程
    */
-  #scheduleActivateTask() {
-    this.#clearActivateTaskTimer();
-    this.#activeTimer = setTimeout(() => {
-      this.#activeTimer = null;
-      this.#activateTask();
-    }, Core.ACTIVATE_TASK_DELAY);
-  }
+  async #workflow() {
+    const task = await this.#taskQueue.activateWorkableTask();
 
-  /**
-   * 获取等待的任务并激活
-   * @description 这是一个内部循环执行的函数
-   *              当队列中没有任务的时候会尝试等待一定时间后再次唤醒函数尝试获取
-   *              使用setTimeout的方式实现循环
-   */
-  #activateTask() {
-    this.#clearActivateTaskTimer();
-
-    if (this.#taskQueue.isEmpty) {
-      this.#scheduleActivateTask();
+    if (!task) {
+      this.runloop();
       return;
     }
 
-    return this.#taskQueue.activateWorkableTask();
+    this.#activedTask = task;
+
+    try {
+      this.#runtime.currentTask = task;
+      const [systemPrompt, userPrompt] = this.#runtime.exportPrompts();
+      let hasProcessingState = false;
+
+      const result = await this.#transport.send(systemPrompt, userPrompt, {
+        onTextDelta: (textDelta) => {
+          if (!hasProcessingState) {
+            this.#taskQueue.updateTask(task.id, {
+              state: TaskState.PROCESSING,
+            });
+            hasProcessingState = true;
+          }
+
+          const payload: ChatUpdatedEventPayload = {
+            sessionId: task.sessionId,
+            chatId: task.chatId,
+            status: ChatStatus.PROCESSING,
+            chunk: textDelta,
+          };
+
+          task.eventTarget?.emit(APIEvents.CHAT_UPDATED, payload);
+        },
+      });
+
+      this.#runtime.parseLLMRequest(result.requestText);
+      this.#taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
+
+      const payload: ChatFinishedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status: ChatStatus.COMPLETE,
+        message: {
+          createdAt: Date.now(),
+          data: result.text,
+        },
+      };
+
+      task.eventTarget?.emit(APIEvents.CHAT_FINISHED, payload);
+    } catch (error) {
+      this.#taskQueue.updateTask(task.id, { state: TaskState.FAILED });
+
+      const payload: ChatFailedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status: ChatStatus.FAILED,
+        error: {
+          message: error instanceof Error ? error.message : "Unknown error",
+        },
+      };
+
+      task.eventTarget?.emit(APIEvents.CHAT_FAILED, payload);
+    } finally {
+      this.#activedTask = undefined;
+      this.runloop();
+    }
   }
 
   /* ==================== */
-  /*        Public        */
+  /*   Public Methods     */
   /* ==================== */
+
+  async runloop() {
+    if (this.#taskQueue.isEmpty) {
+      this.#emptyRunloop();
+    } else {
+      this.#workflow();
+    }
+  }
 
   /**
    * 向内核添加任务,这个任务由buildTasl
