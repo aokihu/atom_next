@@ -1,9 +1,11 @@
 import type { UUID } from "./index";
 import { TaskState, type RawTaskItem } from "./queue";
 
-export enum APIEvents {
-  CHAT_UPDATED = "chat-updated",
-  CHAT_FINISHED = "chat-finished",
+export enum ChatEvents {
+  CHAT_ENQUEUED = "chat-enqueued",
+  CHAT_ACTIVATED = "chat-activated",
+  CHAT_CHUNK_APPENDED = "chat-chunk-appended",
+  CHAT_COMPLETED = "chat-completed",
   CHAT_FAILED = "chat-failed",
 }
 
@@ -109,14 +111,26 @@ export type SubmitChatRequestBody = {
   channel?: RawTaskItem["channel"];
 };
 
-export type ChatUpdatedEventPayload = {
+export type ChatEnqueuedEventPayload = {
   sessionId: UUID;
   chatId: UUID;
-  status: ChatStatus.WAITING | ChatStatus.PENDING | ChatStatus.PROCESSING;
-  chunk?: ChatChunk["data"];
+  status: ChatStatus.WAITING;
 };
 
-export type ChatFinishedEventPayload = {
+export type ChatActivatedEventPayload = {
+  sessionId: UUID;
+  chatId: UUID;
+  status: ChatStatus.PENDING;
+};
+
+export type ChatChunkAppendedEventPayload = {
+  sessionId: UUID;
+  chatId: UUID;
+  status: ChatStatus.PROCESSING;
+  chunk: ChatChunk["data"];
+};
+
+export type ChatCompletedEventPayload = {
   sessionId: UUID;
   chatId: UUID;
   status: ChatStatus.COMPLETE;

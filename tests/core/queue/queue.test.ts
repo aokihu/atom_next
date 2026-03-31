@@ -6,7 +6,7 @@ import { TaskQueue } from "@/core/queue/queue";
 import { buildTaskItem } from "@/core/queue/task";
 import resort from "@/core/queue/resort";
 import type { AppContext } from "@/types/app";
-import { APIEvents, ChatStatus } from "@/types/api";
+import { ChatEvents, ChatStatus } from "@/types/api";
 import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
 
 // 创建一个简单的 AppContext
@@ -92,12 +92,12 @@ describe("TaskQueue", () => {
       expect(empty).toBeUndefined();
     });
 
-    test("emits chat-updated when adding an external task", async () => {
+    test("emits chat-enqueued when adding an external task", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("task-with-event", { eventTarget });
 
-      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+      eventTarget.on(ChatEvents.CHAT_ENQUEUED, (payload) => {
         events.push(payload);
       });
 
@@ -108,7 +108,7 @@ describe("TaskQueue", () => {
       ]);
     });
 
-    test("does not emit chat-updated when adding an internal task", async () => {
+    test("does not emit chat-enqueued when adding an internal task", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("internal-task", {
@@ -116,7 +116,7 @@ describe("TaskQueue", () => {
         source: TaskSource.INTERNAL,
       });
 
-      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+      eventTarget.on(ChatEvents.CHAT_ENQUEUED, (payload) => {
         events.push(payload);
       });
 
@@ -228,39 +228,90 @@ describe("TaskQueue", () => {
       expect(task.updatedAt).toBeGreaterThan(originalUpdatedAt);
     });
 
-    test("emits chat-updated when task state becomes processing", async () => {
+    test("does not emit queue lifecycle events when task state becomes processing", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("task-with-event", { eventTarget });
 
-      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+      eventTarget.on(ChatEvents.CHAT_ACTIVATED, (payload) => {
         events.push(payload);
       });
 
       await taskQueue.addTask(task);
       taskQueue.updateTask(task.id, { state: TaskState.PROCESSING });
 
-      expect(events).toEqual([
-        expect.objectContaining({ status: ChatStatus.WAITING }),
-        expect.objectContaining({ status: ChatStatus.PROCESSING }),
-      ]);
+      expect(events).toEqual([]);
     });
 
-    test("emits chat-finished when task state becomes complete", async () => {
+    test("emits chat-completed when task state becomes complete", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("task-complete", { eventTarget });
 
-      eventTarget.on(APIEvents.CHAT_FINISHED, (payload) => {
+      eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
         events.push(payload);
       });
 
       await taskQueue.addTask(task);
+      // 直接更新到 COMPLETE 只验证事件类型，不验证 message 结构。
+      // Core 在真实流程里会在发出 CHAT_COMPLETED 前补齐最终 message。
+      task.message = {
+        createdAt: Date.now(),
+        data: "done",
+      };
       taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
 
       expect(events).toEqual([
         expect.objectContaining({ status: ChatStatus.COMPLETE }),
       ]);
+    });
+
+    test("emits chat-failed when task state becomes failed", async () => {
+      const eventTarget = new EventEmitter();
+      const events = [];
+      const task = buildTestTask("task-failed", { eventTarget });
+
+      eventTarget.on(ChatEvents.CHAT_FAILED, (payload) => {
+        events.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+      task.error = {
+        message: "boom",
+      };
+      taskQueue.updateTask(task.id, { state: TaskState.FAILED });
+
+      expect(events).toEqual([
+        expect.objectContaining({ status: ChatStatus.FAILED }),
+      ]);
+    });
+
+    test("does not emit events when shouldSyncEvent is false", async () => {
+      const eventTarget = new EventEmitter();
+      const completedEvents = [];
+      const failedEvents = [];
+      const task = buildTestTask("silent-task", { eventTarget });
+
+      eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+        completedEvents.push(payload);
+      });
+      eventTarget.on(ChatEvents.CHAT_FAILED, (payload) => {
+        failedEvents.push(payload);
+      });
+
+      await taskQueue.addTask(task);
+      task.message = {
+        createdAt: Date.now(),
+        data: "done",
+      };
+      taskQueue.updateTask(
+        task.id,
+        { state: TaskState.COMPLETE },
+        { shouldSyncEvent: false },
+      );
+
+      expect(completedEvents).toEqual([]);
+      expect(failedEvents).toEqual([]);
     });
 
     test("does not throw when task has no eventTarget", async () => {
@@ -325,12 +376,12 @@ describe("TaskQueue", () => {
       expect(nextTask).toBeUndefined();
     });
 
-    test("emits chat-updated when task becomes pending", async () => {
+    test("emits chat-activated when task becomes pending", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("pending-event-task", { eventTarget });
 
-      eventTarget.on(APIEvents.CHAT_UPDATED, (payload) => {
+      eventTarget.on(ChatEvents.CHAT_ACTIVATED, (payload) => {
         events.push(payload);
       });
 
@@ -338,7 +389,6 @@ describe("TaskQueue", () => {
       await taskQueue.activateWorkableTask();
 
       expect(events).toEqual([
-        expect.objectContaining({ status: ChatStatus.WAITING }),
         expect.objectContaining({ status: ChatStatus.PENDING }),
       ]);
     });

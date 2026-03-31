@@ -7,12 +7,14 @@
 
 import type { BunRequest } from "bun";
 import type {
+  ChatActivatedEventPayload,
+  ChatChunkAppendedEventPayload,
+  ChatCompletedEventPayload,
+  ChatEnqueuedEventPayload,
   ChatFailedEventPayload,
-  ChatFinishedEventPayload,
-  ChatUpdatedEventPayload,
   SubmitChatRequestBody,
 } from "@/types/api";
-import { APIEvents, ChatStatus } from "@/types/api";
+import { ChatEvents, ChatStatus } from "@/types/api";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
@@ -40,13 +42,19 @@ export class APIServer extends EventEmitter {
     this.#sessionManager = new SessionManager(this.#serviceManager);
 
     /* --- 设置监听事件 --- */
-    this.addListener(APIEvents.CHAT_UPDATED, (payload) => {
-      void this.#syncChatUpdated(payload as ChatUpdatedEventPayload);
+    this.addListener(ChatEvents.CHAT_ENQUEUED, (payload) => {
+      void this.#syncChatEnqueued(payload as ChatEnqueuedEventPayload);
     });
-    this.addListener(APIEvents.CHAT_FINISHED, (payload) => {
-      void this.#syncChatFinished(payload as ChatFinishedEventPayload);
+    this.addListener(ChatEvents.CHAT_ACTIVATED, (payload) => {
+      void this.#syncChatActivated(payload as ChatActivatedEventPayload);
     });
-    this.addListener(APIEvents.CHAT_FAILED, (payload) => {
+    this.addListener(ChatEvents.CHAT_CHUNK_APPENDED, (payload) => {
+      void this.#syncChatChunkAppended(payload as ChatChunkAppendedEventPayload);
+    });
+    this.addListener(ChatEvents.CHAT_COMPLETED, (payload) => {
+      void this.#syncChatCompleted(payload as ChatCompletedEventPayload);
+    });
+    this.addListener(ChatEvents.CHAT_FAILED, (payload) => {
       void this.#syncChatFailed(payload as ChatFailedEventPayload);
     });
   }
@@ -121,32 +129,47 @@ export class APIServer extends EventEmitter {
     return this.#toJsonResponse({ error: message }, 500);
   }
 
-  async #syncChatUpdated(payload: ChatUpdatedEventPayload) {
+  async #syncChatEnqueued(payload: ChatEnqueuedEventPayload) {
     try {
-      if (payload.status === ChatStatus.PENDING) {
-        await this.#sessionManager.markChatPending(
-          payload.sessionId,
-          payload.chatId,
-        );
-        return;
-      }
-
-      if (
-        payload.status === ChatStatus.PROCESSING &&
-        Object.hasOwn(payload, "chunk")
-      ) {
-        await this.#sessionManager.appendChunk(
-          payload.sessionId,
-          payload.chatId,
-          payload.chunk,
-        );
+      // handleSubmitChat 中已经先创建了 waiting chat。
+      // 这里保留显式入队事件监听，主要是为了让生命周期更完整、调试时更容易对照事件流，
+      // 但不再重复写入 session，避免把“创建 chat”和“进入队列”混成一次状态同步。
+      if (payload.status !== ChatStatus.WAITING) {
+        console.error("Unexpected chat enqueued payload status: %s", payload.status);
       }
     } catch (error) {
-      console.error("Failed to sync chat update: %s", error);
+      console.error("Failed to sync enqueued chat: %s", error);
     }
   }
 
-  async #syncChatFinished(payload: Partial<ChatFinishedEventPayload>) {
+  async #syncChatActivated(payload: ChatActivatedEventPayload) {
+    try {
+      await this.#sessionManager.markChatPending(
+        payload.sessionId,
+        payload.chatId,
+      );
+    } catch (error) {
+      // activated 同步失败时，优先排查队列激活链路；
+      // 如果是 chunk 追加失败，则会落在 #syncChatChunkAppended 的日志里。
+      console.error("Failed to sync activated chat: %s", error);
+    }
+  }
+
+  async #syncChatChunkAppended(payload: ChatChunkAppendedEventPayload) {
+    try {
+      // chunk 事件只负责流式内容同步，不承担 pending -> processing 的状态推断职责。
+      // 这样调试时可以直接通过日志判断问题发生在状态切换，还是发生在流式内容写入。
+      await this.#sessionManager.appendChunk(
+        payload.sessionId,
+        payload.chatId,
+        payload.chunk,
+      );
+    } catch (error) {
+      console.error("Failed to sync chat chunk: %s", error);
+    }
+  }
+
+  async #syncChatCompleted(payload: ChatCompletedEventPayload) {
     if (!payload.sessionId || !payload.chatId || !payload.message) {
       return;
     }
@@ -158,11 +181,11 @@ export class APIServer extends EventEmitter {
         payload.message,
       );
     } catch (error) {
-      console.error("Failed to sync finished chat: %s", error);
+      console.error("Failed to sync completed chat: %s", error);
     }
   }
 
-  async #syncChatFailed(payload: Partial<ChatFailedEventPayload>) {
+  async #syncChatFailed(payload: ChatFailedEventPayload) {
     if (!payload.sessionId || !payload.chatId || !payload.error) {
       return;
     }

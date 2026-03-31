@@ -1,11 +1,11 @@
 import type { TaskItem } from "@/types/queue";
 import type { ServiceManager } from "@/libs/service-manage";
 import {
-  APIEvents,
+  ChatEvents,
   ChatStatus,
+  type ChatChunkAppendedEventPayload,
   type ChatFailedEventPayload,
-  type ChatFinishedEventPayload,
-  type ChatUpdatedEventPayload,
+  type ChatCompletedEventPayload,
 } from "@/types/api";
 import { TaskState } from "@/types/queue";
 
@@ -65,28 +65,38 @@ export class Core {
 
       const result = await this.#transport.send(systemPrompt, userPrompt, {
         onTextDelta: (textDelta) => {
+          // PROCESSING 只代表内部任务已经进入执行阶段。
+          // 对外真正用于同步内容的事件是 CHAT_CHUNK_APPENDED，便于把状态推进和流式内容排查分开。
           if (!hasProcessingState) {
             this.#taskQueue.updateTask(task.id, {
               state: TaskState.PROCESSING,
+            }, {
+              shouldSyncEvent: false,
             });
             hasProcessingState = true;
           }
 
-          const payload: ChatUpdatedEventPayload = {
+          // 本次不额外引入 CHAT_STREAM_STARTED。
+          // 第一条 chunk 到来就代表已经开始流式输出，外部可以据此判断执行阶段已经开始。
+          const payload: ChatChunkAppendedEventPayload = {
             sessionId: task.sessionId,
             chatId: task.chatId,
             status: ChatStatus.PROCESSING,
             chunk: textDelta,
           };
 
-          task.eventTarget?.emit(APIEvents.CHAT_UPDATED, payload);
+          task.eventTarget?.emit(ChatEvents.CHAT_CHUNK_APPENDED, payload);
         },
       });
 
       this.#runtime.parseLLMRequest(result.requestText);
-      this.#taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
+      this.#taskQueue.updateTask(
+        task.id,
+        { state: TaskState.COMPLETE },
+        { shouldSyncEvent: false },
+      );
 
-      const payload: ChatFinishedEventPayload = {
+      const payload: ChatCompletedEventPayload = {
         sessionId: task.sessionId,
         chatId: task.chatId,
         status: ChatStatus.COMPLETE,
@@ -96,9 +106,13 @@ export class Core {
         },
       };
 
-      task.eventTarget?.emit(APIEvents.CHAT_FINISHED, payload);
+      task.eventTarget?.emit(ChatEvents.CHAT_COMPLETED, payload);
     } catch (error) {
-      this.#taskQueue.updateTask(task.id, { state: TaskState.FAILED });
+      this.#taskQueue.updateTask(
+        task.id,
+        { state: TaskState.FAILED },
+        { shouldSyncEvent: false },
+      );
 
       const payload: ChatFailedEventPayload = {
         sessionId: task.sessionId,
@@ -109,7 +123,7 @@ export class Core {
         },
       };
 
-      task.eventTarget?.emit(APIEvents.CHAT_FAILED, payload);
+      task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
     } finally {
       this.#activedTask = undefined;
       this.runloop();

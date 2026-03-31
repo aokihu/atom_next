@@ -6,7 +6,15 @@
  *            是内核中执行任务的唯一管道
  */
 
-import { APIEvents, parseTaskStateToChatStatus, type Chat } from "@/types/api";
+import {
+  ChatEvents,
+  ChatStatus,
+  parseTaskStateToChatStatus,
+  type ChatActivatedEventPayload,
+  type ChatCompletedEventPayload,
+  type ChatEnqueuedEventPayload,
+  type ChatFailedEventPayload,
+} from "@/types/api";
 import type { TaskItem, TaskItems } from "@/types/queue";
 import { TaskSource } from "@/types/queue";
 import { TaskState } from "@/types/queue";
@@ -111,33 +119,37 @@ export class TaskQueue {
   }
 
   /**
-   * 根据任务状态推断要发送的API事件
+   * 根据任务状态推断要发送的 Chat 事件
    * @param state 任务状态
    * @returns 对应的事件名
+   * @description 队列层只负责同步“任务状态切换”本身，不负责流式内容事件。
+   *              这样排查问题时，可以明确区分是队列阶段出错，还是执行阶段的流式同步出错。
    */
   #parseTaskEvent(state: TaskState) {
-    if (
-      state === TaskState.WAITING ||
-      state === TaskState.PENDING ||
-      state === TaskState.PROCESSING
-    ) {
-      return APIEvents.CHAT_UPDATED;
+    if (state === TaskState.WAITING) {
+      return ChatEvents.CHAT_ENQUEUED;
+    }
+
+    if (state === TaskState.PENDING) {
+      return ChatEvents.CHAT_ACTIVATED;
     }
 
     if (state === TaskState.COMPLETE) {
-      return APIEvents.CHAT_FINISHED;
+      return ChatEvents.CHAT_COMPLETED;
     }
 
     if (state === TaskState.FAILED) {
-      return APIEvents.CHAT_FAILED;
+      return ChatEvents.CHAT_FAILED;
     }
 
     return undefined;
   }
 
   /**
-   * 向API事件对象同步任务状态
+   * 向事件对象同步任务状态
    * @param task 当前任务
+   * @description 这里发送的都是“状态已经切换”的通知，不附带流式内容。
+   *              如果需要排查 chunk 丢失或流式阶段异常，应优先看 Core 发出的 CHAT_CHUNK_APPENDED。
    */
   #syncTaskState(task: TaskItem) {
     if (task.source !== TaskSource.EXTERNAL || isNullish(task.eventTarget)) {
@@ -150,11 +162,60 @@ export class TaskQueue {
       return;
     }
 
-    task.eventTarget.emit(event, {
-      sessionId: task.sessionId,
-      chatId: task.chatId,
-      status,
-    } satisfies Partial<Chat>);
+    if (event === ChatEvents.CHAT_ENQUEUED && status === ChatStatus.WAITING) {
+      const payload: ChatEnqueuedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status,
+      };
+
+      task.eventTarget.emit(event, payload);
+      return;
+    }
+
+    if (event === ChatEvents.CHAT_ACTIVATED && status === ChatStatus.PENDING) {
+      const payload: ChatActivatedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status,
+      };
+
+      task.eventTarget.emit(event, payload);
+      return;
+    }
+
+    if (event === ChatEvents.CHAT_COMPLETED && status === ChatStatus.COMPLETE) {
+      const taskMessage = (task as unknown as { message?: ChatCompletedEventPayload["message"] }).message;
+      if (!taskMessage) {
+        return;
+      }
+
+      const payload: ChatCompletedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status,
+        message: taskMessage,
+      };
+
+      task.eventTarget.emit(event, payload);
+      return;
+    }
+
+    if (event === ChatEvents.CHAT_FAILED && status === ChatStatus.FAILED) {
+      const taskError = (task as unknown as { error?: ChatFailedEventPayload["error"] }).error;
+      if (!taskError) {
+        return;
+      }
+
+      const payload: ChatFailedEventPayload = {
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        status,
+        error: taskError,
+      };
+
+      task.eventTarget.emit(event, payload);
+    }
   }
 
   /* ==================== */
@@ -194,11 +255,16 @@ export class TaskQueue {
    * 更新任务
    * @param taskId 需要更新的任务id
    * @param newStatus 任务的新状态
+   * @param options 是否同步对外事件
    * @throws {Error} 任务未找到
    * @throws {Error} 更新失败,无效的属性字段,只能更新updatedAt和state
    * @description 这里只能更新任务的updatedAt/state等时间和状态信息,其他数据都是不可修改的
    */
-  public updateTask(taskId: string, newStatus: Record<"state", TaskState>) {
+  public updateTask(
+    taskId: string,
+    newStatus: Record<"state", TaskState>,
+    options: { shouldSyncEvent?: boolean } = {},
+  ) {
     const task = this.#findTaskById(taskId);
 
     if (isNullish(task)) {
@@ -215,6 +281,8 @@ export class TaskQueue {
       this.#removeTaskFromActiveQueue(task.id);
     }
 
-    this.#syncTaskState(task);
+    if (options.shouldSyncEvent !== false) {
+      this.#syncTaskState(task);
+    }
   }
 }
