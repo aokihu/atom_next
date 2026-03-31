@@ -1,24 +1,31 @@
+/**
+ * Session 子域模块
+ * @description 负责会话和 chat 的内存状态推进，并协调归档读写
+ */
+
 import { buildError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
-import type { Chat, ChatMessage, PollChatResult, Session } from "@/types/api";
-import { ChatStatus, SessionStatus } from "@/types/api";
+import type {
+  Chat,
+  ChatChunk,
+  ChatMessage,
+  CompletedChat,
+  FailedChat,
+  PendingChat,
+  StreamingChat,
+  WaitingChat,
+} from "@/types/chat";
+import { ChatStatus } from "@/types/chat";
+import type { ChatPollResult, Session } from "@/types/session";
+import { SessionStatus } from "@/types/session";
 import type { UUID } from "@/types";
-import { isString } from "radashi";
+import { isString, last } from "radashi";
 import {
   hasArchivedSession,
   readArchivedSession,
   writeArchivedSession,
-} from "./utils/session-archive";
-import {
-  buildCompletedChat,
-  buildFailedChat,
-  buildPendingChat,
-  buildWaitingChat,
-  buildWorkingChat,
-  createChatChunk,
-  mergeChatChunks,
-} from "./utils/chat";
+} from "./archive";
 
 /* ==================== */
 /*     Constants        */
@@ -28,11 +35,121 @@ const IDLE_AFTER_MS = 5 * 60 * 1000;
 const ARCHIVE_AFTER_MS = 30 * 60 * 1000;
 
 /* ==================== */
+/*  Chat 构建函数       */
+/* ==================== */
+
+/**
+ * 这些函数只服务 SessionManager。
+ * 它们描述的是 chat 状态如何推进，因此直接和 session 领域放在一起，
+ * 这样排查状态流转时不需要在多个 utils 文件之间来回跳读。
+ */
+
+const createChatChunk = (data: any): ChatChunk => {
+  return {
+    id: Bun.randomUUIDv7(),
+    createdAt: Date.now(),
+    data,
+  };
+};
+
+const mergeChatChunks = (chunks: ChatChunk[]): ChatMessage => {
+  const data = chunks.map((chunk) => chunk.data);
+  const createdAt = last(chunks)?.createdAt ?? Date.now();
+
+  return {
+    createdAt,
+    data: data.every(isString) ? data.join("") : data,
+  };
+};
+
+const buildWaitingChat = (
+  sessionId: UUID,
+  chatId: UUID,
+  now = Date.now(),
+): WaitingChat => {
+  return {
+    sessionId,
+    chatId,
+    createdAt: now,
+    updatedAt: now,
+    status: ChatStatus.WAITING,
+  };
+};
+
+const buildPendingChat = (
+  chat: Chat,
+  updatedAt = Date.now(),
+): PendingChat => {
+  return {
+    sessionId: chat.sessionId,
+    chatId: chat.chatId,
+    createdAt: chat.createdAt,
+    updatedAt,
+    status: ChatStatus.PENDING,
+  };
+};
+
+const buildWorkingChat = (
+  chat: Chat,
+  chunk: ChatChunk,
+  updatedAt = Date.now(),
+): StreamingChat => {
+  if (chat.status === ChatStatus.PROCESSING) {
+    return {
+      ...chat,
+      updatedAt,
+      chunks: [...chat.chunks, chunk],
+    };
+  }
+
+  return {
+    sessionId: chat.sessionId,
+    chatId: chat.chatId,
+    createdAt: chat.createdAt,
+    updatedAt,
+    status: ChatStatus.PROCESSING,
+    chunks: [chunk],
+  };
+};
+
+const buildCompletedChat = (
+  chat: Chat,
+  message: ChatMessage,
+  finishedAt = Date.now(),
+): CompletedChat => {
+  return {
+    sessionId: chat.sessionId,
+    chatId: chat.chatId,
+    createdAt: chat.createdAt,
+    updatedAt: finishedAt,
+    finishedAt,
+    status: ChatStatus.COMPLETE,
+    message,
+  };
+};
+
+const buildFailedChat = (
+  chat: Chat,
+  error: FailedChat["error"],
+  updatedAt = Date.now(),
+): FailedChat => {
+  return {
+    sessionId: chat.sessionId,
+    chatId: chat.chatId,
+    createdAt: chat.createdAt,
+    updatedAt,
+    status: ChatStatus.FAILED,
+    error,
+  };
+};
+
+/* ==================== */
 /*     Class            */
 /* ==================== */
 
 /**
- * API Session管理器
+ * Session 子域管理器
+ * @description 负责会话和 chat 的内存状态推进，并协调归档读写
  */
 export class SessionManager {
   /* ==================== */
@@ -305,7 +422,7 @@ export class SessionManager {
   public async pollChat(
     sessionId: UUID,
     chatId: UUID,
-  ): Promise<PollChatResult> {
+  ): Promise<ChatPollResult> {
     const session = await this.#loadSession(sessionId);
     const chat = this.#getChat(session, chatId);
 
@@ -313,7 +430,7 @@ export class SessionManager {
     this.#touchSession(session);
     this.#syncSessionStatus(session);
 
-    const result: PollChatResult = {
+    const result: ChatPollResult = {
       sessionId,
       sessionStatus: session.status,
       chatId,

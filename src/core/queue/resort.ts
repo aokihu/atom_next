@@ -4,7 +4,7 @@
  * @version 1.0
  */
 
-import type { TaskItem, TaskItems } from "@/types/queue";
+import type { TaskItem, TaskItems } from "@/types/task";
 
 type SortableTask = TaskItem & { index: number };
 

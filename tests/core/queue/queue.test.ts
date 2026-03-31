@@ -6,8 +6,9 @@ import { TaskQueue } from "@/core/queue/queue";
 import { buildTaskItem } from "@/core/queue/task";
 import resort from "@/core/queue/resort";
 import type { AppContext } from "@/types/app";
-import { ChatEvents, ChatStatus } from "@/types/api";
-import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
+import { ChatStatus } from "@/types/chat";
+import { ChatEvents } from "@/types/event";
+import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 // 创建一个简单的 AppContext
 const mockAppContext: AppContext = {};

@@ -1,18 +1,18 @@
-import type { TaskItem } from "@/types/queue";
+import type { TaskItem } from "@/types/task";
 import type { ServiceManager } from "@/libs/service-manage";
 import {
   ChatEvents,
-  ChatStatus,
   type ChatChunkAppendedEventPayload,
   type ChatFailedEventPayload,
   type ChatCompletedEventPayload,
-} from "@/types/api";
-import { TaskState } from "@/types/queue";
+} from "@/types/event";
+import { ChatStatus } from "@/types/chat";
+import { TaskState } from "@/types/task";
 
 import { sleep } from "radashi";
-import { TaskQueue } from "../queue";
-import { Runtime } from "../runtime";
-import { Transport } from "../transport";
+import { TaskQueue } from "./queue";
+import { Runtime } from "./runtime";
+import { Transport } from "./transport";
 
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;

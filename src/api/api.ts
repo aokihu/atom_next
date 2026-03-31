@@ -1,8 +1,6 @@
 /**
- * API Server Class
- * @class APIServer
- * @description 提供内核与外部通讯的接口
- *
+ * API 门面模块
+ * @description 负责组织 HTTP handler、请求解析、错误出口，以及 chat 事件到 session 的同步
  */
 
 import type { BunRequest } from "bun";
@@ -12,17 +10,18 @@ import type {
   ChatCompletedEventPayload,
   ChatEnqueuedEventPayload,
   ChatFailedEventPayload,
-  SubmitChatRequestBody,
-} from "@/types/api";
-import { ChatEvents, ChatStatus } from "@/types/api";
+} from "@/types/event";
+import type { ChatSubmissionBody } from "@/types/request";
+import { ChatEvents } from "@/types/event";
+import { ChatStatus } from "@/types/chat";
 import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
 import { Core } from "@/core";
 import { buildError, buildTaskItem, ErrorCause, hasErrorCause } from "@/libs";
-import { SessionManager } from "./session";
+import { SessionManager } from "./session/session";
 import { startServer } from "./server";
-import { parseSubmitChatBody } from "./utils/submit-chat";
+import { parseSubmitChatBody } from "./request/submit-chat";
 
 export class APIServer extends EventEmitter {
   /* ==================== 私有属性 ==================== */
@@ -40,8 +39,17 @@ export class APIServer extends EventEmitter {
     this.#core = core;
     this.#serviceManager = serviceManager;
     this.#sessionManager = new SessionManager(this.#serviceManager);
+    this.#bindChatEventListeners();
+  }
 
-    /* --- 设置监听事件 --- */
+  /* ==================== 私有方法 ==================== */
+
+  /**
+   * 绑定 chat 生命周期事件
+   * @description API 作为门面层只负责把事件接到对应的 session 同步动作上，
+   *              不在这里承载 chat 状态本身的业务实现。
+   */
+  #bindChatEventListeners() {
     this.addListener(ChatEvents.CHAT_ENQUEUED, (payload) => {
       void this.#syncChatEnqueued(payload as ChatEnqueuedEventPayload);
     });
@@ -58,8 +66,6 @@ export class APIServer extends EventEmitter {
       void this.#syncChatFailed(payload as ChatFailedEventPayload);
     });
   }
-
-  /* ==================== 私有方法 ==================== */
 
   /**
    * 启动API HTTP服务器
@@ -98,7 +104,7 @@ export class APIServer extends EventEmitter {
    */
   async #parseSubmitChatRequest(
     request: BunRequest,
-  ): Promise<SubmitChatRequestBody> {
+  ): Promise<ChatSubmissionBody> {
     const body = await request.json().catch(() => {
       throw buildError("request body is not valid JSON", {
         cause: ErrorCause.BadRequest,

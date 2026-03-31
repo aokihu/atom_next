@@ -1,15 +1,21 @@
-import type { UUID } from ".";
+/**
+ * Task 领域类型
+ * @description
+ * 定义任务来源、状态、输入负载和运行时任务模型。
+ */
+
+import type { UUID } from "./primitive";
 import type { EventEmitter } from "events";
 
-// 任务来源
-// - EXTERNAL: 外部任务,由外部系统提交的任务
-// - INTERNAL: 内部任务,由core内部系统提交的任务
+/* ==================== */
+/* Enums                */
+/* ==================== */
+
 export enum TaskSource {
   EXTERNAL = "external",
   INTERNAL = "internal",
 }
 
-// 任务状态
 export enum TaskState {
   WAITING = "waiting", // 任务进入到队列排队
   PENDING = "pending", // 任务正在被Core Runtime处理,准备数据提交等待上传
@@ -19,7 +25,11 @@ export enum TaskState {
   FOLLOW_UP = "follow_up", // 任务没有办法一次性完成执行,需要跟进任务
 }
 
-type Payload =
+/* ==================== */
+/* Input Models         */
+/* ==================== */
+
+export type TaskPayload = Array<
   | {
       type: "text";
       data: string;
@@ -33,9 +43,10 @@ type Payload =
       type: "audio";
       data?: any; // 音频二进制数据,或者base64格式地址
       url?: string; // 音频文件的有效url地址
-    };
+    }
+>;
 
-type Channel =
+export type TaskChannel =
   | {
       domain: "tui";
     }
@@ -48,25 +59,15 @@ type Channel =
 type SettableTaskItemKeys = "updatedAt" | "state";
 
 /**
- * [链式任务说明]
- * 当一个任务因为某些原因需要分成多个会话才能完成
- * 这时候就需要有一个方法来跟踪这个多步骤进行
- * chainId 始终与初始任务ID一致
- * parentId 始终与上一轮任务的ID一致
- * 这样就能清除的跟踪任务的产生与消费
- *
- * 初始: {id: ID1, chainId: ID1}
- * 第一轮: {id: ID2, chainId: ID1, parentId: ID1}
- * 第二轮: {id: ID3, chainId: ID1, parentId: ID2}
- * 最终轮: {id: ID4, chainId: ID1, parentId: ID3}
- *
- * [派生任务说明]
- * 派生任务与链式任务的不同点是,派生任务的chainId始终与自身id一致
- *
- * 初始: {id: ID1, chainId: ID1}
- * 第一轮: {id: ID2, chainId: ID2, parentId: ID1}
- * 最终轮: {id: ID3, chainId: ID3, parentId: ID2}
+ * 任务链路说明
+ * @description
+ * chainId 用于追踪同一条连续任务链。
+ * parentId 指向直接上游任务，用于还原派生或续跑关系。
  */
+
+/* ==================== */
+/* Core Models          */
+/* ==================== */
 
 export type RawTaskItem = {
   /* --- 任务身份ID --- */
@@ -82,14 +83,19 @@ export type RawTaskItem = {
   priority: number; // 队列项目优先级,数字越小优先级越高,默认为2
   /* --- 用户输入 --- */
   eventTarget: EventEmitter | undefined; // HTTP API 的事件出发对象,通过这个对象当task发生变化,或者输出改变的时候触发
-  channel: Channel;
-  payload: Payload[]; // 队列项目中的负载数据,这些数据来自于用户的输入,格式可以是文本或者图片;也可以来自core内部的提示消息
+  channel: TaskChannel;
+  payload: TaskPayload; // 队列项目中的负载数据,这些数据来自于用户的输入,格式可以是文本或者图片;也可以来自core内部的提示消息
   /* --- 任务时间 --- */
   createdAt: number; // 任务创建的时间,可用于调试
   updatedAt: number; // 任务更新的时间,可用于调试
 };
 
-export type BuildTaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
+/**
+ * 创建任务时所需的最小输入
+ * @description
+ * 只暴露构造外部任务时允许由调用方传入的字段。
+ */
+export type TaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
   Partial<
     Pick<RawTaskItem, "priority" | "payload" | "eventTarget" | "channel">
   >;
@@ -97,8 +103,9 @@ export type BuildTaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
 export type TaskItems = Array<TaskItem>;
 
 /**
- * 对外使用的TaskItem类型
- * 只读的 TaskItem 类型，只允许修改 updatedAt 和 state
+ * 运行中的任务对象
+ * @description
+ * 默认字段只读，只允许在运行时修改 updatedAt 和 state。
  */
 export type TaskItem = {
   readonly [K in Exclude<

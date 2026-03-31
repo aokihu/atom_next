@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import resort from "@/core/queue/resort";
-import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
+import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 type TaskParams = Pick<TaskItem, "id"> &
   Partial<

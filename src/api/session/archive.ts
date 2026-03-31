@@ -1,7 +1,13 @@
+/**
+ * Session 归档模块
+ * @description 负责会话归档文件的序列化、反序列化和读写
+ */
+
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { ArchivedSession, Chat, Session } from "@/types/api";
-import { SessionStatus } from "@/types/api";
+import type { Chat } from "@/types/chat";
+import type { ArchivedSession, Session } from "@/types/session";
+import { SessionStatus } from "@/types/session";
 import type { UUID } from "@/types";
 
 const SESSION_ARCHIVE_DIR = "sessions";

@@ -8,16 +8,15 @@
 
 import {
   ChatEvents,
-  ChatStatus,
-  parseTaskStateToChatStatus,
   type ChatActivatedEventPayload,
   type ChatCompletedEventPayload,
   type ChatEnqueuedEventPayload,
   type ChatFailedEventPayload,
-} from "@/types/api";
-import type { TaskItem, TaskItems } from "@/types/queue";
-import { TaskSource } from "@/types/queue";
-import { TaskState } from "@/types/queue";
+} from "@/types/event";
+import { ChatStatus } from "@/types/chat";
+import type { TaskItem, TaskItems } from "@/types/task";
+import { TaskSource } from "@/types/task";
+import { TaskState } from "@/types/task";
 import { isNullish } from "radashi";
 
 export class TaskQueue {
@@ -43,6 +42,35 @@ export class TaskQueue {
   /* ==================== */
   /*  Private Methods     */
   /* ==================== */
+
+  /**
+   * 将任务状态映射为 chat 状态
+   * @description 这是队列侧的状态同步细节，只服务当前文件的事件构建。
+   *              放在这里可以保持 types 文件只负责声明，不混入状态转换逻辑。
+   */
+  #parseTaskStateToChatStatus(state: TaskState): ChatStatus | undefined {
+    if (state === TaskState.WAITING) {
+      return ChatStatus.WAITING;
+    }
+
+    if (state === TaskState.PENDING) {
+      return ChatStatus.PENDING;
+    }
+
+    if (state === TaskState.PROCESSING) {
+      return ChatStatus.PROCESSING;
+    }
+
+    if (state === TaskState.COMPLETE) {
+      return ChatStatus.COMPLETE;
+    }
+
+    if (state === TaskState.FAILED) {
+      return ChatStatus.FAILED;
+    }
+
+    return undefined;
+  }
 
   /**
    * 获取对应优先级的队列或者创建一个对应优先级的队列
@@ -157,7 +185,7 @@ export class TaskQueue {
     }
 
     const event = this.#parseTaskEvent(task.state);
-    const status = parseTaskStateToChatStatus(task.state);
+    const status = this.#parseTaskStateToChatStatus(task.state);
     if (isNullish(event) || isNullish(status)) {
       return;
     }

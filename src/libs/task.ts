@@ -7,9 +7,9 @@ import { isNullish } from "radashi";
 import {
   TaskSource,
   TaskState,
-  type BuildTaskItemInput,
+  type TaskItemInput,
   type TaskItem,
-} from "@/types/queue";
+} from "@/types/task";
 
 type SettableTaskItemKeys = "updatedAt" | "state";
 const SETTABLE_KEYS = new Set<SettableTaskItemKeys>(["updatedAt", "state"]);
@@ -32,7 +32,7 @@ const defineReadonlyTaskItem = (task: TaskItem): TaskItem => {
  * @description 这里只接收创建外部任务所需的最小输入
  * @returns 返回构造好的任务对象
  */
-export const buildTaskItem = (params: BuildTaskItemInput): TaskItem => {
+export const buildTaskItem = (params: TaskItemInput): TaskItem => {
   if (isNullish(params.sessionId)) {
     throw new Error("sessionId is required");
   }

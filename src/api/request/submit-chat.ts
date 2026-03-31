@@ -1,15 +1,12 @@
 /**
- * Submit Chat 请求解析工具
+ * Submit Chat 请求解析模块
  * @description 负责将 submit chat 的原始 JSON 解析成内部请求结构
  */
 
-import type { SubmitChatRequestBody } from "@/types/api";
-import type { RawTaskItem } from "@/types/queue";
-import { isPlainObject } from "radashi";
+import type { ChatSubmissionBody } from "@/types/request";
+import type { TaskChannel, TaskPayload } from "@/types/task";
+import { isPlainObject, isUndefined } from "radashi";
 import { buildError, ErrorCause } from "@/libs";
-
-type TaskPayload = RawTaskItem["payload"];
-type TaskChannel = RawTaskItem["channel"];
 
 const buildBadRequestError = (message: string) =>
   buildError(message, {
@@ -74,7 +71,7 @@ const parsePayload = (value: unknown): TaskPayload => {
 };
 
 const parsePriority = (value: unknown): number | undefined => {
-  if (typeof value === "undefined") {
+  if (isUndefined(value)) {
     return undefined;
   }
 
@@ -121,7 +118,9 @@ const parseChannel = (value: unknown): TaskChannel | undefined => {
       : Object.fromEntries(
           Object.entries(channel.metadata).map(([key, metadataValue]) => {
             if (typeof metadataValue !== "string") {
-              throw buildBadRequestError("channel.metadata must be a string map");
+              throw buildBadRequestError(
+                "channel.metadata must be a string map",
+              );
             }
 
             return [key, metadataValue];
@@ -135,7 +134,7 @@ const parseChannel = (value: unknown): TaskChannel | undefined => {
   };
 };
 
-export const parseSubmitChatBody = (body: unknown): SubmitChatRequestBody => {
+export const parseSubmitChatBody = (body: unknown): ChatSubmissionBody => {
   if (!isPlainObject(body)) {
     throw buildBadRequestError("request body must be an object");
   }

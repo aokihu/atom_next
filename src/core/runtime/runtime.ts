@@ -1,5 +1,5 @@
 import type { UUID, ISOTimeString, EmptyString } from "@/types";
-import { TaskSource, type TaskItem } from "@/types/queue";
+import { TaskSource, type TaskItem } from "@/types/task";
 import type { PathLike } from "bun";
 
 /**

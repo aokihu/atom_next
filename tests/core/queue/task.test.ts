@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildTaskItem } from "@/core/queue/task";
-import { TaskSource, TaskState, type TaskItem } from "@/types/queue";
+import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const createTask = (overrides = {}) =>
   buildTaskItem({
