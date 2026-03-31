@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { collectEnvFiles, parseEnvFiles } from "@/bootstrap/env";
 
 const PLAYGROUND_DIR = join(process.cwd(), "Playground");
-const ENV_FILE_NAMES = [".env", ".env.local", ".env.dev"];
+const ENV_FILE_NAMES = [".env", ".env.dev", ".env.debug", ".env.local"];
 
 describe("env module", () => {
   beforeEach(() => {
@@ -72,19 +72,27 @@ describe("env module", () => {
       expect(files).toContain(envDevPath);
     });
 
-    test("returns files in correct order: .env, .env.local, .env.dev", () => {
+    test("returns files in correct order: .env, .env.dev, .env.local", () => {
       const envPath = join(PLAYGROUND_DIR, ".env");
-      const envLocalPath = join(PLAYGROUND_DIR, ".env.local");
       const envDevPath = join(PLAYGROUND_DIR, ".env.dev");
+      const envLocalPath = join(PLAYGROUND_DIR, ".env.local");
 
       writeFileSync(envPath, "KEY1=value1");
-      writeFileSync(envLocalPath, "KEY2=value2");
       writeFileSync(envDevPath, "KEY3=value3");
+      writeFileSync(envLocalPath, "KEY2=value2");
 
       const files = collectEnvFiles(PLAYGROUND_DIR);
       expect(files[0]).toBe(envPath);
-      expect(files[1]).toBe(envLocalPath);
-      expect(files[2]).toBe(envDevPath);
+      expect(files[1]).toBe(envDevPath);
+      expect(files[2]).toBe(envLocalPath);
+    });
+
+    test("finds .env.debug file when it exists", () => {
+      const envPath = join(PLAYGROUND_DIR, ".env.debug");
+      writeFileSync(envPath, "DEBUG_KEY=debug_value");
+
+      const files = collectEnvFiles(PLAYGROUND_DIR);
+      expect(files).toContain(envPath);
     });
   });
 
@@ -139,14 +147,58 @@ LOCAL_ONLY=only_in_local
 
     test("parses all three env files with correct override order", () => {
       const envPath = join(PLAYGROUND_DIR, ".env");
-      const envLocalPath = join(PLAYGROUND_DIR, ".env.local");
       const envDevPath = join(PLAYGROUND_DIR, ".env.dev");
+      const envLocalPath = join(PLAYGROUND_DIR, ".env.local");
 
       writeFileSync(
         envPath,
         `
 SHARED_KEY=from_env
 ENV_KEY=env_value
+      `.trim(),
+      );
+
+      writeFileSync(
+        envDevPath,
+        `
+ SHARED_KEY=from_dev
+ DEV_KEY=dev_value
+      `.trim(),
+      );
+
+      writeFileSync(
+        envLocalPath,
+        `
+ SHARED_KEY=from_local
+ LOCAL_KEY=local_value
+      `.trim(),
+      );
+
+      const result = parseEnvFiles(PLAYGROUND_DIR);
+      expect(result.SHARED_KEY).toBe("from_local");
+      expect(result.ENV_KEY).toBe("env_value");
+      expect(result.DEV_KEY).toBe("dev_value");
+      expect(result.LOCAL_KEY).toBe("local_value");
+    });
+
+    test("parses debug env before local env", () => {
+      const envPath = join(PLAYGROUND_DIR, ".env");
+      const envDebugPath = join(PLAYGROUND_DIR, ".env.debug");
+      const envLocalPath = join(PLAYGROUND_DIR, ".env.local");
+
+      writeFileSync(
+        envPath,
+        `
+SHARED_KEY=from_env
+ENV_KEY=env_value
+      `.trim(),
+      );
+
+      writeFileSync(
+        envDebugPath,
+        `
+SHARED_KEY=from_debug
+DEBUG_KEY=debug_value
       `.trim(),
       );
 
@@ -158,19 +210,11 @@ LOCAL_KEY=local_value
       `.trim(),
       );
 
-      writeFileSync(
-        envDevPath,
-        `
-SHARED_KEY=from_dev
-DEV_KEY=dev_value
-      `.trim(),
-      );
-
       const result = parseEnvFiles(PLAYGROUND_DIR);
-      expect(result.SHARED_KEY).toBe("from_dev");
+      expect(result.SHARED_KEY).toBe("from_local");
       expect(result.ENV_KEY).toBe("env_value");
+      expect(result.DEBUG_KEY).toBe("debug_value");
       expect(result.LOCAL_KEY).toBe("local_value");
-      expect(result.DEV_KEY).toBe("dev_value");
     });
 
     test("handles comments and empty lines in env files", () => {

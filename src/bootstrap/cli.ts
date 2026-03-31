@@ -165,7 +165,9 @@ export const parseArguments = (args: string[]): BootArguments => {
   const sandboxDir = withDefault<string>(
     () => {
       if (parsed.sandbox) {
-        return `${workspaceDir}/${parsed.sandbox}`;
+        return isAbsolute(parsed.sandbox)
+          ? parsed.sandbox
+          : `${workspaceDir}/${parsed.sandbox}`;
       }
     },
     () => {

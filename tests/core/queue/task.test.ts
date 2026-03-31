@@ -145,6 +145,60 @@ describe("buildTaskItem", () => {
     expect(task.updatedAt).toBe(newTime);
   });
 
+  test("throws error when mutating payload item after creation", () => {
+    const task = createTask({
+      payload: [{ type: "text", data: "hello" }],
+    });
+
+    expect(() => {
+      task.payload.push({ type: "text", data: "world" });
+    }).toThrow();
+
+    expect(() => {
+      task.payload[0].data = "changed";
+    }).toThrow();
+  });
+
+  test("throws error when mutating channel metadata after creation", () => {
+    const task = createTask({
+      channel: {
+        domain: "gateway",
+        source: "test-source",
+        metadata: { key: "value" },
+      },
+    });
+
+    expect(() => {
+      (task.channel as any).source = "changed";
+    }).toThrow();
+
+    expect(() => {
+      (task.channel as any).metadata.key = "changed";
+    }).toThrow();
+  });
+
+  test("does not share mutable payload and channel references with input", () => {
+    const payload = [{ type: "text", data: "hello" }];
+    const channel = {
+      domain: "gateway",
+      source: "test-source",
+      metadata: { key: "value" },
+    };
+
+    const task = createTask({ payload, channel });
+
+    payload[0].data = "changed";
+    channel.source = "changed";
+    channel.metadata.key = "changed";
+
+    expect(task.payload).toEqual([{ type: "text", data: "hello" }]);
+    expect(task.channel).toEqual({
+      domain: "gateway",
+      source: "test-source",
+      metadata: { key: "value" },
+    });
+  });
+
   test("creates task with chainId same as id by default", () => {
     const task = createTask();
     expect(task.chainId).toBe(task.id);

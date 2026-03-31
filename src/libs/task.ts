@@ -7,12 +7,28 @@ import { isNullish } from "radashi";
 import {
   TaskSource,
   TaskState,
+  type TaskChannel,
   type TaskItemInput,
   type TaskItem,
+  type TaskPayload,
 } from "@/types/task";
 
 type SettableTaskItemKeys = "updatedAt" | "state";
 const SETTABLE_KEYS = new Set<SettableTaskItemKeys>(["updatedAt", "state"]);
+
+const freezeReadonlyValue = <T>(value: T): T => {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => freezeReadonlyValue(item));
+    return Object.freeze(value);
+  }
+
+  Object.values(value).forEach((item) => freezeReadonlyValue(item));
+  return Object.freeze(value);
+};
 
 const defineReadonlyTaskItem = (task: TaskItem): TaskItem => {
   for (const key of Object.keys(task) as Array<keyof TaskItem>) {
@@ -42,6 +58,12 @@ export const buildTaskItem = (params: TaskItemInput): TaskItem => {
 
   const now = Date.now();
   const id = Bun.randomUUIDv7();
+  const payload = freezeReadonlyValue<TaskPayload>(
+    structuredClone(params.payload ?? []),
+  );
+  const channel = freezeReadonlyValue<TaskChannel>(
+    structuredClone(params.channel ?? { domain: "tui" }),
+  );
 
   const task = {
     id,
@@ -52,9 +74,9 @@ export const buildTaskItem = (params: TaskItemInput): TaskItem => {
     source: TaskSource.EXTERNAL,
     state: TaskState.WAITING,
     priority: params.priority ?? 2,
-    payload: params.payload ?? [],
+    payload,
     eventTarget: params.eventTarget ?? null,
-    channel: params.channel ?? { domain: "tui" },
+    channel,
     createdAt: now,
     updatedAt: now,
   };

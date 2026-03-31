@@ -63,6 +63,7 @@ type SettableTaskItemKeys = "updatedAt" | "state";
  * @description
  * chainId 用于追踪同一条连续任务链。
  * parentId 指向直接上游任务，用于还原派生或续跑关系。
+ * 根任务默认复用自身 id 作为 parentId。
  */
 
 /* ==================== */
@@ -73,7 +74,7 @@ export type RawTaskItem = {
   /* --- 任务身份ID --- */
   id: UUID; // 任务的ID,使用UUID格式,每个任务都是独立不相同的
   chainId: UUID; // 链式任务ID,比如会话太长需要继续执行,那么可以根据这个id推断出主任务,默认值与id相同
-  parentId: UUID | undefined; // 父任务ID,如果有派生任务那么记录父任务的ID,如果没有则为undfiend
+  parentId: UUID | undefined; // 父任务ID,根任务默认与id一致,派生任务记录直接上游任务ID
   sessionId: UUID; // 会话ID
   chatId: UUID; // 会话中对话ID
   /* --- 任务状态 --- */
