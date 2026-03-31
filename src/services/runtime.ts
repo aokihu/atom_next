@@ -4,18 +4,19 @@
  * @version 1.0.0
  */
 import { isUndefined } from "radashi";
+import type { BootArguments } from "@/bootstrap/cli";
 import { BaseService } from "@/services/base";
 import { get } from "radashi";
 
 export class RuntimeService extends BaseService {
-  #env: Map<string, number | string>;
+  #arguments: Map<keyof BootArguments, BootArguments[keyof BootArguments]>;
   #config: object;
   #startedAt: number;
 
   constructor() {
     super();
     this._name = "runtime";
-    this.#env = new Map();
+    this.#arguments = new Map();
     this.#config = {};
 
     this.#startedAt = Date.now();
@@ -24,26 +25,40 @@ export class RuntimeService extends BaseService {
   override async start() {}
 
   /**
-   * 获取环境变量值
-   * @param env 环境变量名称
-   * @returns 返回环境变量或者undefined
+   * 获取命令行参数值
+   * @param arg 参数名称
+   * @example
+   * runtime.getArgument("port");
+   * runtime.getArgument("workspace");
+   * runtime.getArgument("serverUrl");
+   *
+   * // 注意: 这里传入的是 CLI 解析后的参数名,不是环境变量名
+   * // 正确: runtime.getArgument("port")
+   * // 错误: runtime.getArgument("PORT")
+   * @returns 返回命令行参数值
    */
-  public getEnv<T extends string | number>(env: string): T {
-    if (isUndefined(this.#env.get(env))) {
-      throw new Error(`Environment variable ${env} not found`);
+  public getArgument<K extends keyof BootArguments>(
+    arg: K,
+  ): NonNullable<BootArguments[K]> {
+    if (isUndefined(this.#arguments.get(arg))) {
+      throw new Error(`CLI argument ${arg} not found`);
     }
-    return this.#env.get(env) as T;
+    return this.#arguments.get(arg) as NonNullable<BootArguments[K]>;
   }
 
-  public getAllEnvs() {
-    return this.#env;
+  /**
+   * 获取所有的命令行参数
+   * @returns 返回object格式的命令行参数
+   */
+  public getAllArguments() {
+    return Object.fromEntries(this.#arguments);
   }
 
   /**
    * 获取配置参数变量值
    * @param path 配置参数的key字符串,比如'gateway.enable'
    */
-  public getConfig(path: string): any {
+  public getConfig(path: string): number | string | object | undefined {
     return get(this.#config, path);
   }
 
@@ -52,13 +67,19 @@ export class RuntimeService extends BaseService {
   }
 
   /**
-   * 加载环境变量
-   * @param rawEnv 从Bootstrap中提供的环境变量
+   * 加载命令行参数
+   * @param rawArgs 从 Bootstrap 中提供的命令行参数
    */
-  public loadEnv(rawEnv: object) {
-    Object.entries(rawEnv).forEach(([key, val]) => {
-      this.#env.set(key, val);
+  public loadCliArgs(rawArgs: BootArguments) {
+    Object.entries(rawArgs).forEach(([key, val]) => {
+      if (!isUndefined(val)) {
+        this.#arguments.set(
+          key as keyof BootArguments,
+          val as BootArguments[keyof BootArguments],
+        );
+      }
     });
+
     return this;
   }
 
@@ -67,7 +88,7 @@ export class RuntimeService extends BaseService {
    * @param port
    */
   public setPort(port: number) {
-    this.#env.set("PORT", port);
+    this.#arguments.set("port", port);
     return this;
   }
 

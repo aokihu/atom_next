@@ -18,7 +18,7 @@ type ParsedArguments = {
   port: string;
 };
 
-type BootArguments = Omit<
+export type BootArguments = Omit<
   ParsedArguments,
   "server-url" | "port" | "help" | "version"
 > & {

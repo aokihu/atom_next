@@ -3,11 +3,9 @@
  * @version 1.0.0
  */
 
-import { isUndefined } from "radashi";
-import { camelToSnake } from "@/libs/string";
 import { parseArguments } from "./cli";
 import { DefaultConfig, type ConfigFileScheme } from "./config";
-import { parseEnvFiles } from "./env";
+import { parseEnvFiles, setProcessEnv } from "./env";
 import { tryParseConfigFile } from "./";
 
 /* ---------------- */
@@ -15,15 +13,10 @@ import { tryParseConfigFile } from "./";
 /* ---------------- */
 
 type ParsedCliArguments = ReturnType<typeof parseArguments>;
-type CliRuntimeArguments = Omit<ParsedCliArguments, "config">;
-type CliEnvValue = CliRuntimeArguments[keyof CliRuntimeArguments];
-type EnvFileValue = ReturnType<typeof parseEnvFiles>[string];
-
-type BootstrapEnv = Record<string, EnvFileValue | CliEnvValue>;
 
 // 启动器返回值
 export type BootstrapResult = {
-  env: BootstrapEnv;
+  cliArgs: ParsedCliArguments;
   config: ConfigFileScheme;
 };
 
@@ -47,18 +40,12 @@ export const bootstrap = async (): Promise<BootstrapResult> => {
     cliArgs.workspace + "/config.json",
   );
 
-  // 启动参数和环境变量需要合并成统一的运行时环境变量
-  const { config, ...rest } = cliArgs;
-  const bootEnvArgs: Record<string, CliEnvValue> = Object.fromEntries(
-    Object.entries(rest)
-      .filter(([, value]) => !isUndefined(value))
-      .map(([key, value]) => [camelToSnake(key).toUpperCase(), value]),
-  );
-  const mergedEnv: BootstrapEnv = { ...envArgs, ...bootEnvArgs };
+  // .env 文件中的变量直接写入进程环境，CLI 参数通过返回值向下传递
+  setProcessEnv(envArgs);
 
-  // 返回启动环境变量,给启动阶段的其他方法调用
+  // 返回启动参数和配置参数,环境变量直接写入 process.env
   return {
-    env: mergedEnv,
+    cliArgs,
     config: configArgs ?? structuredClone(DefaultConfig),
   };
 };

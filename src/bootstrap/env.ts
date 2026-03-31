@@ -29,3 +29,9 @@ export const parseEnvFiles = (workspaceDir: PathLike) => {
 
   return env;
 };
+
+export const setProcessEnv = (rawEnv: Record<string, string>) => {
+  Object.entries(rawEnv).forEach(([key, value]) => {
+    process.env[key] = value;
+  });
+};

@@ -3,7 +3,6 @@
  * @version 1.0.0
  */
 
-import type { AppContext } from "./types/app";
 import { tryBootstrap } from "@/bootstrap";
 import { Core } from "@/core";
 import { APIServer } from "@/api";
@@ -20,7 +19,7 @@ async function main() {
 
   /* ----- 启动系统运行时环境服务 ----- */
   const runtime = new RuntimeService();
-  runtime.loadEnv(args.env).loadConfig(args.config);
+  runtime.loadCliArgs(args.cliArgs).loadConfig(args.config);
 
   /* ----- 启动服务管理器 ----- */
   const serviceManager = new ServiceManager();
@@ -32,9 +31,7 @@ async function main() {
 
   /* ----- 启动API服务器 ----- */
   const apiServer = new APIServer(core, serviceManager);
-  const [errApi, apiResult] = await apiServer.tryStart(
-    args.env["PORT"] as number,
-  );
+  const [errApi, apiResult] = await apiServer.tryStart(args.cliArgs.port);
 
   if (errApi) {
     console.error("API server failed: %s", errApi);

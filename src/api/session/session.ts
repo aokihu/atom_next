@@ -189,10 +189,10 @@ export class SessionManager {
   }
 
   #getWorkspace(): string {
-    const workspace = this.#getRuntime().getEnv<string>("WORKSPACE");
+    const workspace = this.#getRuntime().getArgument("workspace");
 
     if (!isString(workspace) || workspace.trim() === "") {
-      throw buildError("WORKSPACE env not found", {
+      throw buildError("workspace argument not found", {
         cause: ErrorCause.Config,
       });
     }

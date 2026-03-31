@@ -1,6 +1,7 @@
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { parseEnvFiles, setProcessEnv } from "@/bootstrap/env";
 
 const SERVER_BOOT_TIMEOUT_MS = 30_000;
 const POLL_TIMEOUT_MS = 90_000;
@@ -134,13 +135,16 @@ const parseTestParams = () => {
 };
 
 const main = async () => {
+  const projectRoot = resolve(import.meta.dir, "..", "..");
+  const playgroundRoot = resolve(projectRoot, "Playground");
+  setProcessEnv(parseEnvFiles(playgroundRoot));
+
   if (!process.env.DEEPSEEK_API_KEY) {
     throw new Error(
-      "Missing environment variable: DEEPSEEK_API_KEY. Set it before running this script.",
+      "Missing environment variable: DEEPSEEK_API_KEY. Set it in Playground/.env before running this script.",
     );
   }
 
-  const projectRoot = resolve(import.meta.dir, "..", "..");
   const { userInput, expectedText } = parseTestParams();
   const port = process.env.MILESTONE_TEST_PORT
     ? Number(process.env.MILESTONE_TEST_PORT)
@@ -156,16 +160,11 @@ const main = async () => {
       "bun",
       "src/main.ts",
       "--workspace",
-      projectRoot,
+      playgroundRoot,
       "--port",
       String(port),
     ],
     cwd: projectRoot,
-    env: {
-      ...process.env,
-      WORKSPACE: projectRoot,
-      PORT: String(port),
-    },
     stdout: "pipe",
     stderr: "pipe",
   });

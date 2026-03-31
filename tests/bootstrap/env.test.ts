@@ -1,13 +1,17 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { collectEnvFiles, parseEnvFiles } from "@/bootstrap/env";
+import { tmpdir } from "node:os";
+import { collectEnvFiles, parseEnvFiles, setProcessEnv } from "@/bootstrap/env";
 
-const PLAYGROUND_DIR = join(process.cwd(), "Playground");
+const PLAYGROUND_DIR = mkdtempSync(join(tmpdir(), "atom-next-env-test-"));
 const ENV_FILE_NAMES = [".env", ".env.dev", ".env.debug", ".env.local"];
+let originalProcessEnv: NodeJS.ProcessEnv = {};
 
 describe("env module", () => {
   beforeEach(() => {
+    originalProcessEnv = { ...process.env };
+
     // 清理所有测试环境文件
     ENV_FILE_NAMES.forEach((fileName) => {
       const filePath = join(PLAYGROUND_DIR, fileName);
@@ -18,6 +22,16 @@ describe("env module", () => {
   });
 
   afterEach(() => {
+    Object.keys(process.env).forEach((key) => {
+      if (!(key in originalProcessEnv)) {
+        delete process.env[key];
+      }
+    });
+
+    Object.entries(originalProcessEnv).forEach(([key, value]) => {
+      process.env[key] = value;
+    });
+
     // 确保测试后清理所有文件
     ENV_FILE_NAMES.forEach((fileName) => {
       const filePath = join(PLAYGROUND_DIR, fileName);
@@ -267,6 +281,18 @@ NO_QUOTE=no_quotes
       for (const key in originalEnv) {
         expect(process.env[key]).toBe(originalEnv[key]);
       }
+    });
+  });
+
+  describe("setProcessEnv", () => {
+    test("writes env values into process.env explicitly", () => {
+      setProcessEnv({
+        STRING_KEY: "string_value",
+        ANOTHER_KEY: "another_value",
+      });
+
+      expect(process.env.STRING_KEY).toBe("string_value");
+      expect(process.env.ANOTHER_KEY).toBe("another_value");
     });
   });
 });
