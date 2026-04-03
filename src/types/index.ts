@@ -90,3 +90,22 @@ export type {
 export type {
   ChatSubmissionBody,
 } from "./request";
+
+/* ==================== */
+/* Config Types         */
+/* ==================== */
+
+export type {
+  ProviderID,
+  DeepseekModelID,
+  OpenAIModelID,
+  OpenAICompatibleModelID,
+  ProviderModelMap,
+  ProviderModelID,
+  ProviderDefinition,
+  ProvidersConfigScheme,
+  ProviderProfiles,
+  GatewayChannelScheme,
+  GatewayConfigScheme,
+  ConfigFileScheme,
+} from "./config";

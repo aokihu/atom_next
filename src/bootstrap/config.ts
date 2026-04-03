@@ -3,27 +3,20 @@
  */
 
 import type { PathLike } from "bun";
-import { strict } from "node:assert";
-import fs from "node:fs";
-import { access } from "node:fs/promises";
-
-export type ConfigFileScheme = {
-  version: 2;
-  // LLM供应商和模型配置
-  providers: any;
-  // Message Gateway配置
-  gateway: {
-    enable: boolean;
-    channels?: any[];
-  };
-};
+import type { ConfigFileScheme } from "@/types/config";
 
 /* 默认的配置参数 */
 export const DefaultConfig: ConfigFileScheme = {
   version: 2,
+  providerProfiles: {
+    advanced: "deepseek/deepseek-chat",
+    balanced: "deepseek/deepseek-chat",
+    basic: "deepseek/deepseek-chat",
+  },
   providers: {},
   gateway: {
     enable: false,
+    channels: [],
   },
 };
 

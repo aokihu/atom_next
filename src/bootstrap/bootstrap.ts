@@ -4,9 +4,10 @@
  */
 
 import { parseArguments } from "./cli";
-import { DefaultConfig, type ConfigFileScheme } from "./config";
+import { DefaultConfig } from "./config";
 import { parseEnvFiles, setProcessEnv } from "./env";
 import { tryParseConfigFile } from "./";
+import type { ConfigFileScheme } from "@/types/config";
 
 /* ---------------- */
 /*      类型定义     */
