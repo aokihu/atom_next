@@ -189,9 +189,9 @@ export class SessionManager {
   }
 
   #getWorkspace(): string {
-    const workspace = this.#getRuntime().getArgument("workspace");
+    const workspace = this.#getRuntime().getWorkspace();
 
-    if (!isString(workspace) || workspace.trim() === "") {
+    if (workspace.trim() === "") {
       throw buildError("workspace argument not found", {
         cause: ErrorCause.Config,
       });

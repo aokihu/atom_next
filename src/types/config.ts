@@ -79,6 +79,22 @@ export type ProviderProfiles = {
   basic: ProviderModelID;
 };
 
+/**
+ * ProviderProfiles 的档位名称。
+ * 用于从运行时配置中读取对应难度的模型预设。
+ */
+export type ProviderProfileLevel = keyof ProviderProfiles;
+
+/**
+ * 解析后的模型标识详情。
+ * 运行时拿到该结构后，不需要再手动拆分 `Provider/Model` 字符串。
+ */
+export type ProviderModelDetail<P extends ProviderID = ProviderID> = {
+  id: ProviderModelID<P>;
+  provider: P;
+  model: ProviderModelMap[P];
+};
+
 /* Message Gateway 通道配置 */
 export type GatewayChannelScheme = {
   source: string;

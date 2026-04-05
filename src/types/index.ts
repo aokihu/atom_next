@@ -105,6 +105,8 @@ export type {
   ProviderDefinition,
   ProvidersConfigScheme,
   ProviderProfiles,
+  ProviderProfileLevel,
+  ProviderModelDetail,
   GatewayChannelScheme,
   GatewayConfigScheme,
   ConfigFileScheme,
