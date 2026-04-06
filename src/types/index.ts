@@ -95,6 +95,12 @@ export type {
 /* Config Types         */
 /* ==================== */
 
+export {
+  DefaultConfig,
+  SUPPORTED_PROVIDERS,
+  SUPPORTED_PROVIDER_MODELS,
+} from "./config";
+
 export type {
   ProviderID,
   DeepseekModelID,
@@ -106,7 +112,7 @@ export type {
   ProvidersConfigScheme,
   ProviderProfiles,
   ProviderProfileLevel,
-  ProviderModelDetail,
+  SelectedProviderModel,
   GatewayChannelScheme,
   GatewayConfigScheme,
   ConfigFileScheme,

@@ -29,7 +29,7 @@ export class Core {
     this.#serviceManager = serviceManager;
     this.#taskQueue = new TaskQueue();
     this.#runtime = new Runtime();
-    this.#transport = new Transport();
+    this.#transport = new Transport(this.#serviceManager);
   }
 
   /* ==================== */

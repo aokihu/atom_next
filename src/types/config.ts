@@ -9,6 +9,16 @@
 export type ProviderID = "deepseek" | "openai" | "openaiCompatible";
 
 /**
+ * 当前项目支持的 provider 常量列表。
+ * 运行时校验和配置解析都应复用这份集合，避免重复维护。
+ */
+export const SUPPORTED_PROVIDERS = [
+  "deepseek",
+  "openai",
+  "openaiCompatible",
+] as const satisfies ProviderID[];
+
+/**
  * DeepSeek 当前在项目中显式支持的模型。
  */
 export type DeepseekModelID = "deepseek-chat" | "deepseek-reasoner";
@@ -38,6 +48,17 @@ export type ProviderModelMap = {
   openai: OpenAIModelID;
   openaiCompatible: OpenAICompatibleModelID;
 };
+
+/**
+ * 当前项目支持的 provider-model 元数据。
+ * `openaiCompatible` 不穷举模型名，因此这里只维护固定模型集合的 provider。
+ */
+export const SUPPORTED_PROVIDER_MODELS = {
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  openai: ["gpt-4o", "gpt-4o-mini", "gpt-5", "gpt-5-mini"],
+} as const satisfies Partial<{
+  [P in ProviderID]: readonly ProviderModelMap[P][];
+}>;
 
 /**
  * 模型完整标识，格式为 `Provider/Model`。
@@ -86,10 +107,10 @@ export type ProviderProfiles = {
 export type ProviderProfileLevel = keyof ProviderProfiles;
 
 /**
- * 解析后的模型标识详情。
+ * 按档位选中的 provider-model 结果。
  * 运行时拿到该结构后，不需要再手动拆分 `Provider/Model` 字符串。
  */
-export type ProviderModelDetail<P extends ProviderID = ProviderID> = {
+export type SelectedProviderModel<P extends ProviderID = ProviderID> = {
   id: ProviderModelID<P>;
   provider: P;
   model: ProviderModelMap[P];
@@ -115,4 +136,22 @@ export type ConfigFileScheme = {
   providers: ProvidersConfigScheme;
   // Message Gateway 配置
   gateway: GatewayConfigScheme;
+};
+
+/**
+ * 默认配置只负责提供最小可执行结构，
+ * 具体业务值仍然由 workspace 下的 config.json 覆盖。
+ */
+export const DefaultConfig: ConfigFileScheme = {
+  version: 2,
+  providerProfiles: {
+    advanced: "deepseek/deepseek-chat",
+    balanced: "deepseek/deepseek-chat",
+    basic: "deepseek/deepseek-chat",
+  },
+  providers: {},
+  gateway: {
+    enable: false,
+    channels: [],
+  },
 };

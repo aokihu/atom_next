@@ -3,8 +3,8 @@
  * @version 1.0.0
  */
 
+import { DefaultConfig } from "@/types/config";
 import { parseArguments } from "./cli";
-import { DefaultConfig } from "./config";
 import { parseEnvFiles, setProcessEnv } from "./env";
 import { tryParseConfigFile } from "./";
 import type { ConfigFileScheme } from "@/types/config";

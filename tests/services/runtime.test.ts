@@ -13,7 +13,12 @@ const buildConfig = (): ConfigFileScheme => {
       balanced: "openai/gpt-5",
       basic: "openaiCompatible/custom-model",
     },
-    providers: {},
+    providers: {
+      openai: {
+        apiKeyEnv: "OPENAI_API_KEY",
+        models: ["gpt-5"],
+      },
+    },
     gateway: {
       enable: false,
       channels: [],
@@ -74,39 +79,50 @@ describe("RuntimeService", () => {
     expect(runtime.getProviderProfiles()).toEqual(config.providerProfiles);
   });
 
-  test("parses deepseek profile detail", () => {
+  test("returns selected deepseek model by level", () => {
     const runtime = new RuntimeService();
 
     runtime.loadConfig(buildConfig());
 
-    expect(runtime.getProviderProfile("advanced")).toEqual({
+    expect(runtime.getModelProfileWithLevel("advanced")).toEqual({
       id: "deepseek/deepseek-chat",
       provider: "deepseek",
       model: "deepseek-chat",
     });
   });
 
-  test("parses openai profile detail", () => {
+  test("returns selected openai model by level", () => {
     const runtime = new RuntimeService();
 
     runtime.loadConfig(buildConfig());
 
-    expect(runtime.getProviderProfile("balanced")).toEqual({
+    expect(runtime.getModelProfileWithLevel("balanced")).toEqual({
       id: "openai/gpt-5",
       provider: "openai",
       model: "gpt-5",
     });
   });
 
-  test("parses openai compatible profile detail", () => {
+  test("returns selected openai compatible model by level", () => {
     const runtime = new RuntimeService();
 
     runtime.loadConfig(buildConfig());
 
-    expect(runtime.getProviderProfile("basic")).toEqual({
+    expect(runtime.getModelProfileWithLevel("basic")).toEqual({
       id: "openaiCompatible/custom-model",
       provider: "openaiCompatible",
       model: "custom-model",
+    });
+  });
+
+  test("returns provider config when provider is declared", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig(buildConfig());
+
+    expect(runtime.getProviderConfig("openai")).toEqual({
+      apiKeyEnv: "OPENAI_API_KEY",
+      models: ["gpt-5"],
     });
   });
 });

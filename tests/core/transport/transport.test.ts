@@ -1,6 +1,8 @@
 //@ts-nockeck
 // @ts-nocheck
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ServiceManager } from "@/libs/service-manage";
+import { RuntimeService } from "@/services/runtime";
 
 const streamText = mock();
 
@@ -9,6 +11,29 @@ mock.module("ai", () => ({
 }));
 
 const { Transport } = await import("@/core/transport/transport");
+
+const buildServiceManager = (config = {}) => {
+  const runtime = new RuntimeService();
+  runtime.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+    ...config,
+  });
+
+  const serviceManager = new ServiceManager();
+  serviceManager.register(runtime);
+
+  return serviceManager;
+};
 
 const buildStreamResult = ({
   chunks = [],
@@ -47,6 +72,8 @@ describe("Transport.send", () => {
   beforeEach(() => {
     currentCallOptions = undefined;
     streamText.mockReset();
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
   });
 
   test("passes prompt options to streamText and aggregates visible text deltas", async () => {
@@ -78,7 +105,7 @@ describe("Transport.send", () => {
       });
     });
 
-    const transport = new Transport();
+    const transport = new Transport(buildServiceManager());
     const result = await transport.send("system prompt", "user prompt", {
       abortSignal: abortController.signal,
       maxOutputTokens: 128,
@@ -114,7 +141,7 @@ describe("Transport.send", () => {
       });
     });
 
-    const transport = new Transport();
+    const transport = new Transport(buildServiceManager());
     const result = await transport.send("system prompt", "user prompt");
 
     expect(result.text).toBe("Hello World");
@@ -131,7 +158,7 @@ describe("Transport.send", () => {
       return buildStreamResult();
     });
 
-    const transport = new Transport();
+    const transport = new Transport(buildServiceManager());
     await transport.send("system prompt", "user prompt", {
       onError,
     });
@@ -150,11 +177,72 @@ describe("Transport.send", () => {
       });
     });
 
-    const transport = new Transport();
+    const transport = new Transport(buildServiceManager());
     await transport.send("system prompt", "user prompt", {
       onError,
     });
 
     expect(onError).toHaveBeenCalledWith(streamError);
+  });
+
+  test("throws when runtime service is missing", () => {
+    expect(() => {
+      new Transport(new ServiceManager());
+    }).toThrow("Runtime service not found");
+  });
+
+  test("supports openai provider when provider config is present", () => {
+    expect(() => {
+      new Transport(
+        buildServiceManager({
+          providerProfiles: {
+            advanced: "deepseek/deepseek-chat",
+            balanced: "openai/gpt-5",
+            basic: "deepseek/deepseek-chat",
+          },
+          providers: {
+            openai: {
+              apiKeyEnv: "OPENAI_API_KEY",
+              models: ["gpt-5"],
+            },
+          },
+        }),
+      );
+    }).not.toThrow();
+  });
+
+  test("supports openaiCompatible provider when provider config is present", () => {
+    expect(() => {
+      new Transport(
+        buildServiceManager({
+          providerProfiles: {
+            advanced: "deepseek/deepseek-chat",
+            balanced: "openaiCompatible/custom-model",
+            basic: "deepseek/deepseek-chat",
+          },
+          providers: {
+            openaiCompatible: {
+              apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
+              baseUrl: "https://example.com/v1",
+              models: ["custom-model"],
+            },
+          },
+        }),
+      );
+    }).not.toThrow();
+  });
+
+  test("throws when openaiCompatible provider config is missing", () => {
+    expect(() => {
+      new Transport(
+        buildServiceManager({
+          providerProfiles: {
+            advanced: "deepseek/deepseek-chat",
+            balanced: "openaiCompatible/custom-model",
+            basic: "deepseek/deepseek-chat",
+          },
+        }),
+      );
+    }).toThrow("Missing provider config: openaiCompatible");
   });
 });

@@ -2,7 +2,7 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "scripts": {
     "build:bin": "bun build ./src/main.ts --compile --outfile ./dist/atom"
@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^2.0.26",
+    "@ai-sdk/openai": "^3.0.50",
+    "@ai-sdk/openai-compatible": "^2.0.38",
     "dotenv": "^17.3.1"
   }
 }

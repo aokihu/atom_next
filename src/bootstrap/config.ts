@@ -3,21 +3,343 @@
  */
 
 import type { PathLike } from "bun";
-import type { ConfigFileScheme } from "@/types/config";
+import { isBoolean, isPlainObject, isString, isUndefined } from "radashi";
+import {
+  DefaultConfig,
+  SUPPORTED_PROVIDERS,
+  SUPPORTED_PROVIDER_MODELS,
+} from "@/types/config";
+import type {
+  ConfigFileScheme,
+  GatewayChannelScheme,
+  GatewayConfigScheme,
+  ProviderDefinition,
+  ProviderID,
+  ProviderModelID,
+  ProviderProfiles,
+  ProvidersConfigScheme,
+} from "@/types/config";
 
-/* 默认的配置参数 */
-export const DefaultConfig: ConfigFileScheme = {
-  version: 2,
-  providerProfiles: {
-    advanced: "deepseek/deepseek-chat",
-    balanced: "deepseek/deepseek-chat",
-    basic: "deepseek/deepseek-chat",
-  },
-  providers: {},
-  gateway: {
-    enable: false,
-    channels: [],
-  },
+/* ==================== */
+/* Validate Helpers     */
+/* ==================== */
+
+/**
+ * 统一生成配置错误，确保报错路径可以直接对应到配置项。
+ */
+const buildConfigError = (path: string, message: string) => {
+  return new Error(`Invalid ${path}: ${message}`);
+};
+
+/**
+ * 判断 provider 是否属于当前项目已支持的供应商集合。
+ */
+const isProviderID = (value: string): value is ProviderID => {
+  return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
+};
+
+/**
+ * 校验单个 provider 下的模型名是否合法。
+ * `openaiCompatible` 只要求模型名非空，具体兼容模型由用户自行配置。
+ */
+const isProviderModel = (value: string, provider: ProviderID): boolean => {
+  if (provider === "openaiCompatible") {
+    return isString(value) && value.trim() !== "";
+  }
+
+  return (SUPPORTED_PROVIDER_MODELS[provider] as readonly string[]).includes(
+    value,
+  );
+};
+
+/**
+ * 校验 `provider/model` 形式的完整模型标识。
+ */
+const isProviderModelID = (value: string): value is ProviderModelID => {
+  const separatorIndex = value.indexOf("/");
+
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    return false;
+  }
+
+  const provider = value.slice(0, separatorIndex);
+  const model = value.slice(separatorIndex + 1);
+
+  if (!isProviderID(provider)) {
+    return false;
+  }
+
+  return isProviderModel(model, provider);
+};
+
+/* ==================== */
+/* Config Parsers       */
+/* ==================== */
+
+/**
+ * 解析 providerProfiles 配置。
+ * 未提供的档位会回退到默认配置，确保 RuntimeService 总能拿到完整档位。
+ */
+const parseProviderProfiles = (raw: unknown): ProviderProfiles => {
+  const defaultProfiles = DefaultConfig.providerProfiles;
+
+  if (isUndefined(raw)) {
+    return structuredClone(defaultProfiles);
+  }
+
+  if (!isPlainObject(raw)) {
+    throw buildConfigError("config.providerProfiles", "expected an object");
+  }
+
+  const providerProfiles = raw as Record<string, unknown>;
+
+  const parseProfile = (level: keyof ProviderProfiles) => {
+    const value = providerProfiles[level];
+
+    if (isUndefined(value)) {
+      return defaultProfiles[level];
+    }
+
+    if (!isString(value) || value.trim() === "" || !isProviderModelID(value)) {
+      throw buildConfigError(
+        `config.providerProfiles.${level}`,
+        "expected a valid Provider/Model id",
+      );
+    }
+
+    return value;
+  };
+
+  return {
+    advanced: parseProfile("advanced"),
+    balanced: parseProfile("balanced"),
+    basic: parseProfile("basic"),
+  };
+};
+
+/**
+ * 解析单个 provider 的详细配置。
+ * 这里校验的是 provider 自己的模型列表，因此 models 使用裸模型名而不是 `provider/model`。
+ */
+const parseProviderDefinition = <P extends ProviderID>(
+  provider: P,
+  raw: unknown,
+): ProviderDefinition<P> => {
+  if (!isPlainObject(raw)) {
+    throw buildConfigError(
+      `config.providers.${provider}`,
+      "expected an object",
+    );
+  }
+
+  const providerConfig = raw as Record<string, unknown>;
+
+  if (
+    !isString(providerConfig.apiKeyEnv) ||
+    providerConfig.apiKeyEnv.trim() === ""
+  ) {
+    throw buildConfigError(
+      `config.providers.${provider}.apiKeyEnv`,
+      "expected a non-empty string",
+    );
+  }
+
+  if (
+    !Array.isArray(providerConfig.models) ||
+    providerConfig.models.length === 0
+  ) {
+    throw buildConfigError(
+      `config.providers.${provider}.models`,
+      "expected a non-empty string array",
+    );
+  }
+
+  const models = providerConfig.models.map((model, index) => {
+    if (
+      !isString(model) ||
+      model.trim() === "" ||
+      !isProviderModel(model, provider)
+    ) {
+      throw buildConfigError(
+        `config.providers.${provider}.models[${index}]`,
+        "expected a valid model name",
+      );
+    }
+
+    return model;
+  });
+
+  if (
+    !isUndefined(providerConfig.baseUrl) &&
+    (!isString(providerConfig.baseUrl) || providerConfig.baseUrl.trim() === "")
+  ) {
+    throw buildConfigError(
+      `config.providers.${provider}.baseUrl`,
+      "expected a non-empty string",
+    );
+  }
+
+  if (
+    !isUndefined(providerConfig.options) &&
+    !isPlainObject(providerConfig.options)
+  ) {
+    throw buildConfigError(
+      `config.providers.${provider}.options`,
+      "expected an object",
+    );
+  }
+
+  return {
+    apiKeyEnv: providerConfig.apiKeyEnv,
+    models: models as ProviderDefinition<P>["models"],
+    baseUrl: providerConfig.baseUrl as string | undefined,
+    options: providerConfig.options as Record<string, unknown> | undefined,
+  };
+};
+
+/**
+ * 解析 providers 配置。
+ * 未知 provider 会被忽略，已知 provider 则按严格规则校验。
+ */
+const parseProviders = (raw: unknown): ProvidersConfigScheme => {
+  if (typeof raw === "undefined") {
+    return {};
+  }
+
+  if (!isPlainObject(raw)) {
+    throw buildConfigError("config.providers", "expected an object");
+  }
+
+  const providers: ProvidersConfigScheme = {};
+
+  Object.entries(raw).forEach(([key, value]) => {
+    if (key === "deepseek") {
+      providers.deepseek = parseProviderDefinition("deepseek", value);
+      return;
+    }
+
+    if (key === "openai") {
+      providers.openai = parseProviderDefinition("openai", value);
+      return;
+    }
+
+    if (key === "openaiCompatible") {
+      providers.openaiCompatible = parseProviderDefinition(
+        "openaiCompatible",
+        value,
+      );
+    }
+  });
+
+  return providers;
+};
+
+/**
+ * 解析单个 gateway channel。
+ */
+const parseGatewayChannel = (
+  raw: unknown,
+  index: number,
+): GatewayChannelScheme => {
+  if (!isPlainObject(raw)) {
+    throw buildConfigError(
+      `config.gateway.channels[${index}]`,
+      "expected an object",
+    );
+  }
+
+  const channelConfig = raw as Record<string, unknown>;
+
+  if (!isString(channelConfig.source) || channelConfig.source.trim() === "") {
+    throw buildConfigError(
+      `config.gateway.channels[${index}].source`,
+      "expected a non-empty string",
+    );
+  }
+
+  if (!isUndefined(channelConfig.enable) && !isBoolean(channelConfig.enable)) {
+    throw buildConfigError(
+      `config.gateway.channels[${index}].enable`,
+      "expected a boolean",
+    );
+  }
+
+  if (
+    !isUndefined(channelConfig.description) &&
+    !isString(channelConfig.description)
+  ) {
+    throw buildConfigError(
+      `config.gateway.channels[${index}].description`,
+      "expected a string",
+    );
+  }
+
+  return {
+    source: channelConfig.source,
+    enable: channelConfig.enable as boolean | undefined,
+    description: channelConfig.description as string | undefined,
+  };
+};
+
+/**
+ * 解析 gateway 配置。
+ * 缺省时回退到默认配置，channel 数组中的每一项单独校验。
+ */
+const parseGatewayConfig = (raw: unknown): GatewayConfigScheme => {
+  const defaultGateway = DefaultConfig.gateway;
+
+  if (isUndefined(raw)) {
+    return structuredClone(defaultGateway);
+  }
+
+  if (!isPlainObject(raw)) {
+    throw buildConfigError("config.gateway", "expected an object");
+  }
+
+  const gatewayConfig = raw as Record<string, unknown>;
+
+  if (!isUndefined(gatewayConfig.enable) && !isBoolean(gatewayConfig.enable)) {
+    throw buildConfigError("config.gateway.enable", "expected a boolean");
+  }
+
+  if (
+    !isUndefined(gatewayConfig.channels) &&
+    !Array.isArray(gatewayConfig.channels)
+  ) {
+    throw buildConfigError("config.gateway.channels", "expected an array");
+  }
+
+  return {
+    enable:
+      (gatewayConfig.enable as boolean | undefined) ?? defaultGateway.enable,
+    channels: (
+      (gatewayConfig.channels as unknown[] | undefined) ??
+      defaultGateway.channels
+    ).map((channel, index) => parseGatewayChannel(channel, index)),
+  };
+};
+
+/**
+ * 解析整个配置对象。
+ * 这里只处理结构化校验和默认值补全，不负责文件读写。
+ */
+const parseConfig = (raw: unknown): ConfigFileScheme => {
+  if (!isPlainObject(raw)) {
+    throw buildConfigError("config", "root must be an object");
+  }
+
+  const config = raw as Record<string, unknown>;
+
+  if (!isUndefined(config.version) && config.version !== 2) {
+    throw buildConfigError("config.version", "expected 2");
+  }
+
+  return {
+    version: 2,
+    providerProfiles: parseProviderProfiles(config.providerProfiles),
+    providers: parseProviders(config.providers),
+    gateway: parseGatewayConfig(config.gateway),
+  };
 };
 
 /**
@@ -30,12 +352,16 @@ export const parseConfigFile: (
   path: PathLike,
   strict?: boolean,
 ) => Promise<ConfigFileScheme> = async (path, strict = false) => {
-  // 检查配置文件是否存在
-  if (!(await Bun.file(path as string).exists()) && strict) {
-    throw new Error("Config file not found");
+  const file = Bun.file(path as string);
+
+  if (!(await file.exists())) {
+    if (strict) {
+      throw new Error("Config file not found");
+    }
+
+    return structuredClone(DefaultConfig);
   }
 
-  // 初始化默认的配置参数
-  const config = structuredClone(DefaultConfig);
-  return config;
+  const rawConfig = await file.json();
+  return parseConfig(rawConfig);
 };

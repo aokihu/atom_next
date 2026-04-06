@@ -2,6 +2,8 @@ import type { FinishReason, LanguageModelUsage } from "ai";
 import { streamText } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { finished } from "node:stream/promises";
+import type { ServiceManager } from "@/libs/service-manage";
+import type { RuntimeService } from "@/services/runtime";
 import { createModelWithProvider } from "./model";
 import { createRequestStreamParser } from "./request-stream";
 
@@ -28,8 +30,22 @@ type SendResult = {
 export class Transport {
   #model: LanguageModelV3;
 
-  constructor() {
-    this.#model = createModelWithProvider("deepseek", "deepseek-chat")!;
+  #getRuntimeService(serviceManager: ServiceManager): RuntimeService {
+    const runtime = serviceManager.getService<RuntimeService>("runtime");
+
+    if (!runtime) {
+      throw new Error("Runtime service not found");
+    }
+
+    return runtime;
+  }
+
+  constructor(serviceManager: ServiceManager) {
+    const runtime = this.#getRuntimeService(serviceManager);
+    const selectedModel = runtime.getModelProfileWithLevel("balanced");
+    const providerConfig = runtime.getProviderConfig(selectedModel.provider);
+
+    this.#model = createModelWithProvider(selectedModel, providerConfig);
   }
 
   public async send(

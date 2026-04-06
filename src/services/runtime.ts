@@ -5,15 +5,17 @@
  */
 import { isUndefined } from "radashi";
 import type { BootArguments } from "@/bootstrap/cli";
-import { DefaultConfig } from "@/bootstrap/config";
 import { BaseService } from "@/services/base";
+import { DefaultConfig } from "@/types/config";
 import type {
   ConfigFileScheme,
-  ProviderModelDetail,
+  ProviderDefinition,
+  ProviderID,
   ProviderModelID,
   ProviderModelMap,
   ProviderProfileLevel,
   ProviderProfiles,
+  SelectedProviderModel,
 } from "@/types/config";
 
 export class RuntimeService extends BaseService {
@@ -55,7 +57,7 @@ export class RuntimeService extends BaseService {
   /**
    * 解析 Provider/Model 形式的模型标识。
    */
-  #parseProviderModel(id: ProviderModelID): ProviderModelDetail {
+  #parseSelectedProviderModel(id: ProviderModelID): SelectedProviderModel {
     const separatorIndex = id.indexOf("/");
 
     if (separatorIndex <= 0 || separatorIndex === id.length - 1) {
@@ -167,19 +169,30 @@ export class RuntimeService extends BaseService {
   }
 
   /**
-   * 获取指定档位的模型详细配置
+   * 获取指定档位选中的模型结果
    */
-  public getProviderProfile(
+  public getModelProfileWithLevel(
     level: ProviderProfileLevel,
-  ): ProviderModelDetail {
-    return this.#parseProviderModel(this.#config.providerProfiles[level]);
+  ): SelectedProviderModel {
+    return this.#parseSelectedProviderModel(
+      this.#config.providerProfiles[level],
+    );
   }
 
   /**
-   * 获取完整配置快照
+   * 获取指定 provider 的详细配置。
+   * provider 未在配置中声明时，返回 undefined。
    */
-  public getAllConfig(): ConfigFileScheme {
-    return structuredClone(this.#config);
+  public getProviderConfig<P extends ProviderID>(
+    provider: P,
+  ): ProviderDefinition<P> | undefined {
+    const providerConfig = this.#config.providers[provider];
+
+    if (isUndefined(providerConfig)) {
+      return undefined;
+    }
+
+    return structuredClone(providerConfig) as ProviderDefinition<P>;
   }
 
   /**
