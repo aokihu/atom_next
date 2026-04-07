@@ -4,8 +4,6 @@
  * 约束服务对象的生命周期接口和构造签名。
  */
 
-import type { AppContext } from "./app";
-
 /* ==================== */
 /* Lifecycle Contracts  */
 /* ==================== */
@@ -17,7 +15,7 @@ export interface Service {
 }
 
 export interface ServiceConstructor {
-  new (appContext: AppContext): Service;
+  new (): Service;
 }
 
 export interface BaseService extends Service {

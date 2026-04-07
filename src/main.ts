@@ -7,7 +7,7 @@ import { tryBootstrap } from "@/bootstrap";
 import { Core } from "@/core";
 import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
-import { RuntimeService } from "@/services/runtime";
+import { RuntimeService, WatchmanService } from "@/services";
 
 async function main() {
   /* ----- 开始启动器 ----- */
@@ -21,10 +21,24 @@ async function main() {
   const runtime = new RuntimeService();
   runtime.loadCliArgs(args.cliArgs).loadConfig(args.config);
 
+  /* ----- 创建Watchman服务 ----- */
+  const watchman = new WatchmanService();
+
   /* ----- 启动服务管理器 ----- */
   const serviceManager = new ServiceManager();
-  serviceManager.register(runtime);
-  await serviceManager.startAllServices();
+  serviceManager.register(runtime, watchman);
+  const startResults = await serviceManager.startAllServices();
+  const rejectedResult = startResults.find((result) => result.status === "rejected");
+
+  if (rejectedResult?.status === "rejected") {
+    const reason =
+      rejectedResult.reason instanceof Error
+        ? rejectedResult.reason.message
+        : String(rejectedResult.reason);
+
+    console.error("Service startup failed: %s", reason);
+    process.exit(1);
+  }
 
   /* ----- 启动内核 -----  */
   const core = new Core(serviceManager);

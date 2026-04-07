@@ -115,6 +115,24 @@ describe("RuntimeService", () => {
     });
   });
 
+  test("returns selected model with provider config by level", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig(buildConfig());
+
+    expect(runtime.getModelProfileConfigWithLevel("balanced")).toEqual({
+      selectedModel: {
+        id: "openai/gpt-5",
+        provider: "openai",
+        model: "gpt-5",
+      },
+      providerConfig: {
+        apiKeyEnv: "OPENAI_API_KEY",
+        models: ["gpt-5"],
+      },
+    });
+  });
+
   test("returns provider config when provider is declared", () => {
     const runtime = new RuntimeService();
 

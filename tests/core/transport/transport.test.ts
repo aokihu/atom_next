@@ -5,9 +5,11 @@ import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
 
 const streamText = mock();
+const generateText = mock();
 
 mock.module("ai", () => ({
   streamText,
+  generateText,
 }));
 
 const { Transport } = await import("@/core/transport/transport");

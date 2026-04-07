@@ -42,8 +42,8 @@ export class Transport {
 
   constructor(serviceManager: ServiceManager) {
     const runtime = this.#getRuntimeService(serviceManager);
-    const selectedModel = runtime.getModelProfileWithLevel("balanced");
-    const providerConfig = runtime.getProviderConfig(selectedModel.provider);
+    const { selectedModel, providerConfig } =
+      runtime.getModelProfileConfigWithLevel("balanced");
 
     this.#model = createModelWithProvider(selectedModel, providerConfig);
   }

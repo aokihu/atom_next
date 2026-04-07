@@ -28,7 +28,7 @@ export class Core {
   constructor(serviceManager: ServiceManager) {
     this.#serviceManager = serviceManager;
     this.#taskQueue = new TaskQueue();
-    this.#runtime = new Runtime();
+    this.#runtime = new Runtime(this.#serviceManager);
     this.#transport = new Transport(this.#serviceManager);
   }
 
@@ -60,7 +60,7 @@ export class Core {
 
     try {
       this.#runtime.currentTask = task;
-      const [systemPrompt, userPrompt] = this.#runtime.exportPrompts();
+      const [systemPrompt, userPrompt] = await this.#runtime.exportPrompts();
       let hasProcessingState = false;
 
       const result = await this.#transport.send(systemPrompt, userPrompt, {

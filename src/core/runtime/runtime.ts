@@ -1,6 +1,15 @@
 import type { UUID, ISOTimeString, EmptyString } from "@/types";
+import type { ServiceManager } from "@/libs/service-manage";
+import type { WatchmanService } from "@/services/watchman/watchman";
 import { TaskSource, type TaskItem } from "@/types/task";
 import type { PathLike } from "bun";
+import { sleep } from "radashi";
+
+const WATCHMAN_WAIT_INTERVAL = 100;
+
+type ExportPromptOptions = {
+  ignoreWatchman?: boolean;
+};
 
 /**
  * ISO 8601 标准时间格式类型
@@ -24,6 +33,7 @@ type RuntimeContext = {
 };
 
 export class Runtime {
+  #serviceManager: ServiceManager;
   #currentTask: TaskItem | null = null;
   #taskSessions: {
     id: UUID;
@@ -32,9 +42,10 @@ export class Runtime {
   #context: RuntimeContext;
   #systemRules: string;
 
-  constructor() {
+  constructor(serviceManager: ServiceManager) {
     // [Milestone 0.1]
     // 这里暂时不对session数组做任何处理
+    this.#serviceManager = serviceManager;
     this.#taskSessions = [];
 
     // 系统规则提示词
@@ -97,6 +108,51 @@ export class Runtime {
       .join("\n");
   }
 
+  /**
+   * 获取 watchman 服务
+   */
+  #getWatchmanService() {
+    return this.#serviceManager.getService<WatchmanService>("watchman");
+  }
+
+  /**
+   * 获取编译后的 AGENTS 提示词
+   */
+  async #getAgentsPrompt(options: ExportPromptOptions = {}) {
+    const watchman = this.#getWatchmanService();
+
+    if (!watchman) {
+      return "";
+    }
+
+    let hasWarned = false;
+
+    while (true) {
+      const status = watchman.getStatus();
+
+      if (status.phase === "ready") {
+        return watchman.getAgentsPrompt();
+      }
+
+      if (options.ignoreWatchman) {
+        return "";
+      }
+
+      if (status.phase === "error") {
+        throw new Error(status.error ?? "Watchman prompt compile failed");
+      }
+
+      if (!hasWarned) {
+        console.warn(
+          "Watchman prompt is not ready, waiting for compilation to finish.",
+        );
+        hasWarned = true;
+      }
+
+      await sleep(WATCHMAN_WAIT_INTERVAL);
+    }
+  }
+
   /* ==================== */
   /* Public getter/setter */
   /* ==================== */
@@ -128,9 +184,15 @@ export class Runtime {
    * @description 输出来自Runtime Context的数据和系统内部强制规范提示词文本
    * @returns 系统提示词文本
    */
-  public exportSystemPrompt(): string {
+  public async exportSystemPrompt(
+    options: ExportPromptOptions = {},
+  ): Promise<string> {
     const runtimePrompt = this.#convertContextToPrompt();
-    return `${this.#systemRules}\n${runtimePrompt}`;
+    const agentsPrompt = await this.#getAgentsPrompt(options);
+
+    return [this.#systemRules, agentsPrompt, runtimePrompt]
+      .filter((chunk) => chunk.trim() !== "")
+      .join("\n");
   }
 
   /**
@@ -145,8 +207,10 @@ export class Runtime {
    * 输出提示词
    * @returns 返回一个数组,第一个元素是系统提示词,第二个元素是用户提示词
    */
-  public exportPrompts(): [string, string] {
-    const systemPrompt = this.exportSystemPrompt();
+  public async exportPrompts(
+    options: ExportPromptOptions = {},
+  ): Promise<[string, string]> {
+    const systemPrompt = await this.exportSystemPrompt(options);
     const userPrompt = this.exportUserPrompt();
     return [systemPrompt, userPrompt];
   }

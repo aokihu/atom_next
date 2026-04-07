@@ -18,6 +18,11 @@ import type {
   SelectedProviderModel,
 } from "@/types/config";
 
+type SelectedProviderModelConfig = {
+  selectedModel: SelectedProviderModel;
+  providerConfig?: ProviderDefinition;
+};
+
 export class RuntimeService extends BaseService {
   /* =================== */
   /*      Properties     */
@@ -177,6 +182,24 @@ export class RuntimeService extends BaseService {
     return this.#parseSelectedProviderModel(
       this.#config.providerProfiles[level],
     );
+  }
+
+  /**
+   * 获取指定档位对应的模型和 provider 配置
+   * @description
+   * RuntimeService 统一负责把 providerProfiles 中的档位解析成
+   * “当前选中的 provider/model”以及该 provider 的详细配置，
+   * 避免调用方各自重复拆分 `provider/model` 和二次读取 providers 配置。
+   */
+  public getModelProfileConfigWithLevel(
+    level: ProviderProfileLevel,
+  ): SelectedProviderModelConfig {
+    const selectedModel = this.getModelProfileWithLevel(level);
+
+    return {
+      selectedModel,
+      providerConfig: this.getProviderConfig(selectedModel.provider),
+    };
   }
 
   /**

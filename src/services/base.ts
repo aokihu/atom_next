@@ -4,14 +4,15 @@
  * @version 1.0.0
  */
 
-import type { AppContext } from "@/types/app";
+import type { ServiceManager } from "@/libs/service-manage";
+import type { Service } from "@/types/service";
 
-export class BaseService {
-  protected _appContext: AppContext | undefined;
+export class BaseService implements Service {
+  protected _serviceManager: ServiceManager | undefined;
   protected _name: string;
 
   constructor() {
-    this._appContext = undefined;
+    this._serviceManager = undefined;
     this._name = "base";
   }
 
@@ -20,8 +21,8 @@ export class BaseService {
   }
 
   // 当注册Service时候执行的回掉方法
-  public onRegister(ctx: AppContext) {
-    this._appContext = ctx;
+  public onRegister(sm: ServiceManager) {
+    this._serviceManager = sm;
   }
 
   public async start() {

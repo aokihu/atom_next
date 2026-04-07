@@ -1,12 +1,13 @@
+import type { BaseService } from "@/services/base";
+import { isArray } from "radashi";
+
+type ServiceName = "runtime" | "watchman";
+
 /**
  * 服务管理器
  * @author aokihu <aokihu@gmail.com>
  * @version 1.0.0
  */
-
-import type { BaseService } from "@/services/base";
-
-type ServiceName = "runtime";
 
 export class ServiceManager {
   #services: Map<string, BaseService> = new Map();
@@ -15,8 +16,11 @@ export class ServiceManager {
    * 注册服务对象
    * @param service 服务对象
    */
-  public register(service: BaseService) {
-    this.#services.set(service.name, service);
+  public register(...services: Array<BaseService>) {
+    services.forEach((service) => {
+      this.#services.set(service.name, service);
+      service.onRegister(this);
+    });
   }
 
   public getService<T extends BaseService>(name: ServiceName): T | undefined {
