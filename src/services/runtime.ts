@@ -6,6 +6,8 @@
 import { isUndefined } from "radashi";
 import type { BootArguments } from "@/bootstrap/cli";
 import { BaseService } from "@/services/base";
+import type { WatchmanStatus } from "@/services/watchman/types";
+import { WatchmanPhase } from "@/services/watchman/types";
 import { DefaultConfig } from "@/types/config";
 import type {
   ConfigFileScheme,
@@ -31,6 +33,8 @@ export class RuntimeService extends BaseService {
   #arguments: Map<keyof BootArguments, BootArguments[keyof BootArguments]>;
   #config: ConfigFileScheme;
   #startedAt: number;
+  #userAgentPrompt: string;
+  #userAgentPromptStatus: WatchmanStatus;
 
   /* =================== */
   /*      Constructor    */
@@ -41,6 +45,13 @@ export class RuntimeService extends BaseService {
     this.#arguments = new Map();
     this.#config = structuredClone(DefaultConfig);
     this.#startedAt = Date.now();
+    this.#userAgentPrompt = "";
+    this.#userAgentPromptStatus = {
+      phase: WatchmanPhase.IDLE,
+      hash: null,
+      updatedAt: null,
+      error: null,
+    };
   }
 
   override async start() {}
@@ -171,6 +182,41 @@ export class RuntimeService extends BaseService {
    */
   public getProviderProfiles(): ProviderProfiles {
     return structuredClone(this.#config.providerProfiles);
+  }
+
+  /**
+   * 设置用户代理提示词
+   * @description
+   * Watchman 会在每次编译结果发生变化时把最新内容同步到 RuntimeService，
+   * Runtime(Core) 之后只从 RuntimeService 读取，不再直接依赖 Watchman。
+   */
+  public setUserAgentPrompt(prompt: string) {
+    this.#userAgentPrompt = prompt;
+    return this;
+  }
+
+  /**
+   * 获取用户代理提示词
+   */
+  public getUserAgentPrompt() {
+    return this.#userAgentPrompt;
+  }
+
+  /**
+   * 设置用户代理提示词状态
+   * @description
+   * 这份状态与 Watchman 保持一致，Runtime(Core) 会根据它决定是否等待用户提示词完成编译。
+   */
+  public setUserAgentPromptStatus(status: WatchmanStatus) {
+    this.#userAgentPromptStatus = structuredClone(status);
+    return this;
+  }
+
+  /**
+   * 获取用户代理提示词状态
+   */
+  public getUserAgentPromptStatus() {
+    return structuredClone(this.#userAgentPromptStatus);
   }
 
   /**

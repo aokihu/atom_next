@@ -124,6 +124,18 @@ export class WatchmanService extends BaseService {
   }
 
   /**
+   * 同步用户代理提示词到 RuntimeService
+   * @description
+   * Runtime(Core) 只允许从 RuntimeService 读取用户提示词和状态，
+   * 因此 watchman 每次状态或编译结果变化后，都要把最新快照写回 RuntimeService。
+   */
+  #syncRuntimeUserAgentState() {
+    const runtime = this.#getRuntime();
+    runtime.setUserAgentPrompt(this.#agentsPrompt);
+    runtime.setUserAgentPromptStatus(this.#status);
+  }
+
+  /**
    * 获取 AGENTS 文件路径
    * @description
    * 当前 0.3 范围只处理 workspace 根目录下单个 `AGENTS.md`，
@@ -297,6 +309,18 @@ export class WatchmanService extends BaseService {
       updatedAt: Date.now(),
       error: error ?? null,
     };
+    this.#syncRuntimeUserAgentState();
+  }
+
+  /**
+   * 设置当前编译后的用户提示词
+   * @description
+   * 这里统一维护内存提示词，并立即同步到 RuntimeService，
+   * 避免 watchman 和 runtime 之间出现不同步的状态。
+   */
+  #setAgentsPrompt(prompt: string) {
+    this.#agentsPrompt = prompt;
+    this.#syncRuntimeUserAgentState();
   }
 
   /**
@@ -378,7 +402,7 @@ export class WatchmanService extends BaseService {
       const agentsFile = Bun.file(this.#getAgentsFilePath());
 
       if (!(await agentsFile.exists())) {
-        this.#agentsPrompt = "";
+        this.#setAgentsPrompt("");
         meta.currentHash = null;
         meta.updatedAt = Date.now();
         await this.#writeWatchmanMeta(meta);
@@ -390,7 +414,7 @@ export class WatchmanService extends BaseService {
       promptHash = this.#parsePromptHash(content);
 
       if (content.trim() === "") {
-        this.#agentsPrompt = "";
+        this.#setAgentsPrompt("");
         meta.currentHash = promptHash;
         meta.updatedAt = Date.now();
         await this.#writeWatchmanMeta(meta);
@@ -407,7 +431,7 @@ export class WatchmanService extends BaseService {
           cacheEntry &&
           (await Bun.file(cacheEntry.compiledFile).exists())
         ) {
-          this.#agentsPrompt = await Bun.file(cacheEntry.compiledFile).text();
+          this.#setAgentsPrompt(await Bun.file(cacheEntry.compiledFile).text());
           meta.currentHash = promptHash;
           meta.updatedAt = Date.now();
           await this.#writeWatchmanMeta(meta);
@@ -431,7 +455,7 @@ export class WatchmanService extends BaseService {
 
       await this.#writeWatchmanMeta(meta);
 
-      this.#agentsPrompt = compiledPrompt;
+      this.#setAgentsPrompt(compiledPrompt);
       this.#setStatus(WatchmanPhase.READY, promptHash);
     } catch (error) {
       const message =
@@ -569,6 +593,7 @@ export class WatchmanService extends BaseService {
       updatedAt: null,
       error: null,
     };
+    this.#syncRuntimeUserAgentState();
   }
 
   /**

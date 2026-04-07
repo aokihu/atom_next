@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ConfigFileScheme } from "@/types/config";
 import { RuntimeService } from "@/services/runtime";
+import { WatchmanPhase } from "@/services/watchman/types";
 
 const buildConfig = (): ConfigFileScheme => {
   return {
@@ -130,6 +131,27 @@ describe("RuntimeService", () => {
         apiKeyEnv: "OPENAI_API_KEY",
         models: ["gpt-5"],
       },
+    });
+  });
+
+  test("stores user agent prompt and status", () => {
+    const runtime = new RuntimeService();
+
+    runtime
+      .setUserAgentPrompt("# safe agents")
+      .setUserAgentPromptStatus({
+        phase: WatchmanPhase.READY,
+        hash: "hash-1",
+        updatedAt: 123,
+        error: null,
+      });
+
+    expect(runtime.getUserAgentPrompt()).toBe("# safe agents");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: WatchmanPhase.READY,
+      hash: "hash-1",
+      updatedAt: 123,
+      error: null,
     });
   });
 

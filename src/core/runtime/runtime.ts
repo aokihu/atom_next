@@ -1,6 +1,6 @@
 import type { UUID, ISOTimeString, EmptyString } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
-import type { WatchmanService } from "@/services/watchman/watchman";
+import type { RuntimeService } from "@/services/runtime";
 import { TaskSource, type TaskItem } from "@/types/task";
 import type { PathLike } from "bun";
 import { sleep } from "radashi";
@@ -109,29 +109,31 @@ export class Runtime {
   }
 
   /**
-   * 获取 watchman 服务
+   * 获取 Runtime 服务
    */
-  #getWatchmanService() {
-    return this.#serviceManager.getService<WatchmanService>("watchman");
+  #getRuntimeService() {
+    const runtime = this.#serviceManager.getService<RuntimeService>("runtime");
+
+    if (!runtime) {
+      throw new Error("Runtime service not found");
+    }
+
+    return runtime;
   }
 
   /**
    * 获取编译后的 AGENTS 提示词
    */
   async #getAgentsPrompt(options: ExportPromptOptions = {}) {
-    const watchman = this.#getWatchmanService();
-
-    if (!watchman) {
-      return "";
-    }
+    const runtime = this.#getRuntimeService();
 
     let hasWarned = false;
 
     while (true) {
-      const status = watchman.getStatus();
+      const status = runtime.getUserAgentPromptStatus();
 
       if (status.phase === "ready") {
-        return watchman.getAgentsPrompt();
+        return runtime.getUserAgentPrompt();
       }
 
       if (options.ignoreWatchman) {

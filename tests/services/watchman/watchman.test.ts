@@ -149,6 +149,13 @@ describe("WatchmanService", () => {
       error: null,
     });
     expect(service.getAgentsPrompt()).toBe("");
+    expect(runtime.getUserAgentPrompt()).toBe("");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: "ready",
+      hash: null,
+      updatedAt: expect.any(Number),
+      error: null,
+    });
     expect(compilePrompt).not.toHaveBeenCalled();
   });
 
@@ -189,6 +196,8 @@ describe("WatchmanService", () => {
 
     expect(service.getStatus().phase).toBe("ready");
     expect(service.getAgentsPrompt()).toBe("# safe rules");
+    expect(runtime.getUserAgentPrompt()).toBe("# safe rules");
+    expect(runtime.getUserAgentPromptStatus().phase).toBe("ready");
     expect(compilePrompt).toHaveBeenCalledTimes(1);
   });
 
@@ -264,6 +273,8 @@ describe("WatchmanService", () => {
 
     expect(compilePrompt).toHaveBeenCalledTimes(1);
     expect(service.getAgentsPrompt()).toBe(compiledPrompt);
+    expect(runtime.getUserAgentPrompt()).toBe(compiledPrompt);
+    expect(runtime.getUserAgentPromptStatus().phase).toBe("ready");
     expect(await Bun.file(compiledFile).text()).toBe(compiledPrompt);
     expect(watchmanMeta.currentHash).toBe(promptHash);
     expect(watchmanMeta.entries[promptHash].compiledFile).toBe(compiledFile);
