@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { describe, expect, test, beforeEach } from "bun:test";
 import { $ } from "bun";
+import { version } from "@/../package.json" with { type: "json" };
 import { parseArguments } from "@/bootstrap/cli";
 
 describe("parseArguments - direct function tests", () => {
@@ -36,7 +37,7 @@ describe("parseArguments - direct function tests", () => {
       "--mode",
       "tui",
       "--server-url",
-      "ws://localhost:8787",
+      "http://127.0.0.1:8787",
     ]);
     expect(result.mode).toBe("tui");
   });
@@ -65,7 +66,7 @@ describe("parseArguments - direct function tests", () => {
       "-m",
       "tui",
       "--server-url",
-      "ws://localhost:8787",
+      "http://127.0.0.1:8787",
     ]);
     expect(result.mode).toBe("tui");
   });
@@ -112,8 +113,24 @@ describe("parseArguments - direct function tests", () => {
 
   test("parses --server-url flag", () => {
     process.cwd = () => "/test/dir";
-    const result = parseArguments(["--server-url", "ws://localhost:8787"]);
-    expect(result.serverUrl).toBe("ws://localhost:8787");
+    const result = parseArguments(["--server-url", "http://127.0.0.1:8787"]);
+    expect(result.serverUrl).toBe("http://127.0.0.1:8787");
+  });
+
+  test("throws when server-url uses websocket protocol", () => {
+    process.cwd = () => "/test/dir";
+
+    expect(() => {
+      parseArguments(["--server-url", "ws://localhost:8787"]);
+    }).toThrow("--server-url only supports http protocol");
+  });
+
+  test("throws when server-url uses https protocol", () => {
+    process.cwd = () => "/test/dir";
+
+    expect(() => {
+      parseArguments(["--server-url", "https://localhost:8787"]);
+    }).toThrow("--server-url only supports http protocol");
   });
 
   test("parses --address flag", () => {
@@ -241,7 +258,7 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.exitCalled).toBe(true);
     expect(parsed.exitCode).toBe(0);
-    expect(parsed.logOutput).toContain("0.4.0");
+    expect(parsed.logOutput).toContain(version);
   });
 
   test("runs helper script with -v and captures exit", async () => {
@@ -250,7 +267,7 @@ describe("parseArguments - real CLI tests via subprocess", () => {
 
     expect(parsed.success).toBe(true);
     expect(parsed.exitCalled).toBe(true);
-    expect(parsed.logOutput).toContain("0.4.0");
+    expect(parsed.logOutput).toContain(version);
   });
 
   test("runs helper script with --help and captures exit", async () => {
@@ -290,12 +307,12 @@ describe("parseArguments - real CLI tests via subprocess", () => {
 
   test("runs helper script with -m tui and --server-url", async () => {
     const result =
-      await $`bun ${helperScript} -m tui --server-url ws://localhost:8787`.quiet();
+      await $`bun ${helperScript} -m tui --server-url http://127.0.0.1:8787`.quiet();
     const parsed = JSON.parse(result.stdout as string);
 
     expect(parsed.success).toBe(true);
     expect(parsed.result.mode).toBe("tui");
-    expect(parsed.result.serverUrl).toBe("ws://localhost:8787");
+    expect(parsed.result.serverUrl).toBe("http://127.0.0.1:8787");
   });
 
   test("fails helper script when tui mode misses server url", async () => {
@@ -304,6 +321,24 @@ describe("parseArguments - real CLI tests via subprocess", () => {
 
     expect(parsed.success).toBe(false);
     expect(parsed.error).toBe("TUI mode requires --server-url");
+  });
+
+  test("fails helper script when server-url uses websocket protocol", async () => {
+    const result =
+      await $`bun ${helperScript} --mode tui --server-url ws://localhost:8787`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe("--server-url only supports http protocol");
+  });
+
+  test("fails helper script when server-url uses https protocol", async () => {
+    const result =
+      await $`bun ${helperScript} --mode tui --server-url https://localhost:8787`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe("--server-url only supports http protocol");
   });
 
   test("runs helper script with custom port", async () => {

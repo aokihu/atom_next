@@ -36,7 +36,7 @@ export type BootArguments = Omit<
  *              --help[h]       显示帮助信息
  *
  *              --mode[m]       启动模式,默认是同时启动'tui'和'server',
- *                              如果设置为'tui'则只启动TUI客户端,需要配合参数--server-url指定服务器
+ *                              如果设置为'tui'则只启动TUI客户端,需要配合参数--server-url指定http服务器
  *                              如果设置为'server'则只启动Server服务器,可以单独通过--address和--port设置监听地址和端口
 
  *              --config[c]     指定加载特定的配置文件
@@ -45,7 +45,7 @@ export type BootArguments = Omit<
  *
  *              --sandbox       指定特定的沙箱目录,如果不指定默认就是{workspace}/sandbox
  *
- *              --server-url    当启动模式为'tui'时,需要制定链接的服务器
+ *              --server-url    当启动模式为'tui'时,需要制定链接的http服务器
  *
  *              --address       服务器监听地址,如果不设置默认是127.0.0.1
  *
@@ -78,7 +78,7 @@ Atom Next - AI 驱动的开发工具
 示例:
   atom                          # 同时启动 TUI 和 Server
   atom --mode server            # 只启动 Server
-  atom --mode tui --server-url ws://localhost:8787  # 只启动 TUI 连接到指定服务器
+  atom --mode tui --server-url http://127.0.0.1:8787  # 只启动 TUI 连接到指定服务器
   atom --port 9000              # 指定 Server 端口
 `;
   console.log(help);
@@ -125,6 +125,21 @@ type argNames = keyof typeof cliOpts;
 const validateBootArguments = (args: BootArguments) => {
   if (args.mode === "tui" && isEmpty(args.serverUrl.trim())) {
     throw new Error("TUI mode requires --server-url");
+  }
+
+  if (!isEmpty(args.serverUrl.trim())) {
+    // server-url 需要先是一个合法 URL，然后协议必须严格限制为 http。
+    let serverUrl: URL;
+
+    try {
+      serverUrl = new URL(args.serverUrl);
+    } catch {
+      throw new Error("--server-url must be a valid http URL");
+    }
+
+    if (serverUrl.protocol !== "http:") {
+      throw new Error("--server-url only supports http protocol");
+    }
   }
 };
 
