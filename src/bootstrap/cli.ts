@@ -1,3 +1,4 @@
+import { version } from "@/../package.json" with { type: "json" };
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { isAbsolute, resolve } from "node:path";
 import { isNullish } from "radashi";
@@ -70,7 +71,7 @@ Atom Next - AI 驱动的开发工具
   -c, --config <path>    指定配置文件路径
   -w, --workspace <path> 指定工作目录 (default: 当前目录)
   --sandbox <path>       指定沙箱目录 (default: {workspace}/sandbox)
-  --server-url <url>     TUI 模式下指定服务器地址
+  --server-url <url>     TUI 模式下指定服务器地址,比如 http://127.0.0.1:8787
   --address <address>    服务器监听地址 (default: "127.0.0.1")
   --port <port>          服务器监听端口 (default: 8787)
 
@@ -95,7 +96,7 @@ const cliOpts: ParseArgsConfig["options"] = {
   mode: {
     type: "string",
     short: "m",
-    default: "default",
+    default: "both",
   },
   config: {
     type: "string",
@@ -126,7 +127,7 @@ export const parseArguments = (args: string[]): BootArguments => {
     .values as Partial<ParsedArguments>;
 
   if (parsed.version) {
-    console.log("v 0.0.1");
+    console.log(version);
     process.exit(0);
   }
 
