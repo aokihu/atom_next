@@ -4,22 +4,19 @@
  */
 
 import { tryBootstrap } from "@/bootstrap";
+import type { BootstrapResult } from "@/bootstrap/bootstrap";
 import { Core } from "@/core";
 import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService, WatchmanService } from "@/services";
+import { startTuiPlaceholder } from "@/tui";
 
-async function main() {
-  /* ----- 开始启动器 ----- */
-  const [err, args] = await tryBootstrap();
-  if (err) {
-    console.error("Bootstrap failed: %s", err);
-    process.exit(1);
-  }
+const startServerApp = async (args: BootstrapResult) => {
+  const { cliArgs, config } = args;
 
   /* ----- 启动系统运行时环境服务 ----- */
   const runtime = new RuntimeService();
-  runtime.loadCliArgs(args.cliArgs).loadConfig(args.config);
+  runtime.loadCliArgs(cliArgs).loadConfig(config);
 
   /* ----- 创建Watchman服务 ----- */
   const watchman = new WatchmanService();
@@ -28,7 +25,9 @@ async function main() {
   const serviceManager = new ServiceManager();
   serviceManager.register(runtime, watchman);
   const startResults = await serviceManager.startAllServices();
-  const rejectedResult = startResults.find((result) => result.status === "rejected");
+  const rejectedResult = startResults.find(
+    (result) => result.status === "rejected",
+  );
 
   if (rejectedResult?.status === "rejected") {
     const reason =
@@ -45,16 +44,16 @@ async function main() {
 
   /* ----- 启动API服务器 ----- */
   const apiServer = new APIServer(core, serviceManager);
-  const [errApi, apiResult] = await apiServer.tryStart(args.cliArgs.port);
+  const [errApi, apiResult] = await apiServer.tryStart(cliArgs.port);
 
   if (errApi) {
     console.error("API server failed: %s", errApi);
     process.exit(1);
   }
 
-  console.log(
-    `API server started at http://${apiResult.host}:${apiResult.port}`,
-  );
+  const apiUrl = `http://${apiResult.host}:${apiResult.port}`;
+
+  console.log(`API server started at ${apiUrl}`);
 
   // 这里更新环境变量成可以正确使用的API服务器端口号
   runtime.setPort(apiResult.port);
@@ -65,6 +64,40 @@ async function main() {
 
   /* ----- 启动core ----- */
   core.runloop();
-}
 
+  // 返回实际启动成功后的 API 地址。
+  // both 模式下 TUI 需要连接这个真实地址，而不是 CLI 里预设的 serverUrl。
+  return {
+    apiUrl,
+  };
+};
+
+/**
+ * 主函数入口
+ */
+const main = async () => {
+  /* ----- 启动器入口 ----- */
+  const [err, args] = await tryBootstrap();
+  if (err) {
+    console.error("Bootstrap failed: %s", err);
+    process.exit(1);
+  }
+
+  /* ----- 按启动模式分流 ----- */
+  const { mode, serverUrl } = args.cliArgs;
+
+  if (mode === "tui") {
+    // TUI 单独启动时，不再进入任何 Server 相关启动步骤。
+    await startTuiPlaceholder(serverUrl);
+    return;
+  }
+
+  const serverStartResult = await startServerApp(args);
+
+  if (mode === "both") {
+    await startTuiPlaceholder(serverStartResult.apiUrl);
+  }
+};
+
+// 启动主函数
 main();

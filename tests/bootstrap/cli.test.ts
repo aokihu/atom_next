@@ -32,7 +32,12 @@ describe("parseArguments - direct function tests", () => {
 
   test("parses --mode with valid 'tui' value", () => {
     process.cwd = () => "/test/dir";
-    const result = parseArguments(["--mode", "tui"]);
+    const result = parseArguments([
+      "--mode",
+      "tui",
+      "--server-url",
+      "ws://localhost:8787",
+    ]);
     expect(result.mode).toBe("tui");
   });
 
@@ -40,6 +45,12 @@ describe("parseArguments - direct function tests", () => {
     process.cwd = () => "/test/dir";
     const result = parseArguments(["--mode", "server"]);
     expect(result.mode).toBe("server");
+  });
+
+  test("parses --mode with valid 'both' value", () => {
+    process.cwd = () => "/test/dir";
+    const result = parseArguments(["--mode", "both"]);
+    expect(result.mode).toBe("both");
   });
 
   test("defaults mode to 'both' for invalid values", () => {
@@ -50,8 +61,21 @@ describe("parseArguments - direct function tests", () => {
 
   test("parses -m short flag for mode", () => {
     process.cwd = () => "/test/dir";
-    const result = parseArguments(["-m", "tui"]);
+    const result = parseArguments([
+      "-m",
+      "tui",
+      "--server-url",
+      "ws://localhost:8787",
+    ]);
     expect(result.mode).toBe("tui");
+  });
+
+  test("throws when mode is tui without server url", () => {
+    process.cwd = () => "/test/dir";
+
+    expect(() => {
+      parseArguments(["--mode", "tui"]);
+    }).toThrow("TUI mode requires --server-url");
   });
 
   test("parses --config flag with absolute path", () => {
@@ -217,7 +241,7 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.exitCalled).toBe(true);
     expect(parsed.exitCode).toBe(0);
-    expect(parsed.logOutput).toContain("v 0.0.1");
+    expect(parsed.logOutput).toContain("0.4.0");
   });
 
   test("runs helper script with -v and captures exit", async () => {
@@ -226,7 +250,7 @@ describe("parseArguments - real CLI tests via subprocess", () => {
 
     expect(parsed.success).toBe(true);
     expect(parsed.exitCalled).toBe(true);
-    expect(parsed.logOutput).toContain("v 0.0.1");
+    expect(parsed.logOutput).toContain("0.4.0");
   });
 
   test("runs helper script with --help and captures exit", async () => {
@@ -256,6 +280,14 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.result.mode).toBe("server");
   });
 
+  test("runs helper script with --mode both", async () => {
+    const result = await $`bun ${helperScript} --mode both`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.result.mode).toBe("both");
+  });
+
   test("runs helper script with -m tui and --server-url", async () => {
     const result =
       await $`bun ${helperScript} -m tui --server-url ws://localhost:8787`.quiet();
@@ -264,6 +296,14 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.result.mode).toBe("tui");
     expect(parsed.result.serverUrl).toBe("ws://localhost:8787");
+  });
+
+  test("fails helper script when tui mode misses server url", async () => {
+    const result = await $`bun ${helperScript} --mode tui`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBe("TUI mode requires --server-url");
   });
 
   test("runs helper script with custom port", async () => {

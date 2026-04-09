@@ -1,7 +1,7 @@
 import { version } from "@/../package.json" with { type: "json" };
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { isAbsolute, resolve } from "node:path";
-import { isNullish } from "radashi";
+import { isEmpty, isNullish } from "radashi";
 import { withDefault } from "@/libs";
 import { DEFAULT_HOST } from "@constant";
 
@@ -122,6 +122,12 @@ const cliOpts: ParseArgsConfig["options"] = {
 
 type argNames = keyof typeof cliOpts;
 
+const validateBootArguments = (args: BootArguments) => {
+  if (args.mode === "tui" && isEmpty(args.serverUrl.trim())) {
+    throw new Error("TUI mode requires --server-url");
+  }
+};
+
 export const parseArguments = (args: string[]): BootArguments => {
   const parsed = parseArgs({ args, options: cliOpts })
     .values as Partial<ParsedArguments>;
@@ -137,17 +143,21 @@ export const parseArguments = (args: string[]): BootArguments => {
   }
 
   /* --- 整理解析后的参数值 --- */
+
+  // 启动模式
   const mode = withDefault<string>(() => {
     const rawMode = parsed.mode;
-    if (!isNullish(rawMode) && ["tui", "server"].includes(rawMode)) {
+    if (!isNullish(rawMode) && ["tui", "server", "both"].includes(rawMode)) {
       return rawMode;
     }
   }, "both");
 
+  // 配置文件
   const config = withDefault<string>(parsed.config, () => {
     return `${process.cwd()}/config.json`;
   });
 
+  // 项目工作目录
   const workspaceDir = withDefault<string>(
     () => {
       if (parsed.workspace) {
@@ -190,6 +200,8 @@ export const parseArguments = (args: string[]): BootArguments => {
     address,
     port,
   };
+
+  validateBootArguments(bootArgs);
 
   return bootArgs;
 };
