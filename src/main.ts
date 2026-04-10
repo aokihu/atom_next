@@ -9,7 +9,7 @@ import { Core } from "@/core";
 import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService, WatchmanService } from "@/services";
-import { startTuiPlaceholder } from "@/tui";
+import { startTui } from "@/tui";
 
 const startServerApp = async (args: BootstrapResult) => {
   const { cliArgs, config } = args;
@@ -88,14 +88,14 @@ const main = async () => {
 
   if (mode === "tui") {
     // TUI 单独启动时，不再进入任何 Server 相关启动步骤。
-    await startTuiPlaceholder(serverUrl);
+    await startTui(serverUrl);
     return;
   }
 
   const serverStartResult = await startServerApp(args);
 
   if (mode === "both") {
-    await startTuiPlaceholder(serverStartResult.apiUrl);
+    await startTui(serverStartResult.apiUrl);
   }
 };
 

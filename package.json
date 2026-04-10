@@ -2,13 +2,14 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "build:bin": "bun run ./scripts/build.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/react": "^19.2.2",
     "ai": "^6.0.141",
     "radashi": "^12.7.2"
   },
@@ -19,6 +20,13 @@
     "@ai-sdk/deepseek": "^2.0.26",
     "@ai-sdk/openai": "^3.0.50",
     "@ai-sdk/openai-compatible": "^2.0.38",
-    "dotenv": "^17.3.1"
+    "@opentui/core": "^0.1.97",
+    "@opentui/react": "^0.1.97",
+    "dotenv": "^17.3.1",
+    "react": "^19.2.0",
+    "react-devtools-core": "^7.0.1",
+    "web-tree-sitter": "0.25.10",
+    "ws": "^8.18.0",
+    "zustand": "^5.0.12"
   }
 }

@@ -1,40 +1,91 @@
 /**
  * TUI Client
  * @author aokihu <aokihu@gmail.com>
- * @version 0.4.0
+ * @version 0.5.0
  */
 
-const waitForExitInput = () => {
-  return new Promise<void>((resolve) => {
-    const stdin = process.stdin;
+import { createCliRenderer, type CliRendererConfig } from "@opentui/core";
+import { createRoot } from "@opentui/react";
+import { createElement } from "react";
+import { isNullish } from "radashi";
+import { TuiApp } from "./app";
+import { createTuiApiClient, createTuiStore } from "./model";
 
-    const stopWaiting = () => {
-      stdin.off("data", handleInput);
-      if (stdin.isTTY) {
-        stdin.setRawMode?.(false);
-      }
-      stdin.pause();
-      resolve();
-    };
-
-    const handleInput = () => {
-      stopWaiting();
-    };
-
-    if (stdin.isTTY) {
-      stdin.setRawMode?.(true);
-    }
-
-    stdin.resume();
-    stdin.once("data", handleInput);
-  });
+export const buildTuiRendererConfig = (): CliRendererConfig => {
+  return {
+    exitOnCtrlC: false,
+    useMouse: true,
+    autoFocus: true,
+    consoleMode: "disabled",
+    screenMode: "alternate-screen",
+    backgroundColor: "#2E3440",
+    useKittyKeyboard: {
+      disambiguate: true,
+      events: true,
+    },
+  };
 };
 
-export const startTuiPlaceholder = async (serverUrl: string) => {
-  console.log("TUI 已启动");
-  console.log(`当前服务器地址: ${serverUrl}`);
-  console.log("等待任意输入后退出...");
+export const startTui = async (serverUrl: string) => {
+  const renderer = await createCliRenderer(buildTuiRendererConfig());
+  const root = createRoot(renderer);
+  const store = createTuiStore(createTuiApiClient(serverUrl), {
+    serverUrl,
+  });
+  const signalNames: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+  const bootMessage = store.getState().messages[0];
 
-  await waitForExitInput();
+  store.setState({
+    messages: isNullish(bootMessage)
+      ? []
+      : [
+          {
+            ...bootMessage,
+            content: `connected to ${serverUrl}`,
+          },
+        ],
+  });
+
+  let hasClosed = false;
+  let resolveClose!: () => void;
+  const waitForClose = new Promise<void>((resolve) => {
+    resolveClose = resolve;
+  });
+
+  const cleanupSignals = () => {
+    signalNames.forEach((signalName) => {
+      process.off(signalName, handleSignal);
+    });
+  };
+
+  const closeTui = () => {
+    if (hasClosed) {
+      return;
+    }
+
+    hasClosed = true;
+    cleanupSignals();
+    root.unmount();
+    renderer.destroy();
+    resolveClose();
+  };
+
+  const handleSignal = () => {
+    closeTui();
+  };
+
+  signalNames.forEach((signalName) => {
+    process.once(signalName, handleSignal);
+  });
+
+  try {
+    root.render(createElement(TuiApp, { store, onExit: closeTui }));
+    await waitForClose;
+  } finally {
+    if (!hasClosed) {
+      closeTui();
+    }
+  }
+
   process.exit(0);
 };
