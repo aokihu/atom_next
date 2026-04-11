@@ -1,3 +1,10 @@
+/**
+ * Bootstrap CLI
+ * @author aokihu <aokihu@gmail.com>
+ * @version 0.5.1
+ * @description 解析应用启动命令，生成统一的启动参数，并处理帮助信息与版本输出。
+ */
+
 import { version } from "@/../package.json" with { type: "json" };
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { isAbsolute, resolve } from "node:path";
@@ -28,9 +35,7 @@ export type BootArguments = Omit<
 };
 
 /**
- * 解析应用启动命令
- * @version 1.0.0
- * @description 应用启动命令：
+ * CLI 参数说明：
  *              --version[v]    显示版本信息
  *
  *              --help[h]       显示帮助信息
@@ -122,6 +127,10 @@ const cliOpts: ParseArgsConfig["options"] = {
 
 type argNames = keyof typeof cliOpts;
 
+/**
+ * 校验启动参数之间的组合关系。
+ * 这里只处理 CLI 语义，不负责 provider、theme 等业务配置的合法性。
+ */
 const validateBootArguments = (args: BootArguments) => {
   if (args.mode === "tui" && isEmpty(args.serverUrl.trim())) {
     throw new Error("TUI mode requires --server-url");
@@ -144,8 +153,10 @@ const validateBootArguments = (args: BootArguments) => {
 };
 
 export const parseArguments = (args: string[]): BootArguments => {
-  const parsed = parseArgs({ args, options: cliOpts })
-    .values as Partial<ParsedArguments>;
+  const parsed = parseArgs({
+    args,
+    options: cliOpts,
+  }).values as Partial<ParsedArguments>;
 
   if (parsed.version) {
     console.log(version);
@@ -167,11 +178,6 @@ export const parseArguments = (args: string[]): BootArguments => {
     }
   }, "both");
 
-  // 配置文件
-  const config = withDefault<string>(parsed.config, () => {
-    return `${process.cwd()}/config.json`;
-  });
-
   // 项目工作目录
   const workspaceDir = withDefault<string>(
     () => {
@@ -187,6 +193,11 @@ export const parseArguments = (args: string[]): BootArguments => {
       return process.cwd();
     },
   );
+
+  // 配置文件默认跟随 workspace，而不是固定跟随进程当前目录。
+  const config = withDefault<string>(parsed.config, () => {
+    return `${workspaceDir}/config.json`;
+  });
 
   const sandboxDir = withDefault<string>(
     () => {

@@ -1,5 +1,8 @@
 /**
- * 配置文件相关类型
+ * Config Types
+ * @author aokihu <aokihu@gmail.com>
+ * @version 0.5.1
+ * @description 定义 config.json、provider 和 gateway 的类型边界，以及默认配置常量。
  */
 
 /**
@@ -116,20 +119,30 @@ export type SelectedProviderModel<P extends ProviderID = ProviderID> = {
   model: ProviderModelMap[P];
 };
 
-/* Message Gateway 通道配置 */
+/**
+ * Message Gateway 单个通道配置。
+ */
 export type GatewayChannelScheme = {
   source: string;
   enable?: boolean;
   description?: string;
 };
 
+/**
+ * Message Gateway 总配置。
+ */
 export type GatewayConfigScheme = {
   enable: boolean;
   channels: GatewayChannelScheme[];
 };
 
+/**
+ * config.json 的完整结构。
+ */
 export type ConfigFileScheme = {
   version: 2;
+  // 当前 TUI 使用的主题名称
+  theme: string;
   // 模型档位配置，可以三个档位都指向同一个模型
   providerProfiles: ProviderProfiles;
   // LLM 供应商配置
@@ -144,6 +157,7 @@ export type ConfigFileScheme = {
  */
 export const DefaultConfig: ConfigFileScheme = {
   version: 2,
+  theme: "nord",
   providerProfiles: {
     advanced: "deepseek/deepseek-chat",
     balanced: "deepseek/deepseek-chat",

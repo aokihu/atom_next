@@ -9,6 +9,15 @@ import {
   createTuiStore,
   resolveTuiLayout,
 } from "@/tui/model";
+import {
+  BUILTIN_TUI_THEME_NAMES,
+  buildTuiRendererConfig,
+  getBuiltinTuiTheme,
+  getDefaultTuiTheme,
+  getTuiThemeWithPatch,
+  parseTuiThemePatch,
+  resolveTuiTheme,
+} from "@/tui";
 
 describe("tui model", () => {
   test("resolves responsive panel layout", () => {
@@ -201,5 +210,170 @@ describe("tui model", () => {
     expect(userMessage?.content).toBe("hello");
     expect(assistantMessage?.status).toBe(ChatStatus.COMPLETE);
     expect(assistantMessage?.content).toBe("hello world");
+  });
+
+  test("returns builtin nord theme", () => {
+    expect(getBuiltinTuiTheme("nord")).toEqual({
+      background: "#2E3440",
+      panel: "#3B4252",
+      panelMuted: "#434C5E",
+      border: "#4C566A",
+      text: "#ECEFF4",
+      muted: "#D8DEE9",
+      accent: "#88C0D0",
+      info: "#81A1C1",
+      success: "#A3BE8C",
+      warn: "#EBCB8B",
+      danger: "#BF616A",
+      user: "#8FBCBB",
+    });
+  });
+
+  test("exposes builtin theme names for config selection", () => {
+    expect(BUILTIN_TUI_THEME_NAMES).toEqual([
+      "nord",
+      "ocean",
+      "forest",
+      "sunset",
+      "paper",
+    ]);
+  });
+
+  test("returns builtin ocean theme", () => {
+    expect(getBuiltinTuiTheme("ocean")).toEqual({
+      background: "#0B1F2A",
+      panel: "#113346",
+      panelMuted: "#18465F",
+      border: "#2D6F8E",
+      text: "#E8F7FF",
+      muted: "#B9D9E8",
+      accent: "#4FC3F7",
+      info: "#7FDBFF",
+      success: "#72E6A6",
+      warn: "#FFD166",
+      danger: "#FF6B6B",
+      user: "#5EEAD4",
+    });
+  });
+
+  test("parses theme patch with partial tokens", () => {
+    expect(
+      parseTuiThemePatch({
+        background: "#111111",
+        accent: "#222222",
+      }),
+    ).toEqual({
+      background: "#111111",
+      accent: "#222222",
+    });
+  });
+
+  test("throws when theme patch contains unsupported token", () => {
+    expect(() =>
+      parseTuiThemePatch({
+        unknown: "#111111",
+      }),
+    ).toThrow("Unsupported theme token");
+  });
+
+  test("merges theme patch onto current base theme", () => {
+    expect(
+      getTuiThemeWithPatch(getDefaultTuiTheme(), {
+        background: "#101010",
+        text: "#fafafa",
+      }),
+    ).toEqual({
+      ...getDefaultTuiTheme(),
+      background: "#101010",
+      text: "#fafafa",
+    });
+  });
+
+  test("resolves builtin theme from configured name", async () => {
+    const warns: string[] = [];
+    const theme = await resolveTuiTheme({
+      workspace: "/workspace",
+      theme: "nord",
+      readThemeFile: async () => undefined,
+      warn: (message) => {
+        warns.push(message);
+      },
+    });
+
+    expect(theme).toEqual(getDefaultTuiTheme());
+    expect(warns).toEqual([]);
+  });
+
+  test("resolves user theme patch over builtin theme", async () => {
+    const theme = await resolveTuiTheme({
+      workspace: "/workspace",
+      theme: "nord",
+      readThemeFile: async () => ({
+        background: "#101010",
+        user: "#00ff00",
+      }),
+    });
+
+    expect(theme).toEqual({
+      ...getDefaultTuiTheme(),
+      background: "#101010",
+      user: "#00ff00",
+    });
+  });
+
+  test("resolves user theme patch over default theme when builtin theme is missing", async () => {
+    const theme = await resolveTuiTheme({
+      workspace: "/workspace",
+      theme: "custom-forest",
+      readThemeFile: async () => ({
+        panel: "#123456",
+      }),
+    });
+
+    expect(theme).toEqual({
+      ...getDefaultTuiTheme(),
+      panel: "#123456",
+    });
+  });
+
+  test("falls back to default theme when configured theme is missing", async () => {
+    const warns: string[] = [];
+    const theme = await resolveTuiTheme({
+      workspace: "/workspace",
+      theme: "missing",
+      readThemeFile: async () => undefined,
+      warn: (message) => {
+        warns.push(message);
+      },
+    });
+
+    expect(theme).toEqual(getDefaultTuiTheme());
+    expect(warns).toEqual(['Theme "missing" not found, fallback to "nord"']);
+  });
+
+  test("falls back to default theme when theme file is invalid", async () => {
+    const warns: string[] = [];
+    const theme = await resolveTuiTheme({
+      workspace: "/workspace",
+      theme: "broken",
+      readThemeFile: async () => ({
+        accent: "",
+      }),
+      warn: (message) => {
+        warns.push(message);
+      },
+    });
+
+    expect(theme).toEqual(getDefaultTuiTheme());
+    expect(warns[0]).toContain('Theme "broken" is invalid, fallback to "nord"');
+  });
+
+  test("builds renderer config from current theme background", () => {
+    const config = buildTuiRendererConfig({
+      ...getDefaultTuiTheme(),
+      background: "#010203",
+    });
+
+    expect(config.backgroundColor).toBe("#010203");
   });
 });

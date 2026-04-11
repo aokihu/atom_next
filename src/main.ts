@@ -1,6 +1,8 @@
 /**
- * Atom Agent System
- * @version 1.0.0
+ * Atom Main
+ * @author aokihu <aokihu@gmail.com>
+ * @version 0.5.1
+ * @description 应用主入口，负责根据 bootstrap 结果启动 server、tui 或两者组合模式。
  */
 
 import { tryBootstrap } from "@/bootstrap";
@@ -69,11 +71,14 @@ const startServerApp = async (args: BootstrapResult) => {
   // both 模式下 TUI 需要连接这个真实地址，而不是 CLI 里预设的 serverUrl。
   return {
     apiUrl,
+    theme: runtime.getThemeName(),
+    workspace: runtime.getWorkspace(),
   };
 };
 
 /**
- * 主函数入口
+ * 主函数入口。
+ * 这里只负责按模式分流，不承担配置解析或主题解析细节。
  */
 const main = async () => {
   /* ----- 启动器入口 ----- */
@@ -88,14 +93,22 @@ const main = async () => {
 
   if (mode === "tui") {
     // TUI 单独启动时，不再进入任何 Server 相关启动步骤。
-    await startTui(serverUrl);
+    await startTui({
+      serverUrl,
+      workspace: args.cliArgs.workspace,
+      theme: args.config.theme,
+    });
     return;
   }
 
   const serverStartResult = await startServerApp(args);
 
   if (mode === "both") {
-    await startTui(serverStartResult.apiUrl);
+    await startTui({
+      serverUrl: serverStartResult.apiUrl,
+      workspace: serverStartResult.workspace,
+      theme: serverStartResult.theme,
+    });
   }
 };
 

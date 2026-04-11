@@ -1,5 +1,8 @@
 /**
- * 解析配置文件
+ * Bootstrap Config Parser
+ * @author aokihu <aokihu@gmail.com>
+ * @version 0.5.1
+ * @description 解析 config.json，负责校验结构、填充默认值，并对 provider/model 的命名问题给出温和告警。
  */
 
 import type { PathLike } from "bun";
@@ -20,15 +23,23 @@ import type {
   ProvidersConfigScheme,
 } from "@/types/config";
 
-/* ==================== */
+/* -------------------- */
 /* Validate Helpers     */
-/* ==================== */
+/* -------------------- */
 
 /**
  * 统一生成配置错误，确保报错路径可以直接对应到配置项。
  */
 const buildConfigError = (path: string, message: string) => {
   return new Error(`Invalid ${path}: ${message}`);
+};
+
+/**
+ * 生成配置告警。
+ * 这类问题不会阻断启动，但会提示用户相关 provider/model 可能写错了。
+ */
+const warnConfigIssue = (path: string, message: string) => {
+  console.warn(`[config warning] ${path}: ${message}`);
 };
 
 /**
@@ -72,9 +83,9 @@ const isProviderModelID = (value: string): value is ProviderModelID => {
   return isProviderModel(model, provider);
 };
 
-/* ==================== */
+/* -------------------- */
 /* Config Parsers       */
-/* ==================== */
+/* -------------------- */
 
 /**
  * 解析 providerProfiles 配置。
@@ -100,11 +111,20 @@ const parseProviderProfiles = (raw: unknown): ProviderProfiles => {
       return defaultProfiles[level];
     }
 
-    if (!isString(value) || value.trim() === "" || !isProviderModelID(value)) {
-      throw buildConfigError(
+    if (!isString(value) || value.trim() === "") {
+      warnConfigIssue(
         `config.providerProfiles.${level}`,
-        "expected a valid Provider/Model id",
+        `expected a non-empty Provider/Model id, fallback to ${defaultProfiles[level]}`,
       );
+      return defaultProfiles[level];
+    }
+
+    if (!isProviderModelID(value)) {
+      warnConfigIssue(
+        `config.providerProfiles.${level}`,
+        `provider/model may be invalid (${value}), fallback to ${defaultProfiles[level]}`,
+      );
+      return defaultProfiles[level];
     }
 
     return value;
@@ -155,14 +175,17 @@ const parseProviderDefinition = <P extends ProviderID>(
   }
 
   const models = providerConfig.models.map((model, index) => {
-    if (
-      !isString(model) ||
-      model.trim() === "" ||
-      !isProviderModel(model, provider)
-    ) {
+    if (!isString(model) || model.trim() === "") {
       throw buildConfigError(
         `config.providers.${provider}.models[${index}]`,
-        "expected a valid model name",
+        "expected a non-empty string",
+      );
+    }
+
+    if (!isProviderModel(model, provider)) {
+      warnConfigIssue(
+        `config.providers.${provider}.models[${index}]`,
+        `model name may be invalid (${model}), it will be handled later by Transport`,
       );
     }
 
@@ -202,7 +225,7 @@ const parseProviderDefinition = <P extends ProviderID>(
  * 未知 provider 会被忽略，已知 provider 则按严格规则校验。
  */
 const parseProviders = (raw: unknown): ProvidersConfigScheme => {
-  if (typeof raw === "undefined") {
+  if (isUndefined(raw)) {
     return {};
   }
 
@@ -228,10 +251,46 @@ const parseProviders = (raw: unknown): ProvidersConfigScheme => {
         "openaiCompatible",
         value,
       );
+      return;
     }
+
+    warnConfigIssue(
+      `config.providers.${key}`,
+      "provider name may be invalid, ignore current provider config",
+    );
   });
 
   return providers;
+};
+
+/**
+ * 解析当前 TUI 主题名。
+ * 这里只校验配置值本身是否可用，不负责校验主题是否真实存在。
+ */
+const parseThemeName = (raw: unknown): string => {
+  const defaultTheme = DefaultConfig.theme;
+
+  if (isUndefined(raw)) {
+    return defaultTheme;
+  }
+
+  if (!isString(raw) || raw.trim() === "") {
+    throw buildConfigError("config.theme", "expected a non-empty string");
+  }
+
+  return raw;
+};
+
+/**
+ * 解析主题配置字段。
+ * 优先使用当前字段 `theme`，同时兼容旧字段 `themeName`。
+ */
+const parseThemeConfig = (config: Record<string, unknown>) => {
+  if (!isUndefined(config.theme)) {
+    return parseThemeName(config.theme);
+  }
+
+  return parseThemeName(config.themeName);
 };
 
 /**
@@ -336,6 +395,7 @@ const parseConfig = (raw: unknown): ConfigFileScheme => {
 
   return {
     version: 2,
+    theme: parseThemeConfig(config),
     providerProfiles: parseProviderProfiles(config.providerProfiles),
     providers: parseProviders(config.providers),
     gateway: parseGatewayConfig(config.gateway),

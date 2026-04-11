@@ -95,6 +95,7 @@ describe("parseArguments - direct function tests", () => {
     process.cwd = () => "/test/dir";
     const result = parseArguments(["--workspace", "/my/workspace"]);
     expect(result.workspace).toBe("/my/workspace");
+    expect(result.config).toBe("/my/workspace/config.json");
     expect(result.sandbox).toBe("/my/workspace/sandbox");
   });
 
@@ -102,6 +103,7 @@ describe("parseArguments - direct function tests", () => {
     process.cwd = () => "/test/dir";
     const result = parseArguments(["--workspace", "./relative"]);
     expect(result.workspace).toBe("/test/dir/relative");
+    expect(result.config).toBe("/test/dir/relative/config.json");
     expect(result.sandbox).toBe("/test/dir/relative/sandbox");
   });
 
@@ -365,6 +367,16 @@ describe("parseArguments - real CLI tests via subprocess", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.result.config).toBe("config.json");
     expect(parsed.result.workspace).toBe("/my/workspace");
+  });
+
+  test("runs helper script with workspace and uses workspace config by default", async () => {
+    const result =
+      await $`bun ${helperScript} --workspace /my/workspace`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.result.workspace).toBe("/my/workspace");
+    expect(parsed.result.config).toBe("/my/workspace/config.json");
   });
 
   test("runs helper script with sandbox", async () => {

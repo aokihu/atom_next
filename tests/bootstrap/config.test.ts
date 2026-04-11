@@ -1,6 +1,6 @@
 //@ts-nockeck
 // @ts-nocheck
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { DefaultConfig } from "@/types/config";
 import { parseConfigFile } from "@/bootstrap/config";
 
 const tempDirs: string[] = [];
+const originalWarn = console.warn;
 
 const createTempConfigFile = async (content?: string) => {
   const dir = await mkdtemp(join(tmpdir(), "atom-next-config-"));
@@ -26,6 +27,10 @@ afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
+});
+
+beforeEach(() => {
+  console.warn = originalWarn;
 });
 
 describe("parseConfigFile", () => {
@@ -81,6 +86,7 @@ describe("parseConfigFile", () => {
 
     expect(await parseConfigFile(file)).toEqual({
       version: 2,
+      theme: "nord",
       providerProfiles: {
         advanced: "deepseek/deepseek-reasoner",
         balanced: "openai/gpt-5",
@@ -144,7 +150,58 @@ describe("parseConfigFile", () => {
     });
   });
 
-  test("throws when providerProfiles contains an invalid provider model id", async () => {
+  test("parses theme when it is a valid string", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        theme: "ocean",
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      theme: "ocean",
+    });
+  });
+
+  test("supports legacy themeName field", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        themeName: "paper",
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      theme: "paper",
+    });
+  });
+
+  test("throws when theme is an empty string", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        theme: "",
+      }),
+    );
+
+    await expect(parseConfigFile(file)).rejects.toThrow("Invalid config.theme");
+  });
+
+  test("throws when theme is not a string", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        theme: true,
+      }),
+    );
+
+    await expect(parseConfigFile(file)).rejects.toThrow("Invalid config.theme");
+  });
+
+  test("falls back to default when providerProfiles contains an invalid provider model id", async () => {
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((item) => String(item)).join(" "));
+    };
+
     const file = await createTempConfigFile(
       JSON.stringify({
         providerProfiles: {
@@ -153,9 +210,15 @@ describe("parseConfigFile", () => {
       }),
     );
 
-    await expect(parseConfigFile(file)).rejects.toThrow(
-      "Invalid config.providerProfiles.advanced",
-    );
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      providerProfiles: {
+        advanced: DefaultConfig.providerProfiles.advanced,
+        balanced: DefaultConfig.providerProfiles.balanced,
+        basic: DefaultConfig.providerProfiles.basic,
+      },
+    });
+    expect(warnings[0]).toContain("config.providerProfiles.advanced");
   });
 
   test("ignores unknown provider keys", async () => {
@@ -203,21 +266,35 @@ describe("parseConfigFile", () => {
     );
   });
 
-  test("throws when provider models are invalid", async () => {
+  test("warns but keeps provider models when model names are unfamiliar", async () => {
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((item) => String(item)).join(" "));
+    };
+
     const file = await createTempConfigFile(
       JSON.stringify({
         providers: {
           openai: {
             apiKeyEnv: "OPENAI_API_KEY",
-            models: ["deepseek-chat"],
+            models: ["future-openai-model"],
           },
         },
       }),
     );
 
-    await expect(parseConfigFile(file)).rejects.toThrow(
-      "Invalid config.providers.openai.models[0]",
-    );
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      providers: {
+        openai: {
+          apiKeyEnv: "OPENAI_API_KEY",
+          models: ["future-openai-model"],
+          baseUrl: undefined,
+          options: undefined,
+        },
+      },
+    });
+    expect(warnings[0]).toContain("config.providers.openai.models[0]");
   });
 
   test("throws when provider baseUrl is invalid", async () => {

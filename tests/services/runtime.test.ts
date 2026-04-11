@@ -9,6 +9,7 @@ import { WatchmanPhase } from "@/services/watchman/types";
 const buildConfig = (): ConfigFileScheme => {
   return {
     version: 2,
+    theme: "ocean",
     providerProfiles: {
       advanced: "deepseek/deepseek-chat",
       balanced: "openai/gpt-5",
@@ -78,6 +79,14 @@ describe("RuntimeService", () => {
     runtime.loadConfig(config);
 
     expect(runtime.getProviderProfiles()).toEqual(config.providerProfiles);
+  });
+
+  test("returns theme name after loading config", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig(buildConfig());
+
+    expect(runtime.getThemeName()).toBe("ocean");
   });
 
   test("returns selected deepseek model by level", () => {

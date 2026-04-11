@@ -1,7 +1,8 @@
 /**
- * 系统运行时服务
+ * Runtime Service
  * @author aokihu <aokihu@gmail.com>
- * @version 1.0.0
+ * @version 0.5.1
+ * @description 统一保存启动参数、配置快照和运行期共享状态，供 Core、TUI 与其他服务读取。
  */
 import { isUndefined } from "radashi";
 import type { BootArguments } from "@/bootstrap/cli";
@@ -26,9 +27,9 @@ type SelectedProviderModelConfig = {
 };
 
 export class RuntimeService extends BaseService {
-  /* =================== */
-  /*      Properties     */
-  /* =================== */
+  /* ------------------- */
+  /* Properties          */
+  /* ------------------- */
 
   #arguments: Map<keyof BootArguments, BootArguments[keyof BootArguments]>;
   #config: ConfigFileScheme;
@@ -36,9 +37,9 @@ export class RuntimeService extends BaseService {
   #userAgentPrompt: string;
   #userAgentPromptStatus: WatchmanStatus;
 
-  /* =================== */
-  /*      Constructor    */
-  /* =================== */
+  /* ------------------- */
+  /* Constructor         */
+  /* ------------------- */
   constructor() {
     super();
     this._name = "runtime";
@@ -182,6 +183,13 @@ export class RuntimeService extends BaseService {
    */
   public getProviderProfiles(): ProviderProfiles {
     return structuredClone(this.#config.providerProfiles);
+  }
+
+  /**
+   * 获取当前 TUI 主题名
+   */
+  public getThemeName(): string {
+    return this.#config.theme;
   }
 
   /**

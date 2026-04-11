@@ -1,0 +1,14 @@
+{
+  "background": "#F4EFE6",
+  "panel": "#E7DECF",
+  "panelMuted": "#DDD1BF",
+  "border": "#B8AA94",
+  "text": "#2D241C",
+  "muted": "#6F6254",
+  "accent": "#3C7A89",
+  "info": "#5C8D89",
+  "success": "#6A994E",
+  "warn": "#D4A373",
+  "danger": "#BC4749",
+  "user": "#7F5539"
+}

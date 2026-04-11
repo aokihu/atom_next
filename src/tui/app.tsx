@@ -1,3 +1,10 @@
+/**
+ * TUI App
+ * @author aokihu <aokihu@gmail.com>
+ * @version 0.5.1
+ * @description 负责渲染 TUI 主界面，包括会话面板、消息列表、输入区和状态面板。
+ */
+
 import { useEffect, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { isEmpty, isNullish, isString } from "radashi";
@@ -9,56 +16,52 @@ import {
   type TuiMessage,
   type TuiStore,
 } from "./model";
+import type { TuiThemeScheme } from "./theme";
 
-const TUI_THEME = {
-  background: "#2E3440",
-  panel: "#3B4252",
-  panelMuted: "#434C5E",
-  border: "#4C566A",
-  text: "#ECEFF4",
-  muted: "#D8DEE9",
-  accent: "#88C0D0",
-  info: "#81A1C1",
-  success: "#A3BE8C",
-  warn: "#EBCB8B",
-  danger: "#BF616A",
-  user: "#8FBCBB",
-} as const;
+/* -------------------- */
+/* Component Props      */
+/* -------------------- */
 
 type TuiAppProps = {
   store: TuiStore;
   onExit: () => void;
+  // 当前启动时选中的完整主题对象。
+  theme: TuiThemeScheme;
 };
 
-const parseMessageTone = (message: TuiMessage) => {
+/**
+ * 不同消息角色使用不同的视觉语义，
+ * 但具体颜色全部从外部主题读取，组件本身不再持有硬编码颜色。
+ */
+const parseMessageTone = (message: TuiMessage, theme: TuiThemeScheme) => {
   if (message.role === "user") {
     return {
-      borderColor: TUI_THEME.user,
-      titleColor: TUI_THEME.user,
-      backgroundColor: TUI_THEME.panelMuted,
+      borderColor: theme.user,
+      titleColor: theme.user,
+      backgroundColor: theme.panelMuted,
     };
   }
 
   if (message.role === "error") {
     return {
-      borderColor: TUI_THEME.danger,
-      titleColor: TUI_THEME.danger,
-      backgroundColor: TUI_THEME.panel,
+      borderColor: theme.danger,
+      titleColor: theme.danger,
+      backgroundColor: theme.panel,
     };
   }
 
   if (message.role === "assistant") {
     return {
-      borderColor: TUI_THEME.accent,
-      titleColor: TUI_THEME.accent,
-      backgroundColor: TUI_THEME.panel,
+      borderColor: theme.accent,
+      titleColor: theme.accent,
+      backgroundColor: theme.panel,
     };
   }
 
   return {
-    borderColor: TUI_THEME.info,
-    titleColor: TUI_THEME.info,
-    backgroundColor: TUI_THEME.panel,
+    borderColor: theme.info,
+    titleColor: theme.info,
+    backgroundColor: theme.panel,
   };
 };
 
@@ -90,6 +93,10 @@ const parseMessageContent = (message: TuiMessage) => {
   return "";
 };
 
+/**
+ * 左侧会话面板展示当前连接和终端上下文，
+ * 主要用于调试 TUI 当前的运行状态。
+ */
 const SessionPanel = ({
   serverUrl,
   sessionId,
@@ -99,6 +106,7 @@ const SessionPanel = ({
   terminalWidth,
   terminalHeight,
   inputFocused,
+  theme,
 }: {
   serverUrl: string;
   sessionId?: string;
@@ -108,6 +116,7 @@ const SessionPanel = ({
   terminalWidth: number;
   terminalHeight: number;
   inputFocused: boolean;
+  theme: TuiThemeScheme;
 }) => {
   return (
     <box
@@ -117,33 +126,41 @@ const SessionPanel = ({
         border: true,
         padding: 1,
         flexDirection: "column",
-        backgroundColor: TUI_THEME.panel,
-        borderColor: TUI_THEME.border,
+        backgroundColor: theme.panel,
+        borderColor: theme.border,
       }}
     >
-      <text fg={TUI_THEME.muted}>{`server: ${serverUrl}`}</text>
-      <text fg={TUI_THEME.text}>{`session: ${sessionId ?? "pending"}`}</text>
-      <text fg={TUI_THEME.text}>{`phase: ${sessionPhase}`}</text>
-      <text fg={TUI_THEME.text}>{`status: ${sessionStatus}`}</text>
-      <text fg={TUI_THEME.text}>{`layout: ${layoutLabel}`}</text>
-      <text fg={TUI_THEME.text}>{`focus: ${inputFocused ? "input" : "messages"}`}</text>
-      <text fg={TUI_THEME.muted}>{`terminal: ${terminalWidth}x${terminalHeight}`}</text>
+      <text fg={theme.muted}>{`server: ${serverUrl}`}</text>
+      <text fg={theme.text}>{`session: ${sessionId ?? "pending"}`}</text>
+      <text fg={theme.text}>{`phase: ${sessionPhase}`}</text>
+      <text fg={theme.text}>{`status: ${sessionStatus}`}</text>
+      <text fg={theme.text}>{`layout: ${layoutLabel}`}</text>
+      <text fg={theme.text}>
+        {`focus: ${inputFocused ? "input" : "messages"}`}
+      </text>
+      <text fg={theme.muted}>{`terminal: ${terminalWidth}x${terminalHeight}`}</text>
     </box>
   );
 };
 
+/**
+ * 右侧状态面板展示提交、轮询和错误等即时状态，
+ * 方便在调试阶段观察当前 TUI 的动作反馈。
+ */
 const StatusPanel = ({
   activeChatStatus,
   isSubmitting,
   isPolling,
   statusText,
   errorText,
+  theme,
 }: {
   activeChatStatus?: string;
   isSubmitting: boolean;
   isPolling: boolean;
   statusText: string;
   errorText: string;
+  theme: TuiThemeScheme;
 }) => {
   return (
     <box
@@ -153,25 +170,31 @@ const StatusPanel = ({
         border: true,
         padding: 1,
         flexDirection: "column",
-        backgroundColor: TUI_THEME.panel,
-        borderColor: TUI_THEME.border,
+        backgroundColor: theme.panel,
+        borderColor: theme.border,
       }}
     >
-      <text fg={TUI_THEME.text}>{`chat: ${activeChatStatus ?? "idle"}`}</text>
-      <text fg={TUI_THEME.text}>{`submitting: ${isSubmitting ? "yes" : "no"}`}</text>
-      <text fg={TUI_THEME.text}>{`polling: ${isPolling ? "yes" : "no"}`}</text>
-      <text fg={TUI_THEME.muted}>{`note: ${statusText}`}</text>
-      <text fg={isEmpty(errorText.trim()) ? TUI_THEME.muted : TUI_THEME.danger}>
+      <text fg={theme.text}>{`chat: ${activeChatStatus ?? "idle"}`}</text>
+      <text fg={theme.text}>
+        {`submitting: ${isSubmitting ? "yes" : "no"}`}
+      </text>
+      <text fg={theme.text}>{`polling: ${isPolling ? "yes" : "no"}`}</text>
+      <text fg={theme.muted}>{`note: ${statusText}`}</text>
+      <text fg={isEmpty(errorText.trim()) ? theme.muted : theme.danger}>
         {`error: ${isEmpty(errorText.trim()) ? "none" : errorText}`}
       </text>
-      <text fg={TUI_THEME.info}>Enter send</text>
-      <text fg={TUI_THEME.info}>Tab switch panel</text>
-      <text fg={TUI_THEME.info}>Ctrl+C exit</text>
+      <text fg={theme.info}>Enter send</text>
+      <text fg={theme.info}>Tab switch panel</text>
+      <text fg={theme.info}>Ctrl+C exit</text>
     </box>
   );
 };
 
-export const TuiApp = ({ store, onExit }: TuiAppProps) => {
+/**
+ * TUI 根组件只负责读取 store 并渲染界面，
+ * 颜色语义和主题 token 都从启动时注入的 theme 统一获取。
+ */
+export const TuiApp = ({ store, onExit, theme }: TuiAppProps) => {
   const serverUrl = store((state) => state.serverUrl);
   const sessionId = store((state) => state.sessionId);
   const sessionPhase = store((state) => state.sessionPhase);
@@ -221,9 +244,10 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
         flexDirection: "row",
         padding: 1,
         gap: 1,
-        backgroundColor: TUI_THEME.background,
+        backgroundColor: theme.background,
       }}
     >
+      {/* 左侧信息面板按布局断点按需显示，避免窄终端压缩主交互区。 */}
       {layout.showLeftPanel ? (
         <SessionPanel
           serverUrl={serverUrl}
@@ -234,6 +258,7 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
           terminalWidth={width}
           terminalHeight={height}
           inputFocused={inputFocused}
+          theme={theme}
         />
       ) : null}
 
@@ -250,8 +275,8 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
             flexGrow: 1,
             border: true,
             padding: 1,
-            backgroundColor: TUI_THEME.panel,
-            borderColor: TUI_THEME.border,
+            backgroundColor: theme.panel,
+            borderColor: theme.border,
           }}
         >
           <scrollbox
@@ -260,27 +285,27 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
             stickyStart="bottom"
             style={{
               rootOptions: {
-                backgroundColor: TUI_THEME.panel,
+                backgroundColor: theme.panel,
               },
               wrapperOptions: {
-                backgroundColor: TUI_THEME.panel,
+                backgroundColor: theme.panel,
               },
               viewportOptions: {
-                backgroundColor: TUI_THEME.panel,
+                backgroundColor: theme.panel,
               },
               contentOptions: {
-                backgroundColor: TUI_THEME.panel,
+                backgroundColor: theme.panel,
               },
               scrollbarOptions: {
                 trackOptions: {
-                  foregroundColor: TUI_THEME.accent,
-                  backgroundColor: TUI_THEME.border,
+                  foregroundColor: theme.accent,
+                  backgroundColor: theme.border,
                 },
               },
             }}
           >
             {messages.map((message) => {
-              const tone = parseMessageTone(message);
+              const tone = parseMessageTone(message, theme);
 
               return (
                 <box
@@ -296,13 +321,14 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
                   }}
                 >
                   <text fg={tone.titleColor}>{parseMessageTitle(message)}</text>
-                  <text fg={TUI_THEME.text} content={parseMessageContent(message)} />
+                  <text fg={theme.text} content={parseMessageContent(message)} />
                 </box>
               );
             })}
           </scrollbox>
         </box>
 
+        {/* 输入区和消息区共用同一份主题 token，这样切换主题时视觉风格能整体保持一致。 */}
         <box
           title={inputFocused ? "Input" : "Input · press Tab to focus"}
           style={{
@@ -310,8 +336,8 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
             height: 3,
             paddingLeft: 1,
             paddingRight: 1,
-            backgroundColor: TUI_THEME.panelMuted,
-            borderColor: inputFocused ? TUI_THEME.accent : TUI_THEME.border,
+            backgroundColor: theme.panelMuted,
+            borderColor: inputFocused ? theme.accent : theme.border,
           }}
         >
           <input
@@ -337,6 +363,7 @@ export const TuiApp = ({ store, onExit }: TuiAppProps) => {
           isPolling={isPolling}
           statusText={statusText}
           errorText={errorText}
+          theme={theme}
         />
       ) : null}
     </box>
