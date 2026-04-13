@@ -1,9 +1,10 @@
-import type { UUID, ISOTimeString, EmptyString } from "@/types";
+import type { UUID, ISOTimeString, EmptyString, IntentRequest } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import { TaskSource, type TaskItem } from "@/types/task";
 import type { PathLike } from "bun";
 import { sleep } from "radashi";
+import { parseIntentRequests } from "./intent-request";
 
 const WATCHMAN_WAIT_INTERVAL = 100;
 
@@ -221,5 +222,7 @@ export class Runtime {
    * 解析LLM返回的Request请求
    * @param requestText LLM返回的Request请求
    */
-  public parseLLMRequest(requestText: string) {}
+  public parseLLMRequest(requestText: string): IntentRequest[] {
+    return parseIntentRequests(requestText);
+  }
 }

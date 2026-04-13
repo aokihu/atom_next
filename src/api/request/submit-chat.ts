@@ -3,7 +3,7 @@
  * @description 负责将 submit chat 的原始 JSON 解析成内部请求结构
  */
 
-import type { ChatSubmissionBody } from "@/types/request";
+import type { ChatSubmissionBody } from "@/types/intent-request";
 import type { TaskChannel, TaskPayload } from "@/types/task";
 import { isPlainObject, isUndefined } from "radashi";
 import { buildError, ErrorCause } from "@/libs";

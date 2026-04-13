@@ -3,7 +3,7 @@
  * @description
  * 对外暴露稳定的类型入口，避免业务代码跨多个类型文件来回跳转。
  * 这里按领域分组导出，阅读顺序保持为：
- * primitive -> task -> chat -> session -> event -> request
+ * primitive -> task -> chat -> session -> event -> intent-request
  */
 
 /* ==================== */
@@ -84,12 +84,30 @@ export type {
 } from "./event";
 
 /* ==================== */
-/* Request Types        */
+/* Intent Request Types */
 /* ==================== */
 
 export type {
   ChatSubmissionBody,
-} from "./request";
+  IntentRequest,
+  SearchMemoryIntentRequestParams,
+  SaveMemoryIntentRequestParams,
+  LoadSkillIntentRequestParams,
+  FollowUpIntentRequestParams,
+  SearchMemoryIntentRequest,
+  SaveMemoryIntentRequest,
+  LoadSkillIntentRequest,
+  FollowUpIntentRequest,
+} from "./intent-request";
+
+export {
+  IntentRequestType,
+  IntentRequestMemoryScope,
+  INTENT_REQUEST_TYPES,
+  INTENT_REQUEST_MEMORY_SCOPES,
+  isIntentRequestType,
+  isIntentRequestMemoryScope,
+} from "./intent-request";
 
 /* ==================== */
 /* Config Types         */

@@ -11,7 +11,7 @@ import type {
   ChatEnqueuedEventPayload,
   ChatFailedEventPayload,
 } from "@/types/event";
-import type { ChatSubmissionBody } from "@/types/request";
+import type { ChatSubmissionBody } from "@/types/intent-request";
 import { ChatEvents } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { EventEmitter } from "node:events";
