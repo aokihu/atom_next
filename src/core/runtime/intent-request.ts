@@ -1,16 +1,21 @@
 import type {
   FollowUpIntentRequest,
   IntentRequest,
+  IntentRequestDispatchResult,
   LoadSkillIntentRequest,
   SaveMemoryIntentRequest,
   SearchMemoryIntentRequest,
 } from "@/types";
 import {
+  IntentRequestDispatchStatus,
   IntentRequestType,
   isIntentRequestMemoryScope,
   isIntentRequestType,
 } from "@/types";
 import { isEmpty, isNumber, isString } from "radashi";
+import { checkIntentRequestSafety } from "./intent-request-safety";
+
+export { checkIntentRequestSafety } from "./intent-request-safety";
 
 type RawIntentRequestParams = Record<string, string>;
 
@@ -291,6 +296,87 @@ const parseTypedIntentRequest = (
     case IntentRequestType.FOLLOW_UP:
       return parseFollowUpIntentRequest(intent, params);
   }
+};
+
+const createUnimplementedDispatchResult = (
+  request: IntentRequest,
+  message: string,
+): IntentRequestDispatchResult => {
+  return {
+    request,
+    status: IntentRequestDispatchStatus.UNIMPLEMENTED,
+    message,
+  };
+};
+
+const dispatchSearchMemoryIntentRequest = (
+  request: SearchMemoryIntentRequest,
+) => {
+  // Placeholder:
+  // SEARCH_MEMORY 的真实记忆检索和 Context 回灌能力还未接入，
+  // 当前阶段只保留分发入口，后续在记忆模块落地后替换这里。
+  return createUnimplementedDispatchResult(
+    request,
+    "SEARCH_MEMORY dispatch is reserved but not implemented yet",
+  );
+};
+
+const dispatchSaveMemoryIntentRequest = (
+  request: SaveMemoryIntentRequest,
+) => {
+  // Placeholder:
+  // SAVE_MEMORY 的真实记忆持久化能力还未接入，
+  // 当前阶段只保留分发入口，后续在记忆模块落地后替换这里。
+  return createUnimplementedDispatchResult(
+    request,
+    "SAVE_MEMORY dispatch is reserved but not implemented yet",
+  );
+};
+
+const dispatchLoadSkillIntentRequest = (
+  request: LoadSkillIntentRequest,
+) => {
+  // Placeholder:
+  // LOAD_SKILL 的真实技能加载能力还未接入，
+  // 当前阶段只保留分发入口，后续在技能模块落地后替换这里。
+  return createUnimplementedDispatchResult(
+    request,
+    "LOAD_SKILL dispatch is reserved but not implemented yet",
+  );
+};
+
+const dispatchFollowUpIntentRequest = (
+  request: FollowUpIntentRequest,
+) => {
+  // Placeholder:
+  // FOLLOW_UP 属于 0.8 目标2的连续会话能力，
+  // 当前阶段明确不实现具体续会话逻辑，只保留分发入口。
+  return createUnimplementedDispatchResult(
+    request,
+    "FOLLOW_UP dispatch is reserved for milestone 0.8 goal 2",
+  );
+};
+
+/**
+ * 分发安全通过的 Intent Request。
+ * @description
+ * 当前阶段只实现标准化分发结果，尚未接入具体业务动作。
+ */
+export const dispatchIntentRequests = (
+  requests: IntentRequest[],
+): IntentRequestDispatchResult[] => {
+  return requests.map((request) => {
+    switch (request.request) {
+      case IntentRequestType.SEARCH_MEMORY:
+        return dispatchSearchMemoryIntentRequest(request);
+      case IntentRequestType.SAVE_MEMORY:
+        return dispatchSaveMemoryIntentRequest(request);
+      case IntentRequestType.LOAD_SKILL:
+        return dispatchLoadSkillIntentRequest(request);
+      case IntentRequestType.FOLLOW_UP:
+        return dispatchFollowUpIntentRequest(request);
+    }
+  });
 };
 
 /**

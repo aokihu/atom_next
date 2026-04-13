@@ -2,7 +2,11 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 
-import { parseIntentRequests } from "@/core/runtime";
+import {
+  checkIntentRequestSafety,
+  dispatchIntentRequests,
+  parseIntentRequests,
+} from "@/core/runtime";
 
 describe("parseIntentRequests", () => {
   test("parses search memory request with comma in param value", () => {
@@ -166,6 +170,75 @@ describe("parseIntentRequests", () => {
         params: {
           words: "skill",
         },
+      },
+    ]);
+  });
+
+  test("rejects follow up request when runtime context mismatches", () => {
+    const requests = parseIntentRequests(
+      '[FOLLOW_UP,"",sessionId=session-2;chatId=chat-1]',
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests).toHaveLength(1);
+    expect(result.rejectedRequests[0]?.code).toBe(
+      "follow_up_session_mismatch",
+    );
+  });
+
+  test("rejects load skill request when skill name is unsafe", () => {
+    const requests = parseIntentRequests(
+      '[LOAD_SKILL, "需要查看技能说明", skill=../secret]',
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests).toHaveLength(1);
+    expect(result.rejectedRequests[0]?.code).toBe("skill_name_invalid");
+  });
+
+  test("dispatches safe requests into explicit placeholder results", () => {
+    const requests = parseIntentRequests(`
+[SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
+[FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
+    `);
+    const safetyResult = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+    const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
+
+    expect(dispatchResults).toEqual([
+      {
+        request: {
+          request: "SEARCH_MEMORY",
+          intent: "搜索与Skill相关的记忆",
+          params: {
+            words: "skill,memory",
+            limit: 10,
+          },
+        },
+        status: "unimplemented",
+        message: "SEARCH_MEMORY dispatch is reserved but not implemented yet",
+      },
+      {
+        request: {
+          request: "FOLLOW_UP",
+          intent: "",
+          params: {
+            sessionId: "session-1",
+            chatId: "chat-1",
+          },
+        },
+        status: "unimplemented",
+        message: "FOLLOW_UP dispatch is reserved for milestone 0.8 goal 2",
       },
     ]);
   });

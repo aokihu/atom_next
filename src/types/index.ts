@@ -98,11 +98,18 @@ export type {
   SaveMemoryIntentRequest,
   LoadSkillIntentRequest,
   FollowUpIntentRequest,
+  IntentRequestSafetyContext,
+  RejectedIntentRequest,
+  IntentRequestSafetyResult,
+  IntentRequestDispatchResult,
+  IntentRequestHandleResult,
 } from "./intent-request";
 
 export {
   IntentRequestType,
   IntentRequestMemoryScope,
+  IntentRequestSafetyIssueCode,
+  IntentRequestDispatchStatus,
   INTENT_REQUEST_TYPES,
   INTENT_REQUEST_MEMORY_SCOPES,
   isIntentRequestType,

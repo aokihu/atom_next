@@ -1,10 +1,23 @@
-import type { UUID, ISOTimeString, EmptyString, IntentRequest } from "@/types";
+import type {
+  UUID,
+  ISOTimeString,
+  EmptyString,
+  IntentRequestHandleResult,
+  IntentRequestSafetyContext,
+  RejectedIntentRequest,
+  IntentRequestDispatchResult,
+} from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import { TaskSource, type TaskItem } from "@/types/task";
+import { IntentRequestSafetyIssueCode } from "@/types";
 import type { PathLike } from "bun";
 import { sleep } from "radashi";
-import { parseIntentRequests } from "./intent-request";
+import {
+  checkIntentRequestSafety,
+  dispatchIntentRequests,
+  parseIntentRequests,
+} from "./intent-request";
 
 const WATCHMAN_WAIT_INTERVAL = 100;
 
@@ -107,6 +120,51 @@ export class Runtime {
       .filter((p) => p.type === "text")
       .map((p) => p.data)
       .join("\n");
+  }
+
+  /**
+   * 构造 Intent Request 安全检查上下文。
+   * @description
+   * 当前没有激活任务时，无法安全地校验会话绑定信息。
+   */
+  #createIntentRequestSafetyContext(): IntentRequestSafetyContext | null {
+    if (!this.#currentTask) {
+      return null;
+    }
+
+    return {
+      sessionId: this.#currentTask.sessionId,
+      chatId: this.#currentTask.chatId,
+    };
+  }
+
+  /**
+   * 记录被拒绝的 Intent Request。
+   */
+  #reportRejectedIntentRequests(rejectedRequests: RejectedIntentRequest[]) {
+    for (const rejectedRequest of rejectedRequests) {
+      console.warn(
+        "[Intent Request] rejected %s: %s",
+        rejectedRequest.request.request,
+        rejectedRequest.reason,
+      );
+    }
+  }
+
+  /**
+   * 记录分发结果。
+   */
+  #reportIntentRequestDispatchResults(
+    dispatchResults: IntentRequestDispatchResult[],
+  ) {
+    for (const dispatchResult of dispatchResults) {
+      console.info(
+        "[Intent Request] dispatched %s as %s: %s",
+        dispatchResult.request.request,
+        dispatchResult.status,
+        dispatchResult.message,
+      );
+    }
   }
 
   /**
@@ -222,7 +280,37 @@ export class Runtime {
    * 解析LLM返回的Request请求
    * @param requestText LLM返回的Request请求
    */
-  public parseLLMRequest(requestText: string): IntentRequest[] {
-    return parseIntentRequests(requestText);
+  public parseLLMRequest(requestText: string): IntentRequestHandleResult {
+    const parsedRequests = parseIntentRequests(requestText);
+    const safetyContext = this.#createIntentRequestSafetyContext();
+
+    if (!safetyContext) {
+      return {
+        parsedRequests,
+        safeRequests: [],
+        rejectedRequests: parsedRequests.map((request) => {
+          return {
+            request,
+            code: IntentRequestSafetyIssueCode.MISSING_RUNTIME_CONTEXT,
+            reason:
+              "Runtime currentTask is missing, cannot validate or dispatch intent request",
+          };
+        }),
+        dispatchResults: [],
+      };
+    }
+
+    const safetyResult = checkIntentRequestSafety(parsedRequests, safetyContext);
+    const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
+
+    this.#reportRejectedIntentRequests(safetyResult.rejectedRequests);
+    this.#reportIntentRequestDispatchResults(dispatchResults);
+
+    return {
+      parsedRequests,
+      safeRequests: safetyResult.safeRequests,
+      rejectedRequests: safetyResult.rejectedRequests,
+      dispatchResults,
+    };
   }
 }

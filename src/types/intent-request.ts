@@ -112,3 +112,63 @@ export type IntentRequest =
   | SaveMemoryIntentRequest
   | LoadSkillIntentRequest
   | FollowUpIntentRequest;
+
+/**
+ * Intent Request 安全检查上下文
+ * @description
+ * 安全检查需要绑定当前对话身份，避免请求跨会话滥用。
+ */
+export type IntentRequestSafetyContext = {
+  sessionId: UUID;
+  chatId: UUID;
+};
+
+/**
+ * Intent Request 安全问题代码
+ * @description
+ * 用稳定的代码标识拒绝原因，便于后续审计和分发策略扩展。
+ */
+export enum IntentRequestSafetyIssueCode {
+  MISSING_RUNTIME_CONTEXT = "missing_runtime_context",
+  TOO_MANY_REQUESTS = "too_many_requests",
+  INTENT_TOO_LONG = "intent_too_long",
+  SEARCH_WORDS_TOO_LONG = "search_words_too_long",
+  SEARCH_LIMIT_TOO_LARGE = "search_limit_too_large",
+  MEMORY_CONTENT_TOO_LONG = "memory_content_too_long",
+  SKILL_NAME_INVALID = "skill_name_invalid",
+  FOLLOW_UP_SESSION_MISMATCH = "follow_up_session_mismatch",
+  FOLLOW_UP_CHAT_MISMATCH = "follow_up_chat_mismatch",
+}
+
+export type RejectedIntentRequest = {
+  request: IntentRequest;
+  code: IntentRequestSafetyIssueCode;
+  reason: string;
+};
+
+export type IntentRequestSafetyResult = {
+  safeRequests: IntentRequest[];
+  rejectedRequests: RejectedIntentRequest[];
+};
+
+/**
+ * Intent Request 分发状态
+ * @description
+ * 当前阶段先把分发结果标准化，便于后续替换占位实现。
+ */
+export enum IntentRequestDispatchStatus {
+  UNIMPLEMENTED = "unimplemented",
+}
+
+export type IntentRequestDispatchResult = {
+  request: IntentRequest;
+  status: IntentRequestDispatchStatus;
+  message: string;
+};
+
+export type IntentRequestHandleResult = {
+  parsedRequests: IntentRequest[];
+  safeRequests: IntentRequest[];
+  rejectedRequests: RejectedIntentRequest[];
+  dispatchResults: IntentRequestDispatchResult[];
+};
