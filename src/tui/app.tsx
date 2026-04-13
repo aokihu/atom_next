@@ -1,7 +1,7 @@
 /**
  * TUI App
  * @author aokihu <aokihu@gmail.com>
- * @version 0.5.2
+ * @version 0.5.3
  * @description 负责组装 TUI 主界面，协调布局、store 状态与独立的 UI 组件。
  */
 
@@ -16,16 +16,18 @@ import {
   type TuiStore,
 } from "./model";
 import type { TuiThemeScheme } from "./theme";
+import {
+  CENTER_PANEL_WIDTH_RATIO,
+  DEFAULT_INPUT_LINE_COUNT,
+  INPUT_SINGLE_LINE_HEIGHT_THRESHOLD,
+  TUI_COLUMN_GAP,
+  TUI_EXIT_CONFIRM_TEXT,
+  TUI_ROOT_HORIZONTAL_PADDING,
+} from "./constants";
 import { ConversationPanel } from "./components/conversation-panel";
 import { InputPanel } from "./components/input-panel";
 import { SessionPanel } from "./components/session-panel";
 import { StatusPanel } from "./components/status-panel";
-
-const INPUT_SINGLE_LINE_HEIGHT_THRESHOLD = 30;
-const DEFAULT_INPUT_LINE_COUNT = 5;
-const TUI_ROOT_HORIZONTAL_PADDING = 0;
-const TUI_COLUMN_GAP = 1;
-const CENTER_PANEL_WIDTH_RATIO = 1 / 2;
 
 /**
  * 输入区默认提供多行编辑空间，
@@ -173,6 +175,7 @@ export const TuiApp = ({ store, onExit, theme }: TuiAppProps) => {
         <InputPanel
           inputLineCount={inputLineCount}
           inputValue={inputValue}
+          inputHintText={statusText === TUI_EXIT_CONFIRM_TEXT ? statusText : undefined}
           textareaRef={textareaRef}
           store={store}
           theme={theme}

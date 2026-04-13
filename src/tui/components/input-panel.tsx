@@ -1,7 +1,7 @@
 /**
  * Input Panel
  * @author aokihu <aokihu@gmail.com>
- * @version 0.5.2
+ * @version 0.5.3
  * @description 独立封装 TUI 输入区，负责 textarea 展示、占位文案和输入提交行为。
  */
 
@@ -15,6 +15,7 @@ const INPUT_CONTAINER_BORDER_HEIGHT = 2;
 type InputPanelProps = {
   inputLineCount: number;
   inputValue: string;
+  inputHintText?: string;
   textareaRef: {
     current: TextareaRenderable | null;
   };
@@ -22,7 +23,9 @@ type InputPanelProps = {
   theme: TuiThemeScheme;
 };
 
-const parseInputContainerHeight = (inputLineCount: number) => {
+const parseInputContainerHeight = (
+  inputLineCount: number,
+) => {
   return inputLineCount + INPUT_CONTAINER_BORDER_HEIGHT;
 };
 
@@ -41,6 +44,7 @@ const parseInputPlaceholder = (inputLineCount: number) => {
 export const InputPanel = ({
   inputLineCount,
   inputValue,
+  inputHintText,
   textareaRef,
   store,
   theme,
@@ -70,7 +74,7 @@ export const InputPanel = ({
           textColor={theme.text}
           focusedBackgroundColor={theme.panel}
           focusedTextColor={theme.text}
-          placeholder={parseInputPlaceholder(inputLineCount)}
+          placeholder={inputHintText ?? parseInputPlaceholder(inputLineCount)}
           placeholderColor={theme.border}
           initialValue={inputValue}
           keyBindings={[
