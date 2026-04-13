@@ -11,18 +11,18 @@ import type { WatchmanStatus } from "@/services/watchman/types";
 import { WatchmanPhase } from "@/services/watchman/types";
 import { DefaultConfig } from "@/types/config";
 import type {
+  ConfigProviderModelID,
   ConfigFileScheme,
+  ParsedProviderModel,
   ProviderDefinition,
   ProviderID,
-  ProviderModelID,
-  ProviderModelMap,
   ProviderProfileLevel,
   ProviderProfiles,
-  SelectedProviderModel,
 } from "@/types/config";
+import { isProviderID } from "@/types/config";
 
 type SelectedProviderModelConfig = {
-  selectedModel: SelectedProviderModel;
+  selectedModel: ParsedProviderModel;
   providerConfig?: ProviderDefinition;
 };
 
@@ -74,41 +74,18 @@ export class RuntimeService extends BaseService {
   /**
    * 解析 Provider/Model 形式的模型标识。
    */
-  #parseSelectedProviderModel(id: ProviderModelID): SelectedProviderModel {
+  #parseSelectedProviderModel(id: ConfigProviderModelID): ParsedProviderModel {
     const separatorIndex = id.indexOf("/");
 
     if (separatorIndex <= 0 || separatorIndex === id.length - 1) {
       throw new Error(`Invalid provider model id: ${id}`);
     }
 
-    const provider = id.slice(0, separatorIndex);
-    const model = id.slice(separatorIndex + 1);
-
-    if (provider === "deepseek") {
-      return {
-        id,
-        provider,
-        model: model as ProviderModelMap["deepseek"],
-      };
-    }
-
-    if (provider === "openai") {
-      return {
-        id,
-        provider,
-        model: model as ProviderModelMap["openai"],
-      };
-    }
-
-    if (provider === "openaiCompatible") {
-      return {
-        id,
-        provider,
-        model: model as ProviderModelMap["openaiCompatible"],
-      };
-    }
-
-    throw new Error(`Unsupported provider: ${provider}`);
+    return {
+      id,
+      provider: id.slice(0, separatorIndex),
+      model: id.slice(separatorIndex + 1),
+    };
   }
 
   /**
@@ -232,7 +209,7 @@ export class RuntimeService extends BaseService {
    */
   public getModelProfileWithLevel(
     level: ProviderProfileLevel,
-  ): SelectedProviderModel {
+  ): ParsedProviderModel {
     return this.#parseSelectedProviderModel(
       this.#config.providerProfiles[level],
     );
@@ -252,7 +229,9 @@ export class RuntimeService extends BaseService {
 
     return {
       selectedModel,
-      providerConfig: this.getProviderConfig(selectedModel.provider),
+      providerConfig: isProviderID(selectedModel.provider)
+        ? this.getProviderConfig(selectedModel.provider)
+        : undefined,
     };
   }
 

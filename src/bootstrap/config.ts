@@ -9,8 +9,9 @@ import type { PathLike } from "bun";
 import { isBoolean, isPlainObject, isString, isUndefined } from "radashi";
 import {
   DefaultConfig,
-  SUPPORTED_PROVIDERS,
   SUPPORTED_PROVIDER_MODELS,
+  isConfigProviderModelID,
+  isProviderID,
 } from "@/types/config";
 import type {
   ConfigFileScheme,
@@ -18,7 +19,6 @@ import type {
   GatewayConfigScheme,
   ProviderDefinition,
   ProviderID,
-  ProviderModelID,
   ProviderProfiles,
   ProvidersConfigScheme,
 } from "@/types/config";
@@ -43,13 +43,6 @@ const warnConfigIssue = (path: string, message: string) => {
 };
 
 /**
- * 判断 provider 是否属于当前项目已支持的供应商集合。
- */
-const isProviderID = (value: string): value is ProviderID => {
-  return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
-};
-
-/**
  * 校验单个 provider 下的模型名是否合法。
  * `openaiCompatible` 只要求模型名非空，具体兼容模型由用户自行配置。
  */
@@ -61,26 +54,6 @@ const isProviderModel = (value: string, provider: ProviderID): boolean => {
   return (SUPPORTED_PROVIDER_MODELS[provider] as readonly string[]).includes(
     value,
   );
-};
-
-/**
- * 校验 `provider/model` 形式的完整模型标识。
- */
-const isProviderModelID = (value: string): value is ProviderModelID => {
-  const separatorIndex = value.indexOf("/");
-
-  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
-    return false;
-  }
-
-  const provider = value.slice(0, separatorIndex);
-  const model = value.slice(separatorIndex + 1);
-
-  if (!isProviderID(provider)) {
-    return false;
-  }
-
-  return isProviderModel(model, provider);
 };
 
 /* -------------------- */
@@ -104,7 +77,7 @@ const parseProviderProfiles = (raw: unknown): ProviderProfiles => {
 
   const providerProfiles = raw as Record<string, unknown>;
 
-  const parseProfile = (level: keyof ProviderProfiles) => {
+  const parseProviderProfileLevel = (level: keyof ProviderProfiles) => {
     const value = providerProfiles[level];
 
     if (isUndefined(value)) {
@@ -119,21 +92,40 @@ const parseProviderProfiles = (raw: unknown): ProviderProfiles => {
       return defaultProfiles[level];
     }
 
-    if (!isProviderModelID(value)) {
+    if (!isConfigProviderModelID(value)) {
       warnConfigIssue(
         `config.providerProfiles.${level}`,
-        `provider/model may be invalid (${value}), fallback to ${defaultProfiles[level]}`,
+        `provider/model format is invalid (${value}), fallback to ${defaultProfiles[level]}`,
       );
       return defaultProfiles[level];
+    }
+
+    const separatorIndex = value.indexOf("/");
+    const provider = value.slice(0, separatorIndex);
+    const model = value.slice(separatorIndex + 1);
+
+    if (!isProviderID(provider)) {
+      warnConfigIssue(
+        `config.providerProfiles.${level}`,
+        `provider name may be invalid (${provider}), it will be handled later by Transport`,
+      );
+      return value;
+    }
+
+    if (!isProviderModel(model, provider)) {
+      warnConfigIssue(
+        `config.providerProfiles.${level}`,
+        `model name may be invalid (${value}), it will be handled later by Transport`,
+      );
     }
 
     return value;
   };
 
   return {
-    advanced: parseProfile("advanced"),
-    balanced: parseProfile("balanced"),
-    basic: parseProfile("basic"),
+    advanced: parseProviderProfileLevel("advanced"),
+    balanced: parseProviderProfileLevel("balanced"),
+    basic: parseProviderProfileLevel("basic"),
   };
 };
 

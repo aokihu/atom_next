@@ -335,7 +335,11 @@ export class WatchmanService extends BaseService {
     const { selectedModel, providerConfig } =
       runtime.getModelProfileConfigWithLevel("basic");
 
-    return createModelWithProvider(selectedModel, providerConfig);
+    return createModelWithProvider(
+      selectedModel,
+      providerConfig,
+      "config.providerProfiles.basic",
+    );
   }
 
   /**

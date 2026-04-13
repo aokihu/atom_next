@@ -1,6 +1,5 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
 import { streamText } from "ai";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { finished } from "node:stream/promises";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
@@ -28,7 +27,7 @@ type SendResult = {
  * @description 提供上传提示词到LLM服务,并获取LLM结果
  */
 export class Transport {
-  #model: LanguageModelV3;
+  #runtime: RuntimeService;
 
   #getRuntimeService(serviceManager: ServiceManager): RuntimeService {
     const runtime = serviceManager.getService<RuntimeService>("runtime");
@@ -40,12 +39,19 @@ export class Transport {
     return runtime;
   }
 
-  constructor(serviceManager: ServiceManager) {
-    const runtime = this.#getRuntimeService(serviceManager);
+  #createChatModel() {
     const { selectedModel, providerConfig } =
-      runtime.getModelProfileConfigWithLevel("balanced");
+      this.#runtime.getModelProfileConfigWithLevel("balanced");
 
-    this.#model = createModelWithProvider(selectedModel, providerConfig);
+    return createModelWithProvider(
+      selectedModel,
+      providerConfig,
+      "config.providerProfiles.balanced",
+    );
+  }
+
+  constructor(serviceManager: ServiceManager) {
+    this.#runtime = this.#getRuntimeService(serviceManager);
   }
 
   public async send(
@@ -55,6 +61,14 @@ export class Transport {
   ): Promise<SendResult> {
     let text = "";
     const parser = createRequestStreamParser();
+    let model;
+
+    try {
+      model = this.#createChatModel();
+    } catch (error) {
+      await options.onError?.(error);
+      throw error;
+    }
 
     /**
      * 这里不把 Transform 切到 flowing 模式，而是手动 drain readable buffer。
@@ -75,7 +89,7 @@ export class Transport {
     };
 
     const result = streamText({
-      model: this.#model,
+      model,
       system: systemPrompt,
       prompt: userPrompt,
       abortSignal: options.abortSignal,

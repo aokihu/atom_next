@@ -76,6 +76,7 @@ describe("Transport.send", () => {
     streamText.mockReset();
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
+    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
   });
 
   test("passes prompt options to streamText and aggregates visible text deltas", async () => {
@@ -234,7 +235,7 @@ describe("Transport.send", () => {
     }).not.toThrow();
   });
 
-  test("throws when openaiCompatible provider config is missing", () => {
+  test("defers provider validation until send", () => {
     expect(() => {
       new Transport(
         buildServiceManager({
@@ -245,6 +246,233 @@ describe("Transport.send", () => {
           },
         }),
       );
-    }).toThrow("Missing provider config: openaiCompatible");
+    }).not.toThrow();
+  });
+
+  test("throws when openaiCompatible provider config is missing during send", async () => {
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openaiCompatible/custom-model",
+          basic: "deepseek/deepseek-chat",
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt"),
+    ).rejects.toThrow(
+      "Invalid transport provider config: missing config.providers.openaiCompatible",
+    );
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("throws when provider profile provider is unsupported during send", async () => {
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "custom/model-x",
+          basic: "deepseek/deepseek-chat",
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt"),
+    ).rejects.toThrow(
+      "Invalid transport model config: config.providerProfiles.balanced contains unsupported provider (custom)",
+    );
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("supports forward-compatible openai model on default provider path during send", async () => {
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return buildStreamResult({
+        chunks: [{ type: "text-delta", text: "ok" }],
+      });
+    });
+
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openai/future-model",
+          basic: "deepseek/deepseek-chat",
+        },
+      }),
+    );
+
+    const result = await transport.send("system prompt", "user prompt");
+
+    expect(result.text).toBe("ok");
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test("throws when providerConfig models does not include selected model", async () => {
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openai/gpt-5",
+          basic: "deepseek/deepseek-chat",
+        },
+        providers: {
+          openai: {
+            apiKeyEnv: "OPENAI_API_KEY",
+            models: ["gpt-4o"],
+          },
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt"),
+    ).rejects.toThrow(
+      "config.providers.openai.models does not include gpt-5",
+    );
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("throws when provider apiKey env is missing during send", async () => {
+    delete process.env.OPENAI_API_KEY;
+
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openai/gpt-5",
+          basic: "deepseek/deepseek-chat",
+        },
+        providers: {
+          openai: {
+            apiKeyEnv: "OPENAI_API_KEY",
+            models: ["gpt-5"],
+          },
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt"),
+    ).rejects.toThrow(
+      "Invalid transport provider config: config.providers.openai.apiKeyEnv points to missing env OPENAI_API_KEY",
+    );
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("throws when openaiCompatible baseUrl is missing during send", async () => {
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openaiCompatible/custom-model",
+          basic: "deepseek/deepseek-chat",
+        },
+        providers: {
+          openaiCompatible: {
+            apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
+            models: ["custom-model"],
+          },
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt"),
+    ).rejects.toThrow(
+      "Invalid transport provider config: missing config.providers.openaiCompatible.baseUrl for openaiCompatible",
+    );
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("supports configured forward-compatible openai model during send", async () => {
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return buildStreamResult({
+        chunks: [{ type: "text-delta", text: "ok" }],
+      });
+    });
+
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openai/gpt-5.1",
+          basic: "deepseek/deepseek-chat",
+        },
+        providers: {
+          openai: {
+            apiKeyEnv: "OPENAI_API_KEY",
+            models: ["gpt-5.1"],
+          },
+        },
+      }),
+    );
+
+    const result = await transport.send("system prompt", "user prompt");
+
+    expect(result.text).toBe("ok");
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test("supports openaiCompatible model ids with extra slashes during send", async () => {
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return buildStreamResult({
+        chunks: [{ type: "text-delta", text: "ok" }],
+      });
+    });
+
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
+          basic: "deepseek/deepseek-chat",
+        },
+        providers: {
+          openaiCompatible: {
+            apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
+            baseUrl: "https://example.com/v1",
+            models: ["meta-llama/Llama-3.3-70B-Instruct"],
+          },
+        },
+      }),
+    );
+
+    const result = await transport.send("system prompt", "user prompt");
+
+    expect(result.text).toBe("ok");
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test("forwards preflight model validation errors through onError", async () => {
+    const onError = mock(async () => {});
+    const transport = new Transport(
+      buildServiceManager({
+        providerProfiles: {
+          advanced: "deepseek/deepseek-chat",
+          balanced: "custom/model-x",
+          basic: "deepseek/deepseek-chat",
+        },
+      }),
+    );
+
+    await expect(
+      transport.send("system prompt", "user prompt", {
+        onError,
+      }),
+    ).rejects.toThrow(
+      "Invalid transport model config: config.providerProfiles.balanced contains unsupported provider (custom)",
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   });
 });

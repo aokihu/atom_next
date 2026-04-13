@@ -22,6 +22,14 @@ export const SUPPORTED_PROVIDERS = [
 ] as const satisfies ProviderID[];
 
 /**
+ * 判断 provider 是否属于当前项目支持集合。
+ * 配置解析和 Transport 最终校验都应复用这份判断，避免各层各自维护常量判断。
+ */
+export const isProviderID = (value: string): value is ProviderID => {
+  return (SUPPORTED_PROVIDERS as readonly string[]).includes(value);
+};
+
+/**
  * DeepSeek 当前在项目中显式支持的模型。
  */
 export type DeepseekModelID = "deepseek-chat" | "deepseek-reasoner";
@@ -75,6 +83,28 @@ export type ProviderModelID<P extends ProviderID = ProviderID> = {
 }[P];
 
 /**
+ * 配置文件里的 provider/model 标识。
+ * 这里只要求字符串结构合法，不要求 provider 和 model 已经被当前版本显式支持。
+ */
+export type ConfigProviderModelID = `${string}/${string}`;
+
+/**
+ * 校验 `provider/model` 字符串结构是否完整。
+ * 这里只负责结构，不负责判断 provider 或 model 最终是否可用。
+ */
+export const isConfigProviderModelID = (
+  value: string,
+): value is ConfigProviderModelID => {
+  const separatorIndex = value.indexOf("/");
+
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
  * 供应商配置项。
  * `models` 只声明当前 provider 下允许使用的模型名，不包含 provider 前缀。
  */
@@ -98,9 +128,9 @@ export type ProvidersConfigScheme = Partial<{
  * 用于根据任务难度选择不同智能层级的模型。
  */
 export type ProviderProfiles = {
-  advanced: ProviderModelID;
-  balanced: ProviderModelID;
-  basic: ProviderModelID;
+  advanced: ConfigProviderModelID;
+  balanced: ConfigProviderModelID;
+  basic: ConfigProviderModelID;
 };
 
 /**
@@ -117,6 +147,16 @@ export type SelectedProviderModel<P extends ProviderID = ProviderID> = {
   id: ProviderModelID<P>;
   provider: P;
   model: ProviderModelMap[P];
+};
+
+/**
+ * Runtime 从配置里拆分出的 provider/model 结果。
+ * 这里只保证结构被拆开，不保证 provider 和 model 最终可用。
+ */
+export type ParsedProviderModel = {
+  id: ConfigProviderModelID;
+  provider: string;
+  model: string;
 };
 
 /**

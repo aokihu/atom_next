@@ -125,6 +125,25 @@ describe("RuntimeService", () => {
     });
   });
 
+  test("keeps model suffix when openaiCompatible profile contains extra slashes", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      providerProfiles: {
+        advanced: "deepseek/deepseek-chat",
+        balanced: "openai/gpt-5",
+        basic: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
+      },
+    });
+
+    expect(runtime.getModelProfileWithLevel("basic")).toEqual({
+      id: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
+      provider: "openaiCompatible",
+      model: "meta-llama/Llama-3.3-70B-Instruct",
+    });
+  });
+
   test("returns selected model with provider config by level", () => {
     const runtime = new RuntimeService();
 
@@ -172,6 +191,47 @@ describe("RuntimeService", () => {
     expect(runtime.getProviderConfig("openai")).toEqual({
       apiKeyEnv: "OPENAI_API_KEY",
       models: ["gpt-5"],
+    });
+  });
+
+  test("returns parsed providerProfiles even when provider is unfamiliar", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      providerProfiles: {
+        advanced: "custom/model-x",
+        balanced: "openai/gpt-5",
+        basic: "openaiCompatible/custom-model",
+      },
+    });
+
+    expect(runtime.getModelProfileWithLevel("advanced")).toEqual({
+      id: "custom/model-x",
+      provider: "custom",
+      model: "model-x",
+    });
+  });
+
+  test("returns undefined provider config when parsed provider is unsupported", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      providerProfiles: {
+        advanced: "deepseek/deepseek-chat",
+        balanced: "custom/model-x",
+        basic: "openaiCompatible/custom-model",
+      },
+    });
+
+    expect(runtime.getModelProfileConfigWithLevel("balanced")).toEqual({
+      selectedModel: {
+        id: "custom/model-x",
+        provider: "custom",
+        model: "model-x",
+      },
+      providerConfig: undefined,
     });
   });
 });

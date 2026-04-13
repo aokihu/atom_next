@@ -196,7 +196,7 @@ describe("parseConfigFile", () => {
     await expect(parseConfigFile(file)).rejects.toThrow("Invalid config.theme");
   });
 
-  test("falls back to default when providerProfiles contains an invalid provider model id", async () => {
+  test("warns but keeps providerProfiles when model names are unfamiliar", async () => {
     const warnings: string[] = [];
     console.warn = (...args: unknown[]) => {
       warnings.push(args.map((item) => String(item)).join(" "));
@@ -206,6 +206,75 @@ describe("parseConfigFile", () => {
       JSON.stringify({
         providerProfiles: {
           advanced: "deepseek/invalid-model",
+        },
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      providerProfiles: {
+        advanced: "deepseek/invalid-model",
+        balanced: DefaultConfig.providerProfiles.balanced,
+        basic: DefaultConfig.providerProfiles.basic,
+      },
+    });
+    expect(warnings[0]).toContain("config.providerProfiles.advanced");
+  });
+
+  test("warns but keeps providerProfiles when provider names are unfamiliar", async () => {
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((item) => String(item)).join(" "));
+    };
+
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        providerProfiles: {
+          advanced: "custom/model-x",
+        },
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      providerProfiles: {
+        advanced: "custom/model-x",
+        balanced: DefaultConfig.providerProfiles.balanced,
+        basic: DefaultConfig.providerProfiles.basic,
+      },
+    });
+    expect(warnings[0]).toContain("config.providerProfiles.advanced");
+  });
+
+  test("keeps openaiCompatible providerProfiles when model id contains extra slashes", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        providerProfiles: {
+          advanced: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
+        },
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      providerProfiles: {
+        advanced: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
+        balanced: DefaultConfig.providerProfiles.balanced,
+        basic: DefaultConfig.providerProfiles.basic,
+      },
+    });
+  });
+
+  test("falls back to default when providerProfiles format is invalid", async () => {
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((item) => String(item)).join(" "));
+    };
+
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        providerProfiles: {
+          advanced: "deepseek-invalid-model",
         },
       }),
     );

@@ -438,4 +438,30 @@ describe("WatchmanService", () => {
       error: null,
     });
   });
+
+  test("enters error state when basic profile is invalid for transport model creation", async () => {
+    const workspace = await createWorkspace();
+    const worker = createFakeWorker();
+
+    await writeFile(join(workspace, "AGENTS.md"), "# rules");
+
+    const runtime = buildRuntime(workspace, "custom/model-x");
+    const service = new WatchmanService({
+      createWorker: () => worker,
+    });
+    registerServices(runtime, service);
+    services.push(service);
+
+    await expect(service.start()).rejects.toThrow(
+      "Invalid transport model config: config.providerProfiles.basic contains unsupported provider (custom)",
+    );
+
+    expect(service.getStatus()).toEqual({
+      phase: "error",
+      hash: expect.any(String),
+      updatedAt: expect.any(Number),
+      error:
+        "Invalid transport model config: config.providerProfiles.basic contains unsupported provider (custom)",
+    });
+  });
 });

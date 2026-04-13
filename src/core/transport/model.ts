@@ -7,11 +7,16 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { createDeepSeek, deepseek } from "@ai-sdk/deepseek";
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { isString } from "radashi";
 import type {
+  ParsedProviderModel,
   ProviderDefinition,
   ProviderID,
   ProviderModelMap,
   SelectedProviderModel,
+} from "@/types/config";
+import {
+  isProviderID,
 } from "@/types/config";
 
 /* ==================== */
@@ -24,20 +29,95 @@ const withDeepseek: (
   return deepseek.languageModel(model);
 };
 
-const buildMissingProviderConfigError = (provider: ProviderID) => {
-  return new Error(`Missing provider config: ${provider}`);
+const buildProviderConfigError = (message: string) => {
+  return new Error(`Invalid transport provider config: ${message}`);
 };
 
-const resolveApiKey = (providerConfig?: ProviderDefinition) => {
-  if (!providerConfig) {
-    return undefined;
+const buildModelConfigError = (message: string) => {
+  return new Error(`Invalid transport model config: ${message}`);
+};
+
+const getProviderConfigPath = (provider: string) => {
+  return `config.providers.${provider}`;
+};
+
+const parseProviderModel = (
+  selectedModel: ParsedProviderModel,
+  providerConfig: ProviderDefinition | undefined,
+  profilePath: string,
+): SelectedProviderModel => {
+  if (!isProviderID(selectedModel.provider)) {
+    throw buildModelConfigError(
+      `${profilePath} contains unsupported provider (${selectedModel.provider})`,
+    );
   }
 
-  return process.env[providerConfig.apiKeyEnv];
+  if (selectedModel.provider === "openaiCompatible") {
+    return {
+      id: selectedModel.id,
+      provider: selectedModel.provider,
+      model: selectedModel.model,
+    };
+  }
+
+  return {
+    id: selectedModel.id as never,
+    provider: selectedModel.provider,
+    model: selectedModel.model as never,
+  };
+};
+
+const validateProviderModelMatch = <P extends ProviderID>(
+  selectedModel: SelectedProviderModel<P>,
+  providerConfig: ProviderDefinition<P>,
+  profilePath: string,
+) => {
+  if (!(providerConfig.models as string[]).includes(selectedModel.model)) {
+    throw buildModelConfigError(
+      `${profilePath} selects ${selectedModel.id}, but ${getProviderConfigPath(selectedModel.provider)}.models does not include ${selectedModel.model}`,
+    );
+  }
+};
+
+const validateProviderApiKey = (
+  provider: string,
+  providerConfig: ProviderDefinition,
+) => {
+  const apiKey = process.env[providerConfig.apiKeyEnv];
+
+  if (!isString(apiKey) || apiKey.trim() === "") {
+    throw buildProviderConfigError(
+      `${getProviderConfigPath(provider)}.apiKeyEnv points to missing env ${providerConfig.apiKeyEnv}`,
+    );
+  }
+
+  return apiKey;
+};
+
+const parseConfiguredProviderModel = (
+  selectedModel: ParsedProviderModel,
+  providerConfig: ProviderDefinition | undefined,
+  profilePath: string,
+) => {
+  const parsedModel = parseProviderModel(
+    selectedModel,
+    providerConfig,
+    profilePath,
+  );
+
+  if (providerConfig) {
+    validateProviderModelMatch(
+      parsedModel as SelectedProviderModel,
+      providerConfig as ProviderDefinition,
+      profilePath,
+    );
+  }
+
+  return parsedModel;
 };
 
 const withConfiguredDeepseek = (
-  model: ProviderModelMap["deepseek"],
+  model: string,
   providerConfig?: ProviderDefinition<"deepseek">,
 ) => {
   if (!providerConfig) {
@@ -45,13 +125,13 @@ const withConfiguredDeepseek = (
   }
 
   return createDeepSeek({
-    apiKey: resolveApiKey(providerConfig),
+    apiKey: validateProviderApiKey("deepseek", providerConfig),
     baseURL: providerConfig.baseUrl,
   }).languageModel(model);
 };
 
 const withConfiguredOpenAI = (
-  model: ProviderModelMap["openai"],
+  model: string,
   providerConfig?: ProviderDefinition<"openai">,
 ) => {
   if (!providerConfig) {
@@ -59,7 +139,7 @@ const withConfiguredOpenAI = (
   }
 
   return createOpenAI({
-    apiKey: resolveApiKey(providerConfig),
+    apiKey: validateProviderApiKey("openai", providerConfig),
     baseURL: providerConfig.baseUrl,
   }).languageModel(model);
 };
@@ -68,13 +148,21 @@ const withConfiguredOpenAICompatible = (
   model: ProviderModelMap["openaiCompatible"],
   providerConfig?: ProviderDefinition<"openaiCompatible">,
 ) => {
-  if (!providerConfig || !providerConfig.baseUrl) {
-    throw buildMissingProviderConfigError("openaiCompatible");
+  if (!providerConfig) {
+    throw buildProviderConfigError(
+      `missing ${getProviderConfigPath("openaiCompatible")} for openaiCompatible`,
+    );
+  }
+
+  if (!providerConfig.baseUrl) {
+    throw buildProviderConfigError(
+      `missing ${getProviderConfigPath("openaiCompatible")}.baseUrl for openaiCompatible`,
+    );
   }
 
   return createOpenAICompatible({
     name: "openaiCompatible",
-    apiKey: resolveApiKey(providerConfig),
+    apiKey: validateProviderApiKey("openaiCompatible", providerConfig),
     baseURL: providerConfig.baseUrl,
   }).languageModel(model);
 };
@@ -106,10 +194,16 @@ const modelFactories: ModelFactoryMap = {
  * @param providerConfig RuntimeService 提供的 provider 详细配置
  */
 export const createModelWithProvider = (
-  selectedModel: SelectedProviderModel,
+  selectedModel: ParsedProviderModel,
   providerConfig?: ProviderDefinition,
+  profilePath = "config.providerProfiles.balanced",
 ) => {
-  const factory = modelFactories[selectedModel.provider];
+  const parsedModel = parseConfiguredProviderModel(
+    selectedModel,
+    providerConfig,
+    profilePath,
+  );
+  const factory = modelFactories[parsedModel.provider];
 
   if (factory) {
     return (
@@ -118,10 +212,12 @@ export const createModelWithProvider = (
         providerConfig?: ProviderDefinition,
       ) => LanguageModelV3
     )(
-      selectedModel.model,
+      parsedModel.model,
       providerConfig,
     );
   }
 
-  throw new Error(`Unsupported provider: ${selectedModel.provider}`);
+  throw buildModelConfigError(
+    `${profilePath} contains unsupported provider (${parsedModel.provider})`,
+  );
 };

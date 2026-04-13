@@ -99,6 +99,8 @@ export {
   DefaultConfig,
   SUPPORTED_PROVIDERS,
   SUPPORTED_PROVIDER_MODELS,
+  isProviderID,
+  isConfigProviderModelID,
 } from "./config";
 
 export type {
@@ -108,11 +110,13 @@ export type {
   OpenAICompatibleModelID,
   ProviderModelMap,
   ProviderModelID,
+  ConfigProviderModelID,
   ProviderDefinition,
   ProvidersConfigScheme,
   ProviderProfiles,
   ProviderProfileLevel,
   SelectedProviderModel,
+  ParsedProviderModel,
   GatewayChannelScheme,
   GatewayConfigScheme,
   ConfigFileScheme,
