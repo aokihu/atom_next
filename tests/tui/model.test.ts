@@ -10,6 +10,10 @@ import {
   resolveTuiLayout,
 } from "@/tui/model";
 import {
+  parseConversationOutputMessages,
+  parseShouldRenderConversationLoading,
+} from "@/tui/components/conversation-panel";
+import {
   BUILTIN_TUI_THEME_NAMES,
   buildTuiRendererConfig,
   getBuiltinTuiTheme,
@@ -210,6 +214,88 @@ describe("tui model", () => {
     expect(userMessage?.content).toBe("hello");
     expect(assistantMessage?.status).toBe(ChatStatus.COMPLETE);
     expect(assistantMessage?.content).toBe("hello world");
+  });
+
+  test("filters output messages to user inputs, final assistant replies and errors", () => {
+    const messages = [
+      {
+        id: "message-1",
+        role: "system",
+        content: "booted",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "message-2",
+        role: "user",
+        content: "hello",
+        createdAt: 2,
+        updatedAt: 2,
+      },
+      {
+        id: "message-3",
+        role: "assistant",
+        content: "partial",
+        status: ChatStatus.PROCESSING,
+        createdAt: 3,
+        updatedAt: 3,
+      },
+      {
+        id: "message-4",
+        role: "assistant",
+        content: "done",
+        status: ChatStatus.COMPLETE,
+        createdAt: 4,
+        updatedAt: 4,
+      },
+      {
+        id: "message-5",
+        role: "error",
+        content: "failed",
+        createdAt: 5,
+        updatedAt: 5,
+      },
+    ];
+
+    expect(parseConversationOutputMessages(messages)).toEqual([
+      messages[1],
+      messages[3],
+      messages[4],
+    ]);
+  });
+
+  test("renders output loading only while current reply is still running", () => {
+    expect(
+      parseShouldRenderConversationLoading(
+        ChatStatus.WAITING,
+        false,
+        false,
+      ),
+    ).toBe(true);
+
+    expect(
+      parseShouldRenderConversationLoading(
+        ChatStatus.PROCESSING,
+        false,
+        true,
+      ),
+    ).toBe(true);
+
+    expect(
+      parseShouldRenderConversationLoading(
+        ChatStatus.COMPLETE,
+        false,
+        false,
+      ),
+    ).toBe(false);
+
+    expect(
+      parseShouldRenderConversationLoading(
+        undefined,
+        false,
+        false,
+      ),
+    ).toBe(false);
   });
 
   test("returns builtin nord theme", () => {

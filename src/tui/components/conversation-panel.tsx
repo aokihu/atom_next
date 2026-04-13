@@ -1,77 +1,68 @@
 /**
  * Conversation Panel
  * @author aokihu <aokihu@gmail.com>
- * @version 0.5.2
- * @description 负责渲染会话标题、消息滚动区以及不同消息角色的视觉语义。
+ * @version 0.5.3
+ * @description 负责渲染最终输出结果，并在等待回复时展示轻量的文本等待动画。
  */
 
-import { isEmpty, isNullish } from "radashi";
-import { parseChatStatusLabel, type TuiMessage } from "../model";
+import { useEffect, useState } from "react";
+import { ChatStatus } from "@/types/chat";
+import { type TuiMessage } from "../model";
+import { OUTPUT_LOADING_FRAME_INTERVAL_MS } from "../constants";
 import type { TuiThemeScheme } from "../theme";
+import { ConversationMessageCard } from "./conversation-messages";
+import { AssistantConversationLoading } from "./conversation-messages/assistant-message";
 
 type ConversationPanelProps = {
   messages: TuiMessage[];
+  activeChatStatus?: ChatStatus;
+  isSubmitting: boolean;
+  isPolling: boolean;
   theme: TuiThemeScheme;
 };
 
 /**
- * 不同消息角色使用不同颜色语义，
- * 但颜色值全部来自当前主题，组件只负责把语义映射到消息块上。
+ * 输出区保留用户输入、最终回答和错误结果，
+ * system 提示与处理中间态继续交给其他 UI 区域承载。
  */
-const parseMessageTone = (message: TuiMessage, theme: TuiThemeScheme) => {
-  if (message.role === "user") {
-    return {
-      titleColor: theme.user,
-      backgroundColor: theme.panelMuted,
-    };
-  }
+export const parseConversationOutputMessages = (messages: TuiMessage[]) => {
+  return messages.filter((message) => {
+    if (message.role === "user") {
+      return true;
+    }
 
-  if (message.role === "error") {
-    return {
-      titleColor: theme.danger,
-      backgroundColor: theme.panel,
-    };
-  }
+    if (message.role === "error") {
+      return true;
+    }
 
-  if (message.role === "assistant") {
-    return {
-      titleColor: theme.accent,
-      backgroundColor: theme.panel,
-    };
-  }
-
-  return {
-    titleColor: theme.info,
-    backgroundColor: theme.panel,
-  };
+    return (
+      message.role === "assistant" && message.status === ChatStatus.COMPLETE
+    );
+  });
 };
 
-const parseMessageTitle = (message: TuiMessage) => {
-  if (message.role === "user") {
-    return "user";
+/**
+ * 输出区只在真正等待回复时展示等待态动画，
+ * 完成态和失败态都回到正常消息渲染。
+ */
+export const parseShouldRenderConversationLoading = (
+  activeChatStatus: ChatStatus | undefined,
+  isSubmitting: boolean,
+  isPolling: boolean,
+) => {
+  if (isSubmitting || isPolling) {
+    return true;
   }
 
-  if (message.role === "assistant") {
-    return `assistant · ${parseChatStatusLabel(message.status)}`;
-  }
-
-  if (message.role === "error") {
-    return `error · ${parseChatStatusLabel(message.status)}`;
-  }
-
-  return "system";
+  return (
+    activeChatStatus === ChatStatus.WAITING ||
+    activeChatStatus === ChatStatus.PENDING ||
+    activeChatStatus === ChatStatus.PROCESSING
+  );
 };
 
-const parseMessageContent = (message: TuiMessage) => {
-  if (!isEmpty(message.content.trim())) {
-    return message.content;
-  }
-
-  if (!isNullish(message.status)) {
-    return `chat ${parseChatStatusLabel(message.status)}...`;
-  }
-
-  return "";
+const parseOutputLoadingText = (animationFrame: number) => {
+  return `think${".".repeat(animationFrame + 1)}`;
 };
 
 /**
@@ -80,19 +71,47 @@ const parseMessageContent = (message: TuiMessage) => {
  */
 export const ConversationPanel = ({
   messages,
+  activeChatStatus,
+  isSubmitting,
+  isPolling,
   theme,
 }: ConversationPanelProps) => {
+  const outputMessages = parseConversationOutputMessages(messages);
+  const shouldRenderLoading = parseShouldRenderConversationLoading(
+    activeChatStatus,
+    isSubmitting,
+    isPolling,
+  );
+  const [loadingAnimationFrame, setLoadingAnimationFrame] = useState(0);
+
+  useEffect(() => {
+    if (!shouldRenderLoading) {
+      setLoadingAnimationFrame(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingAnimationFrame((currentFrame) => {
+        return (currentFrame + 1) % 3;
+      });
+    }, OUTPUT_LOADING_FRAME_INTERVAL_MS);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [shouldRenderLoading]);
+
   return (
     <box
       style={{
         flexGrow: 1,
-        padding: 1,
+        paddingX: 1,
         flexDirection: "column",
         gap: 1,
         backgroundColor: theme.panel,
       }}
     >
-      <text fg={theme.accent}>Conversation</text>
+      <text fg={theme.accent}>Output</text>
       <scrollbox
         focused={false}
         style={{
@@ -119,25 +138,20 @@ export const ConversationPanel = ({
         stickyScroll
         stickyStart="bottom"
       >
-        {messages.map((message) => {
-          const tone = parseMessageTone(message, theme);
+        {outputMessages.map((message) => (
+          <ConversationMessageCard
+            key={message.id}
+            message={message}
+            theme={theme}
+          />
+        ))}
 
-          return (
-            <box
-              key={message.id}
-              style={{
-                width: "100%",
-                flexDirection: "column",
-                padding: 1,
-                marginBottom: 1,
-                backgroundColor: tone.backgroundColor,
-              }}
-            >
-              <text fg={tone.titleColor}>{parseMessageTitle(message)}</text>
-              <text fg={theme.text} content={parseMessageContent(message)} />
-            </box>
-          );
-        })}
+        {shouldRenderLoading ? (
+          <AssistantConversationLoading
+            content={parseOutputLoadingText(loadingAnimationFrame)}
+            theme={theme}
+          />
+        ) : null}
       </scrollbox>
     </box>
   );

@@ -11,3 +11,4 @@ export const TUI_ROOT_HORIZONTAL_PADDING = 0;
 export const TUI_COLUMN_GAP = 1;
 export const CENTER_PANEL_WIDTH_RATIO = 1 / 2;
 export const TUI_EXIT_CONFIRM_TEXT = "press Ctrl+C again to exit, timeout cancels";
+export const OUTPUT_LOADING_FRAME_INTERVAL_MS = 240;

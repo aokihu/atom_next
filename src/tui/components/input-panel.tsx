@@ -23,9 +23,7 @@ type InputPanelProps = {
   theme: TuiThemeScheme;
 };
 
-const parseInputContainerHeight = (
-  inputLineCount: number,
-) => {
+const parseInputContainerHeight = (inputLineCount: number) => {
   return inputLineCount + INPUT_CONTAINER_BORDER_HEIGHT;
 };
 
@@ -62,6 +60,7 @@ export const InputPanel = ({
           borderColor: theme.border,
           marginX: 2,
         }}
+        title="Input"
       >
         <textarea
           ref={textareaRef}

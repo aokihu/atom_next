@@ -171,7 +171,13 @@ export const TuiApp = ({ store, onExit, theme }: TuiAppProps) => {
           flexDirection: "column",
         }}
       >
-        <ConversationPanel messages={messages} theme={theme} />
+        <ConversationPanel
+          messages={messages}
+          activeChatStatus={activeChatStatus}
+          isSubmitting={isSubmitting}
+          isPolling={isPolling}
+          theme={theme}
+        />
         <InputPanel
           inputLineCount={inputLineCount}
           inputValue={inputValue}
