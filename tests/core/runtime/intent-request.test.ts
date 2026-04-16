@@ -237,8 +237,9 @@ describe("parseIntentRequests", () => {
             chatId: "chat-1",
           },
         },
-        status: "unimplemented",
-        message: "FOLLOW_UP dispatch is reserved for milestone 0.8 goal 2",
+        status: "accepted",
+        message:
+          "FOLLOW_UP request accepted and will be scheduled by Core when current output finishes",
       },
     ]);
   });

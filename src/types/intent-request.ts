@@ -157,6 +157,7 @@ export type IntentRequestSafetyResult = {
  * 当前阶段先把分发结果标准化，便于后续替换占位实现。
  */
 export enum IntentRequestDispatchStatus {
+  ACCEPTED = "accepted",
   UNIMPLEMENTED = "unimplemented",
 }
 
@@ -169,6 +170,7 @@ export type IntentRequestDispatchResult = {
 export type IntentRequestHandleResult = {
   parsedRequests: IntentRequest[];
   safeRequests: IntentRequest[];
+  followUpRequest: FollowUpIntentRequest | null;
   rejectedRequests: RejectedIntentRequest[];
   dispatchResults: IntentRequestDispatchResult[];
 };

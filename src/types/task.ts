@@ -74,6 +74,7 @@ export type RawTaskItem = {
   /* --- 任务身份ID --- */
   id: UUID; // 任务的ID,使用UUID格式,每个任务都是独立不相同的
   chainId: UUID; // 链式任务ID,比如会话太长需要继续执行,那么可以根据这个id推断出主任务,默认值与id相同
+  chain_round?: number; // 可选的内部连续会话轮次,只在FOLLOW_UP链路中使用
   parentId: UUID | undefined; // 父任务ID,根任务默认与id一致,派生任务记录直接上游任务ID
   sessionId: UUID; // 会话ID
   chatId: UUID; // 会话中对话ID
@@ -99,6 +100,23 @@ export type RawTaskItem = {
 export type TaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
   Partial<
     Pick<RawTaskItem, "priority" | "payload" | "eventTarget" | "channel">
+  >;
+
+/**
+ * 创建内部任务时所需的最小输入
+ * @description
+ * 内部任务必须显式提供链路信息，
+ * 这样 Core 才能根据 parentId / chainId 还原派生关系。
+ */
+export type InternalTaskItemInput = Pick<
+  RawTaskItem,
+  "sessionId" | "chatId" | "chainId" | "parentId"
+> &
+  Partial<
+    Pick<
+      RawTaskItem,
+      "chain_round" | "priority" | "payload" | "eventTarget" | "channel"
+    >
   >;
 
 export type TaskItems = Array<TaskItem>;

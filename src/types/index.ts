@@ -29,6 +29,7 @@ export type {
   TaskPayload,
   TaskChannel,
   RawTaskItem,
+  InternalTaskItemInput,
   TaskItemInput,
   TaskItem,
   TaskItems,

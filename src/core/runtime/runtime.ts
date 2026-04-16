@@ -2,6 +2,7 @@ import type {
   UUID,
   ISOTimeString,
   EmptyString,
+  FollowUpIntentRequest,
   IntentRequestHandleResult,
   IntentRequestSafetyContext,
   RejectedIntentRequest,
@@ -9,10 +10,15 @@ import type {
 } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
+import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with {
+  type: "text",
+};
+import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with {
+  type: "text",
+};
 import { TaskSource, type TaskItem } from "@/types/task";
-import { IntentRequestSafetyIssueCode } from "@/types";
-import type { PathLike } from "bun";
-import { sleep } from "radashi";
+import { IntentRequestSafetyIssueCode, IntentRequestType } from "@/types";
+import { isEmpty, isNumber, sleep } from "radashi";
 import {
   checkIntentRequestSafety,
   dispatchIntentRequests,
@@ -44,15 +50,24 @@ type RuntimeContext = {
     short: any[];
     long: any[];
   };
+  followUp?: {
+    chatId: UUID | EmptyString; // 当前续跑上下文所属的 chat ID
+    chainRound: number | null; // 内部连续会话轮次,外部任务保持空值
+    originalUserInput: string; // 当前 chat 第一次提交时的原始用户输入
+    accumulatedAssistantOutput: string; // 当前 chat 下累计的 assistant 可见输出
+  };
+};
+
+type RuntimeTaskSession = {
+  sessionId: UUID;
+  chatId: UUID;
+  round: number;
 };
 
 export class Runtime {
   #serviceManager: ServiceManager;
   #currentTask: TaskItem | null = null;
-  #taskSessions: {
-    id: UUID;
-    round: number;
-  }[];
+  #taskSessions: RuntimeTaskSession[];
   #context: RuntimeContext;
   #systemRules: string;
 
@@ -82,6 +97,138 @@ export class Runtime {
   }
 
   /**
+   * 从任务中提取文本提示。
+   */
+  #convertTaskPayloadToPrompt(task: TaskItem) {
+    return task.payload
+      .filter((payload) => payload.type === "text")
+      .map((payload) => payload.data)
+      .join("\n");
+  }
+
+  /**
+   * 读取任务的内部续跑轮次。
+   */
+  #parseTaskChainRound(task: TaskItem) {
+    const chainRound = (
+      task as TaskItem & {
+        chain_round?: number;
+      }
+    ).chain_round;
+
+    if (!isNumber(chainRound) || chainRound < 1) {
+      return null;
+    }
+
+    return chainRound;
+  }
+
+  /**
+   * 获取或初始化 FollowUp 上下文。
+   * @description
+   * FollowUp 只是一块可选上下文，不应该在 Runtime 初始化时强制存在。
+   * 当真正进入任务绑定流程后，才按当前 chat 创建最小上下文。
+   */
+  #getOrCreateFollowUpContext() {
+    if (!this.#context.followUp) {
+      this.#context.followUp = {
+        chatId: "",
+        chainRound: null,
+        originalUserInput: "",
+        accumulatedAssistantOutput: "",
+      };
+    }
+
+    return this.#context.followUp;
+  }
+
+  /**
+   * 同步当前任务对应的外部对话轮次。
+   */
+  #syncTaskRound(task: TaskItem) {
+    const existingTaskSession = this.#taskSessions.find((item) => {
+      return item.sessionId === task.sessionId && item.chatId === task.chatId;
+    });
+
+    if (existingTaskSession) {
+      this.#context.meta.round = existingTaskSession.round;
+      return;
+    }
+
+    const sessionRounds = this.#taskSessions
+      .filter((item) => item.sessionId === task.sessionId)
+      .map((item) => item.round);
+    const nextRound =
+      sessionRounds.length === 0 ? 1 : Math.max(...sessionRounds) + 1;
+
+    this.#taskSessions.push({
+      sessionId: task.sessionId,
+      chatId: task.chatId,
+      round: nextRound,
+    });
+    this.#context.meta.round = nextRound;
+  }
+
+  /**
+   * 将当前任务同步到 Runtime Context。
+   */
+  #syncContextWithTask(task: TaskItem) {
+    const followUp = this.#getOrCreateFollowUpContext();
+    const previousChatId = followUp.chatId;
+    const hasChatChanged = previousChatId !== task.chatId;
+
+    this.#syncTaskRound(task);
+
+    this.#context.meta.sessionId = task.sessionId;
+    this.#context.channel.source = task.source;
+    followUp.chatId = task.chatId;
+    followUp.chainRound = this.#parseTaskChainRound(task);
+
+    if (hasChatChanged) {
+      // chat 发生变化意味着进入了新的外部对话轮次，
+      // 已累计的 assistant 输出必须归零，避免串到下一个 chat。
+      followUp.accumulatedAssistantOutput = "";
+    }
+
+    if (task.source === TaskSource.EXTERNAL) {
+      // 外部任务代表一次新的用户提交。
+      // 这里把当前 payload 文本保存为该 chat 的原始用户输入，
+      // 后续内部续跑只复用这份上下文，不要求再次完整提交。
+      followUp.originalUserInput = this.#convertTaskPayloadToPrompt(task);
+      return;
+    }
+
+    if (hasChatChanged) {
+      followUp.originalUserInput = "";
+    }
+  }
+
+  /**
+   * 将可选的 FollowUp 上下文转换成提示词片段。
+   * @description
+   * FollowUp 是一块可选上下文，没有任务绑定时不输出该区块，
+   * 避免把空的续跑语义强行注入到所有系统提示词中。
+   */
+  #convertFollowUpContextToPrompt() {
+    if (!this.#context.followUp) {
+      return [];
+    }
+
+    return [
+      "<FollowUp>",
+      `<ChatId>${this.#context.followUp.chatId}</ChatId>`,
+      `<ChainRound>${this.#context.followUp.chainRound ?? ""}</ChainRound>`,
+      "<OriginalUserInput>",
+      this.#context.followUp.originalUserInput,
+      "</OriginalUserInput>",
+      "<AccumulatedAssistantOutput>",
+      this.#context.followUp.accumulatedAssistantOutput,
+      "</AccumulatedAssistantOutput>",
+      "</FollowUp>",
+    ];
+  }
+
+  /**
    * 将RuntimeContext转换成提示词格式
    */
   #convertContextToPrompt() {
@@ -103,6 +250,7 @@ export class Runtime {
       "<Long></Long>",
       "<Short></Short>",
       "</Memory>",
+      ...this.#convertFollowUpContextToPrompt(),
       "</Context>",
     ];
 
@@ -115,11 +263,7 @@ export class Runtime {
    *              整理之后输出,当前只出了文本格式的数据
    */
   #convertTaskToPrompt() {
-    const { payload } = this.#currentTask as TaskItem;
-    return payload
-      .filter((p) => p.type === "text")
-      .map((p) => p.data)
-      .join("\n");
+    return this.#convertTaskPayloadToPrompt(this.#currentTask as TaskItem);
   }
 
   /**
@@ -139,9 +283,27 @@ export class Runtime {
   }
 
   /**
+   * 判断当前模式是否允许直接输出 Intent Request 调试日志。
+   * @description
+   * TUI 和 both 模式会占用当前终端渲染界面，
+   * 如果继续向 stdout/stderr 打日志，会直接污染界面显示。
+   * 这里先按最小策略收口：只有 server 模式才输出这类调试日志。
+   */
+  #shouldReportIntentRequestLogs() {
+    const runtime = this.#getRuntimeService();
+    const mode = runtime.getAllArguments().mode;
+
+    return mode === "server";
+  }
+
+  /**
    * 记录被拒绝的 Intent Request。
    */
   #reportRejectedIntentRequests(rejectedRequests: RejectedIntentRequest[]) {
+    if (!this.#shouldReportIntentRequestLogs()) {
+      return;
+    }
+
     for (const rejectedRequest of rejectedRequests) {
       console.warn(
         "[Intent Request] rejected %s: %s",
@@ -157,6 +319,10 @@ export class Runtime {
   #reportIntentRequestDispatchResults(
     dispatchResults: IntentRequestDispatchResult[],
   ) {
+    if (!this.#shouldReportIntentRequestLogs()) {
+      return;
+    }
+
     for (const dispatchResult of dispatchResults) {
       console.info(
         "[Intent Request] dispatched %s as %s: %s",
@@ -165,6 +331,26 @@ export class Runtime {
         dispatchResult.message,
       );
     }
+  }
+
+  /**
+   * 从安全通过的请求中提取 FOLLOW_UP 信号。
+   * @description
+   * 当前阶段只允许 Core 消费第一条安全通过的 FOLLOW_UP，
+   * 后续如果要支持更复杂的调度策略，再扩展这里的提取规则。
+   */
+  #findFollowUpRequest(
+    safeRequests: IntentRequestHandleResult["safeRequests"],
+  ): FollowUpIntentRequest | null {
+    const followUpRequest = safeRequests.find((request) => {
+      return request.request === IntentRequestType.FOLLOW_UP;
+    });
+
+    if (!followUpRequest) {
+      return null;
+    }
+
+    return followUpRequest as FollowUpIntentRequest;
   }
 
   /**
@@ -214,12 +400,25 @@ export class Runtime {
     }
   }
 
+  /**
+   * 获取 Intent Request 的系统提示词。
+   * @description
+   * Intent Request 总规范和 FOLLOW_UP 专项规范都属于 Runtime(Core) 内置协议，
+   * 这里统一拼接，避免调用方自己管理多份提示词顺序。
+   */
+  async #getIntentRequestPrompt() {
+    return [intentRequestPromptText, followUpPromptText]
+      .filter((chunk) => chunk.trim() !== "")
+      .join("\n\n");
+  }
+
   /* ==================== */
   /* Public getter/setter */
   /* ==================== */
 
   set currentTask(task: TaskItem) {
     this.#currentTask = task;
+    this.#syncContextWithTask(task);
   }
 
   /* ==================== */
@@ -250,8 +449,9 @@ export class Runtime {
   ): Promise<string> {
     const runtimePrompt = this.#convertContextToPrompt();
     const agentsPrompt = await this.#getAgentsPrompt(options);
+    const intentRequestPrompt = await this.#getIntentRequestPrompt();
 
-    return [this.#systemRules, agentsPrompt, runtimePrompt]
+    return [this.#systemRules, agentsPrompt, intentRequestPrompt, runtimePrompt]
       .filter((chunk) => chunk.trim() !== "")
       .join("\n");
   }
@@ -262,6 +462,30 @@ export class Runtime {
    */
   public exportUserPrompt(): string {
     return this.#convertTaskToPrompt();
+  }
+
+  /**
+   * 追加 assistant 可见输出到上下文。
+   * @description
+   * 这里只记录最终会展示给用户的可见文本，不处理 requestText，
+   * 这样后续 follow-up 续跑时看到的上下文才与用户真实看到的输出一致。
+   */
+  public appendAssistantOutput(textDelta: string) {
+    if (isEmpty(textDelta)) {
+      return;
+    }
+
+    this.#getOrCreateFollowUpContext().accumulatedAssistantOutput += textDelta;
+  }
+
+  /**
+   * 读取当前 chat 已累计的 assistant 可见输出。
+   * @description
+   * FOLLOW_UP 结束时需要把整段累计输出作为最终结果，
+   * 避免最终 complete 事件只携带最后一轮的文本。
+   */
+  public getAccumulatedAssistantOutput() {
+    return this.#context.followUp?.accumulatedAssistantOutput ?? "";
   }
 
   /**
@@ -288,6 +512,7 @@ export class Runtime {
       return {
         parsedRequests,
         safeRequests: [],
+        followUpRequest: null,
         rejectedRequests: parsedRequests.map((request) => {
           return {
             request,
@@ -302,6 +527,7 @@ export class Runtime {
 
     const safetyResult = checkIntentRequestSafety(parsedRequests, safetyContext);
     const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
+    const followUpRequest = this.#findFollowUpRequest(safetyResult.safeRequests);
 
     this.#reportRejectedIntentRequests(safetyResult.rejectedRequests);
     this.#reportIntentRequestDispatchResults(dispatchResults);
@@ -309,6 +535,7 @@ export class Runtime {
     return {
       parsedRequests,
       safeRequests: safetyResult.safeRequests,
+      followUpRequest,
       rejectedRequests: safetyResult.rejectedRequests,
       dispatchResults,
     };

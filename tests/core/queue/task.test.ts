@@ -1,13 +1,22 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 
-import { buildTaskItem } from "@/core/queue/task";
+import { buildInternalTaskItem, buildTaskItem } from "@/core/queue/task";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const createTask = (overrides = {}) =>
   buildTaskItem({
     sessionId: "session-1",
     chatId: "chat-1",
+    ...overrides,
+  });
+
+const createInternalTask = (overrides = {}) =>
+  buildInternalTaskItem({
+    sessionId: "session-1",
+    chatId: "chat-1",
+    chainId: "chain-1",
+    parentId: "parent-1",
     ...overrides,
   });
 
@@ -224,5 +233,43 @@ describe("buildTaskItem", () => {
 
     expect(task.chainId).toBe(task.id);
     expect(task.parentId).toBe(task.id);
+  });
+
+  test("creates an internal task with explicit lineage", () => {
+    const task = createInternalTask();
+
+    expect(task.id).toBeDefined();
+    expect(task.chainId).toBe("chain-1");
+    expect(task.parentId).toBe("parent-1");
+    expect(task.source).toBe(TaskSource.INTERNAL);
+    expect(task.state).toBe(TaskState.WAITING);
+    expect(task.priority).toBe(1);
+    expect(task.payload).toEqual([]);
+    expect(task.channel).toEqual({ domain: "tui" });
+    expect(task.chain_round).toBeUndefined();
+  });
+
+  test("uses provided internal task parameters", () => {
+    const task = createInternalTask({
+      priority: 0,
+      chain_round: 2,
+      payload: [{ type: "text", data: "continue" }],
+      channel: { domain: "gateway", source: "core" },
+    });
+
+    expect(task.priority).toBe(0);
+    expect(task.chain_round).toBe(2);
+    expect(task.payload).toEqual([{ type: "text", data: "continue" }]);
+    expect(task.channel).toEqual({ domain: "gateway", source: "core" });
+  });
+
+  test("throws error when modifying readonly property chain_round", () => {
+    const task = createInternalTask({
+      chain_round: 1,
+    });
+
+    expect(() => {
+      (task as any).chain_round = 2;
+    }).toThrow("Attempted to assign to readonly property.");
   });
 });

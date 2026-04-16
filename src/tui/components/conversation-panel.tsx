@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { isEmpty } from "radashi";
 import { ChatStatus } from "@/types/chat";
 import { type TuiMessage } from "../model";
 import { OUTPUT_LOADING_FRAME_INTERVAL_MS } from "../constants";
@@ -22,8 +23,9 @@ type ConversationPanelProps = {
 };
 
 /**
- * 输出区保留用户输入、最终回答和错误结果，
- * system 提示与处理中间态继续交给其他 UI 区域承载。
+ * 输出区保留用户输入、错误结果，以及已经进入可见阶段的 assistant 内容。
+ * 当 assistant 已经开始流式输出时，processing 消息也应该进入输出区，
+ * 否则用户在 polling 模式下只会看到等待动画，误以为没有流式响应。
  */
 export const parseConversationOutputMessages = (messages: TuiMessage[]) => {
   return messages.filter((message) => {
@@ -35,30 +37,54 @@ export const parseConversationOutputMessages = (messages: TuiMessage[]) => {
       return true;
     }
 
-    return (
-      message.role === "assistant" && message.status === ChatStatus.COMPLETE
+    return message.role === "assistant" && (
+      message.status === ChatStatus.PROCESSING ||
+      message.status === ChatStatus.COMPLETE
     );
   });
 };
 
 /**
- * 输出区只在真正等待回复时展示等待态动画，
- * 完成态和失败态都回到正常消息渲染。
+ * 判断当前是否已经存在可见的流式 assistant 正文。
+ * @description
+ * 只要 processing assistant 已经有正文，就优先显示正文本身，
+ * 不再让 loading 占位覆盖用户对“正在持续输出”的感知。
+ */
+export const parseHasStreamingAssistantContent = (messages: TuiMessage[]) => {
+  return messages.some((message) => {
+    return (
+      message.role === "assistant" &&
+      message.status === ChatStatus.PROCESSING &&
+      !isEmpty(message.content.trim())
+    );
+  });
+};
+
+/**
+ * 输出区只在真正等待回复且还没有可见流式正文时展示等待态动画。
  */
 export const parseShouldRenderConversationLoading = (
   activeChatStatus: ChatStatus | undefined,
   isSubmitting: boolean,
   isPolling: boolean,
+  messages: TuiMessage[] = [],
 ) => {
-  if (isSubmitting || isPolling) {
+  if (isSubmitting) {
     return true;
   }
 
-  return (
+  if (
     activeChatStatus === ChatStatus.WAITING ||
-    activeChatStatus === ChatStatus.PENDING ||
-    activeChatStatus === ChatStatus.PROCESSING
-  );
+    activeChatStatus === ChatStatus.PENDING
+  ) {
+    return true;
+  }
+
+  if (activeChatStatus === ChatStatus.PROCESSING) {
+    return isPolling && !parseHasStreamingAssistantContent(messages);
+  }
+
+  return false;
 };
 
 const parseOutputLoadingText = (animationFrame: number) => {
@@ -81,6 +107,7 @@ export const ConversationPanel = ({
     activeChatStatus,
     isSubmitting,
     isPolling,
+    messages,
   );
   const [loadingAnimationFrame, setLoadingAnimationFrame] = useState(0);
 

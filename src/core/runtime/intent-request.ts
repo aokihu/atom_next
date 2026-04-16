@@ -348,13 +348,14 @@ const dispatchLoadSkillIntentRequest = (
 const dispatchFollowUpIntentRequest = (
   request: FollowUpIntentRequest,
 ) => {
-  // Placeholder:
-  // FOLLOW_UP 属于 0.8 目标2的连续会话能力，
-  // 当前阶段明确不实现具体续会话逻辑，只保留分发入口。
-  return createUnimplementedDispatchResult(
+  // FOLLOW_UP 在 Runtime 阶段只负责完成“识别 + 安全校验 + 信号透传”。
+  // 真正的内部任务派生由 Core 消费 followUpRequest 后执行。
+  return {
     request,
-    "FOLLOW_UP dispatch is reserved for milestone 0.8 goal 2",
-  );
+    status: IntentRequestDispatchStatus.ACCEPTED,
+    message:
+      "FOLLOW_UP request accepted and will be scheduled by Core when current output finishes",
+  };
 };
 
 /**

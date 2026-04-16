@@ -11,6 +11,7 @@ import {
 } from "@/tui/model";
 import {
   parseConversationOutputMessages,
+  parseHasStreamingAssistantContent,
   parseShouldRenderConversationLoading,
 } from "@/tui/components/conversation-panel";
 import {
@@ -216,7 +217,7 @@ describe("tui model", () => {
     expect(assistantMessage?.content).toBe("hello world");
   });
 
-  test("filters output messages to user inputs, final assistant replies and errors", () => {
+  test("filters output messages to user inputs, streaming assistant replies and errors", () => {
     const messages = [
       {
         id: "message-1",
@@ -259,12 +260,41 @@ describe("tui model", () => {
 
     expect(parseConversationOutputMessages(messages)).toEqual([
       messages[1],
+      messages[2],
       messages[3],
       messages[4],
     ]);
   });
 
-  test("renders output loading only while current reply is still running", () => {
+  test("detects when streaming assistant content is already visible", () => {
+    expect(
+      parseHasStreamingAssistantContent([
+        {
+          id: "message-1",
+          role: "assistant",
+          content: "",
+          status: ChatStatus.PROCESSING,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+    ).toBe(false);
+
+    expect(
+      parseHasStreamingAssistantContent([
+        {
+          id: "message-1",
+          role: "assistant",
+          content: "partial output",
+          status: ChatStatus.PROCESSING,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  test("renders output loading only before visible streaming content appears", () => {
     expect(
       parseShouldRenderConversationLoading(
         ChatStatus.WAITING,
@@ -278,6 +308,34 @@ describe("tui model", () => {
         ChatStatus.PROCESSING,
         false,
         true,
+        [
+          {
+            id: "message-1",
+            role: "assistant",
+            content: "partial output",
+            status: ChatStatus.PROCESSING,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      ),
+    ).toBe(false);
+
+    expect(
+      parseShouldRenderConversationLoading(
+        ChatStatus.PROCESSING,
+        false,
+        true,
+        [
+          {
+            id: "message-1",
+            role: "assistant",
+            content: "",
+            status: ChatStatus.PROCESSING,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
       ),
     ).toBe(true);
 
