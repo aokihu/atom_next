@@ -349,7 +349,7 @@ const dispatchFollowUpIntentRequest = (
   request: FollowUpIntentRequest,
 ) => {
   // FOLLOW_UP 在 Runtime 阶段只负责完成“识别 + 安全校验 + 信号透传”。
-  // 真正的内部任务派生由 Core 消费 followUpRequest 后执行。
+  // 真正的内部任务派生由 Core 串行消费 safeRequests 后执行。
   return {
     request,
     status: IntentRequestDispatchStatus.ACCEPTED,
@@ -439,8 +439,8 @@ const parseIntentRequestLine = (requestLine: string): IntentRequest | null => {
  * 输入是 LLM 在回复尾部附加的原始请求文本，
  * 输出是 Runtime 可以直接消费的结构化对象数组。
  */
-export const parseIntentRequests = (requestText: string): IntentRequest[] => {
-  return requestText
+export const parseIntentRequests = (intentRequestText: string): IntentRequest[] => {
+  return intentRequestText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => !isEmpty(line))

@@ -170,7 +170,6 @@ export type IntentRequestDispatchResult = {
 export type IntentRequestHandleResult = {
   parsedRequests: IntentRequest[];
   safeRequests: IntentRequest[];
-  followUpRequest: FollowUpIntentRequest | null;
   rejectedRequests: RejectedIntentRequest[];
   dispatchResults: IntentRequestDispatchResult[];
 };

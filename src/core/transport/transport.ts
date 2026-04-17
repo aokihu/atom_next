@@ -15,7 +15,7 @@ type SendOptions = {
 
 type SendResult = {
   text: string;
-  requestText: string;
+  intentRequestText: string;
   finishReason: FinishReason;
   usage: LanguageModelUsage;
   totalUsage: LanguageModelUsage;
@@ -115,8 +115,8 @@ export class Transport {
     await finished(parser, { readable: false });
     await flushVisibleText();
 
-    const [requestText, finishReason, usage, totalUsage] = await Promise.all([
-      parser.requestText,
+    const [intentRequestText, finishReason, usage, totalUsage] = await Promise.all([
+      parser.intentRequestText,
       result.finishReason,
       result.usage,
       result.totalUsage,
@@ -124,7 +124,7 @@ export class Transport {
 
     return {
       text,
-      requestText,
+      intentRequestText,
       finishReason,
       usage,
       totalUsage,

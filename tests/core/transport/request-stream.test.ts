@@ -33,7 +33,7 @@ const runParser = async (chunks: string[]) => {
 
   return {
     visibleText,
-    requestText: await parser.requestText,
+    intentRequestText: await parser.intentRequestText,
   };
 };
 
@@ -43,7 +43,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello world",
-      requestText: "",
+      intentRequestText: "",
     });
   });
 
@@ -54,7 +54,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello",
-      requestText: "request-a\nrequest-b",
+      intentRequestText: "request-a\nrequest-b",
     });
   });
 
@@ -67,7 +67,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello",
-      requestText: "request-a\nrequest-b",
+      intentRequestText: "request-a\nrequest-b",
     });
   });
 
@@ -76,7 +76,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "",
-      requestText: "request-only",
+      intentRequestText: "request-only",
     });
   });
 
@@ -85,7 +85,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello",
-      requestText: "",
+      intentRequestText: "",
     });
   });
 
@@ -96,7 +96,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello",
-      requestText: `request-a\n${REQUEST_MARKER}\nrequest-b`,
+      intentRequestText: `request-a\n${REQUEST_MARKER}\nrequest-b`,
     });
   });
 
@@ -105,7 +105,7 @@ describe("createRequestStreamParser", () => {
 
     expect(result).toEqual({
       visibleText: "hello <<<REQ",
-      requestText: "",
+      intentRequestText: "",
     });
   });
 });

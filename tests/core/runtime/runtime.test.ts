@@ -166,7 +166,7 @@ describe("Runtime context", () => {
     );
   });
 
-  test("returns followUpRequest when follow up request passes runtime safety", () => {
+  test("returns safe follow up request when runtime safety passes", () => {
     const runtime = buildRuntime();
 
     runtime.currentTask = buildTask("task-1", {
@@ -178,18 +178,17 @@ describe("Runtime context", () => {
       '[FOLLOW_UP, "已完成前半部分，下一轮继续补充实现步骤", sessionId=session-1;chatId=chat-1]',
     );
 
-    expect(result.safeRequests).toHaveLength(1);
-    expect(result.followUpRequest).toEqual({
+    expect(result.safeRequests).toEqual([{
       request: "FOLLOW_UP",
       intent: "已完成前半部分，下一轮继续补充实现步骤",
       params: {
         sessionId: "session-1",
         chatId: "chat-1",
       },
-    });
+    }]);
   });
 
-  test("returns null followUpRequest when only non follow up requests are safe", () => {
+  test("keeps safe request order when multiple requests pass runtime safety", () => {
     const runtime = buildRuntime();
 
     runtime.currentTask = buildTask("task-1", {
@@ -198,14 +197,32 @@ describe("Runtime context", () => {
     });
 
     const result = runtime.parseLLMRequest(
-      '[SEARCH_MEMORY, "搜索上下文记忆", words=follow up]',
+      [
+        '[SEARCH_MEMORY, "搜索上下文记忆", words=follow up]',
+        '[FOLLOW_UP, "继续当前回答", sessionId=session-1;chatId=chat-1]',
+      ].join("\n"),
     );
 
-    expect(result.safeRequests).toHaveLength(1);
-    expect(result.followUpRequest).toBeNull();
+    expect(result.safeRequests).toEqual([
+      {
+        request: "SEARCH_MEMORY",
+        intent: "搜索上下文记忆",
+        params: {
+          words: "follow up",
+        },
+      },
+      {
+        request: "FOLLOW_UP",
+        intent: "继续当前回答",
+        params: {
+          sessionId: "session-1",
+          chatId: "chat-1",
+        },
+      },
+    ]);
   });
 
-  test("returns null followUpRequest when runtime context is missing", () => {
+  test("returns no safe requests when runtime context is missing", () => {
     const runtime = buildRuntime();
 
     const result = runtime.parseLLMRequest(
@@ -213,7 +230,7 @@ describe("Runtime context", () => {
     );
 
     expect(result.safeRequests).toEqual([]);
-    expect(result.followUpRequest).toBeNull();
     expect(result.rejectedRequests).toHaveLength(1);
+    expect(result.dispatchResults).toEqual([]);
   });
 });

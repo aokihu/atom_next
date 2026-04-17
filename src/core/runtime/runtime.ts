@@ -2,7 +2,6 @@ import type {
   UUID,
   ISOTimeString,
   EmptyString,
-  FollowUpIntentRequest,
   IntentRequestHandleResult,
   IntentRequestSafetyContext,
   RejectedIntentRequest,
@@ -17,7 +16,7 @@ import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with {
   type: "text",
 };
 import { TaskSource, type TaskItem } from "@/types/task";
-import { IntentRequestSafetyIssueCode, IntentRequestType } from "@/types";
+import { IntentRequestSafetyIssueCode } from "@/types";
 import { isEmpty, isNumber, sleep } from "radashi";
 import {
   checkIntentRequestSafety,
@@ -334,26 +333,6 @@ export class Runtime {
   }
 
   /**
-   * 从安全通过的请求中提取 FOLLOW_UP 信号。
-   * @description
-   * 当前阶段只允许 Core 消费第一条安全通过的 FOLLOW_UP，
-   * 后续如果要支持更复杂的调度策略，再扩展这里的提取规则。
-   */
-  #findFollowUpRequest(
-    safeRequests: IntentRequestHandleResult["safeRequests"],
-  ): FollowUpIntentRequest | null {
-    const followUpRequest = safeRequests.find((request) => {
-      return request.request === IntentRequestType.FOLLOW_UP;
-    });
-
-    if (!followUpRequest) {
-      return null;
-    }
-
-    return followUpRequest as FollowUpIntentRequest;
-  }
-
-  /**
    * 获取 Runtime 服务
    */
   #getRuntimeService() {
@@ -467,7 +446,7 @@ export class Runtime {
   /**
    * 追加 assistant 可见输出到上下文。
    * @description
-   * 这里只记录最终会展示给用户的可见文本，不处理 requestText，
+   * 这里只记录最终会展示给用户的可见文本，不处理 intentRequestText，
    * 这样后续 follow-up 续跑时看到的上下文才与用户真实看到的输出一致。
    */
   public appendAssistantOutput(textDelta: string) {
@@ -502,17 +481,16 @@ export class Runtime {
 
   /**
    * 解析LLM返回的Request请求
-   * @param requestText LLM返回的Request请求
+   * @param intentRequestText LLM返回的Intent Request请求文本
    */
-  public parseLLMRequest(requestText: string): IntentRequestHandleResult {
-    const parsedRequests = parseIntentRequests(requestText);
+  public parseLLMRequest(intentRequestText: string): IntentRequestHandleResult {
+    const parsedRequests = parseIntentRequests(intentRequestText);
     const safetyContext = this.#createIntentRequestSafetyContext();
 
     if (!safetyContext) {
       return {
         parsedRequests,
         safeRequests: [],
-        followUpRequest: null,
         rejectedRequests: parsedRequests.map((request) => {
           return {
             request,
@@ -527,7 +505,6 @@ export class Runtime {
 
     const safetyResult = checkIntentRequestSafety(parsedRequests, safetyContext);
     const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
-    const followUpRequest = this.#findFollowUpRequest(safetyResult.safeRequests);
 
     this.#reportRejectedIntentRequests(safetyResult.rejectedRequests);
     this.#reportIntentRequestDispatchResults(dispatchResults);
@@ -535,7 +512,6 @@ export class Runtime {
     return {
       parsedRequests,
       safeRequests: safetyResult.safeRequests,
-      followUpRequest,
       rejectedRequests: safetyResult.rejectedRequests,
       dispatchResults,
     };

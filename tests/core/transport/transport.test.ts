@@ -125,14 +125,14 @@ describe("Transport.send", () => {
     );
     expect(result).toEqual({
       text: "Hello",
-      requestText: "request-a\nrequest-b",
+      intentRequestText: "request-a\nrequest-b",
       finishReason: "stop",
       usage,
       totalUsage,
     });
   });
 
-  test("returns empty requestText when request marker is absent", async () => {
+  test("returns empty intentRequestText when request marker is absent", async () => {
     streamText.mockImplementation((options) => {
       currentCallOptions = options;
 
@@ -148,7 +148,7 @@ describe("Transport.send", () => {
     const result = await transport.send("system prompt", "user prompt");
 
     expect(result.text).toBe("Hello World");
-    expect(result.requestText).toBe("");
+    expect(result.intentRequestText).toBe("");
   });
 
   test("forwards provider errors through onError", async () => {

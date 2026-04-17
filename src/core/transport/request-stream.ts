@@ -4,7 +4,7 @@ import { isString } from "radashi";
 export const REQUEST_MARKER = "<<<REQUEST>>>";
 
 export type RequestStreamParser = Transform & {
-  requestText: Promise<string>;
+  intentRequestText: Promise<string>;
 };
 
 type CreateRequestStreamParserOptions = {
@@ -16,7 +16,7 @@ type CreateRequestStreamParserOptions = {
  *
  * 这个解析器只做一件事:
  * 1. 将用户可见文本继续向下游输出
- * 2. 将 marker 之后的内容静默收集到 requestText 中
+ * 2. 将 marker 之后的内容静默收集到 intentRequestText 中
  *
  * 之所以使用 Transform，而不是简单的字符串拼接函数，
  * 是因为这里本质上就是一个流式分流问题:
@@ -29,14 +29,14 @@ export const createRequestStreamParser = (
   const safeTailLength = Math.max(0, marker.length - 1);
 
   let visibleBuffer = "";
-  let requestText = "";
+  let intentRequestText = "";
   let hasRequestMarker = false;
-  let resolveRequestText: (requestText: string) => void = () => {};
-  let rejectRequestText: (error: unknown) => void = () => {};
+  let resolveIntentRequestText: (intentRequestText: string) => void = () => {};
+  let rejectIntentRequestText: (error: unknown) => void = () => {};
 
-  const requestTextPromise = new Promise<string>((resolve, reject) => {
-    resolveRequestText = resolve;
-    rejectRequestText = reject;
+  const intentRequestTextPromise = new Promise<string>((resolve, reject) => {
+    resolveIntentRequestText = resolve;
+    rejectIntentRequestText = reject;
   });
 
   /**
@@ -79,9 +79,9 @@ export const createRequestStreamParser = (
         const text = parseChunk(chunk);
 
         // 一旦已经命中 marker，后续所有文本都属于 request 区域，
-        // 不能再输出给用户，只能继续累积到 requestText。
+        // 不能再输出给用户，只能继续累积到 intentRequestText。
         if (hasRequestMarker) {
-          requestText += text;
+          intentRequestText += text;
           callback();
           return;
         }
@@ -93,11 +93,11 @@ export const createRequestStreamParser = (
         if (markerIndex >= 0) {
           // 只按第一个 marker 做分界。
           // 命中后，marker 前的内容属于用户可见文本，
-          // marker 后的内容全部转入 requestText。
+          // marker 后的内容全部转入 intentRequestText。
           pushVisibleText(this, visibleBuffer.slice(0, markerIndex).trimEnd());
 
           hasRequestMarker = true;
-          requestText += trimRequestPrefix(
+          intentRequestText += trimRequestPrefix(
             visibleBuffer.slice(markerIndex + marker.length),
           );
           visibleBuffer = "";
@@ -132,9 +132,9 @@ export const createRequestStreamParser = (
       try {
         if (hasRequestMarker) {
           // 已进入 request 模式时，visibleBuffer 理论上应为空。
-          // 这里仍然补一层兜底，确保任何残留内容都被并入 requestText。
+          // 这里仍然补一层兜底，确保任何残留内容都被并入 intentRequestText。
           if (visibleBuffer.length > 0) {
-            requestText += visibleBuffer;
+            intentRequestText += visibleBuffer;
             visibleBuffer = "";
           }
         } else if (visibleBuffer.length > 0) {
@@ -145,23 +145,23 @@ export const createRequestStreamParser = (
           visibleBuffer = "";
         }
 
-        // requestText Promise 只在流自然结束时 resolve，
+        // intentRequestText Promise 只在流自然结束时 resolve，
         // 这样上层可以把它当作“完整 request 结果”来 await。
-        resolveRequestText(requestText);
+        resolveIntentRequestText(intentRequestText);
         callback();
       } catch (error) {
-        rejectRequestText(error);
+        rejectIntentRequestText(error);
         callback(error as Error);
       }
     },
   }) as RequestStreamParser;
 
-  stream.requestText = requestTextPromise;
+  stream.intentRequestText = intentRequestTextPromise;
 
   stream.once("error", (error) => {
-    // 如果流在 flush 前异常终止，也必须让 requestText Promise 结束，
+    // 如果流在 flush 前异常终止，也必须让 intentRequestText Promise 结束，
     // 否则上层 await 会永久悬挂。
-    rejectRequestText(error);
+    rejectIntentRequestText(error);
   });
 
   return stream;

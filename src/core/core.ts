@@ -8,16 +8,30 @@ import {
   type ChatCompletedEventPayload,
 } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
-import { TaskSource, TaskState, type FollowUpIntentRequest } from "@/types";
+import {
+  IntentRequestType,
+  TaskState,
+  type FollowUpIntentRequest,
+  type IntentRequest,
+} from "@/types";
 
 import { isEmpty, isNumber, sleep } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
 import { Transport } from "./transport";
 
+type IntentRequestProcessResult =
+  | {
+      status: "continue";
+    }
+  | {
+      status: "stop";
+      nextState?: TaskState;
+      nextTask?: TaskItem;
+    };
+
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
-  static readonly FOLLOW_UP_OUTPUT_PREFIX = "[Contune] ";
 
   #serviceManager: ServiceManager;
   #taskQueue: TaskQueue;
@@ -98,7 +112,150 @@ export class Core {
   }
 
   /**
+   * 推进任务到 PROCESSING 状态。
+   * @description
+   * 这里只负责第一次进入流式阶段时推进内部状态，
+   * 不额外发出队列生命周期事件，避免和 chunk 事件职责重叠。
+   * @param task 当前正在执行的任务
+   * @param hasSyncedProcessingState 标记当前任务是否已经同步过一次 PROCESSING 状态。
+   *                                 onTextDelta 会被连续调用，因此这里用这个布尔值
+   *                                 避免在每个 chunk 到来时重复更新同一个状态。
+   * @returns 返回最新的 PROCESSING 状态标记，调用方用它继续维护热路径中的局部状态。
+   */
+  #syncTaskProcessingState(task: TaskItem, hasSyncedProcessingState: boolean) {
+    if (hasSyncedProcessingState) {
+      return true;
+    }
+
+    this.#taskQueue.updateTask(
+      task.id,
+      {
+        state: TaskState.PROCESSING,
+      },
+      {
+        shouldSyncEvent: false,
+      },
+    );
+
+    return true;
+  }
+
+  /**
+   * 发送流式 chunk 事件。
+   * @description
+   * 第一条 chunk 到来就代表已经进入流式输出阶段，
+   * 外部通过 CHAT_CHUNK_APPENDED 即可同步当前可见内容。
+   */
+  #emitChatChunkAppendedEvent(task: TaskItem, textDelta: string) {
+    const payload: ChatChunkAppendedEventPayload = {
+      sessionId: task.sessionId,
+      chatId: task.chatId,
+      status: ChatStatus.PROCESSING,
+      chunk: textDelta,
+    };
+
+    task.eventTarget?.emit(ChatEvents.CHAT_CHUNK_APPENDED, payload);
+  }
+
+  /**
+   * 处理单条 FOLLOW_UP 请求。
+   * @description
+   * FOLLOW_UP 会把当前任务收束为内部续跑链路：
+   * 当前任务切到 FOLLOW_UP 状态，并派生下一条内部任务入队。
+   */
+  #processFollowUpIntentRequest(
+    task: TaskItem,
+    request: FollowUpIntentRequest,
+  ): IntentRequestProcessResult {
+    return {
+      status: "stop",
+      nextState: TaskState.FOLLOW_UP,
+      nextTask: this.#buildFollowUpTask(task, request),
+    };
+  }
+
+  /**
+   * 处理单条 Intent Request。
+   * @description
+   * 当前阶段默认串行消费请求。
+   * 只有真正改变任务流转的请求才会返回 stop，其余请求先保持最小 continue 行为。
+   */
+  #processIntentRequest(
+    task: TaskItem,
+    request: IntentRequest,
+  ): IntentRequestProcessResult {
+    switch (request.request) {
+      case IntentRequestType.FOLLOW_UP:
+        return this.#processFollowUpIntentRequest(task, request);
+      case IntentRequestType.SEARCH_MEMORY:
+      case IntentRequestType.SAVE_MEMORY:
+      case IntentRequestType.LOAD_SKILL:
+        return {
+          status: "continue",
+        };
+    }
+  }
+
+  /**
+   * 应用单条 Intent Request 的处理结果。
+   * @description
+   * 这里统一负责把 handler 的结果映射到任务状态和队列变更，
+   * 避免在主流程里散落多个 updateTask / addTask 分支。
+   */
+  async #applyIntentRequestProcessResult(
+    task: TaskItem,
+    result: IntentRequestProcessResult,
+  ) {
+    if (result.status === "continue") {
+      return false;
+    }
+
+    if (result.nextState) {
+      this.#taskQueue.updateTask(
+        task.id,
+        { state: result.nextState },
+        { shouldSyncEvent: false },
+      );
+    }
+
+    if (result.nextTask) {
+      await this.#taskQueue.addTask(result.nextTask);
+    }
+
+    return true;
+  }
+
+  /**
+   * 串行处理安全通过的 Intent Request。
+   * @description
+   * 当前阶段固定按数组顺序串行消费。
+   * 一旦某条请求真正改变了任务流转，就停止继续处理后续请求。
+   */
+  async #processIntentRequests(task: TaskItem, requests: IntentRequest[]) {
+    for (const request of requests) {
+      const processResult = this.#processIntentRequest(task, request);
+      const shouldStop = await this.#applyIntentRequestProcessResult(
+        task,
+        processResult,
+      );
+
+      if (shouldStop) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * 执行任务流程
+   * @description
+   * 这里串起一次完整的任务执行链路：
+   * 1. 激活队列中的可执行任务
+   * 2. 导出 Runtime 生成的 system/user prompt
+   * 3. 处理流式输出，并把可见文本持续同步回 Runtime 和外部事件
+   * 4. 解析 intentRequestText，必要时派生 FOLLOW_UP 内部任务
+   * 5. 在完成或失败时收束最终事件
    */
   async #workflow() {
     const task = await this.#taskQueue.activateWorkableTask();
@@ -113,64 +270,34 @@ export class Core {
     try {
       this.#runtime.currentTask = task;
       const [systemPrompt, userPrompt] = await this.#runtime.exportPrompts();
-      let hasProcessingState = false;
-      let hasFollowUpOutputPrefix = false;
+      let hasSyncedProcessingState = false;
 
       const result = await this.#transport.send(systemPrompt, userPrompt, {
         onTextDelta: (textDelta) => {
-          // PROCESSING 只代表内部任务已经进入执行阶段。
-          // 对外真正用于同步内容的事件是 CHAT_CHUNK_APPENDED，便于把状态推进和流式内容排查分开。
-          if (!hasProcessingState) {
-            this.#taskQueue.updateTask(task.id, {
-              state: TaskState.PROCESSING,
-            }, {
-              shouldSyncEvent: false,
-            });
-            hasProcessingState = true;
-          }
-
-          // 内部 FOLLOW_UP 任务对外仍属于同一轮 chat，
-          // 这里在首个可见 chunk 前补一个显式提示，避免用户误以为模型突然重复起话。
-          const outputTextDelta =
-            task.source === TaskSource.INTERNAL && !hasFollowUpOutputPrefix
-              ? `${Core.FOLLOW_UP_OUTPUT_PREFIX}${textDelta}`
-              : textDelta;
-
-          if (task.source === TaskSource.INTERNAL && !hasFollowUpOutputPrefix) {
-            hasFollowUpOutputPrefix = true;
-          }
-
-          this.#runtime.appendAssistantOutput(outputTextDelta);
-
-          // 本次不额外引入 CHAT_STREAM_STARTED。
-          // 第一条 chunk 到来就代表已经开始流式输出，外部可以据此判断执行阶段已经开始。
-          const payload: ChatChunkAppendedEventPayload = {
-            sessionId: task.sessionId,
-            chatId: task.chatId,
-            status: ChatStatus.PROCESSING,
-            chunk: outputTextDelta,
-          };
-
-          task.eventTarget?.emit(ChatEvents.CHAT_CHUNK_APPENDED, payload);
+          // onTextDelta 只负责热路径串联：
+          // 先推进内部执行态，
+          // 最后同步到 Runtime 累计输出和外部流式事件。
+          hasSyncedProcessingState = this.#syncTaskProcessingState(
+            task,
+            hasSyncedProcessingState,
+          );
+          this.#runtime.appendAssistantOutput(textDelta);
+          this.#emitChatChunkAppendedEvent(task, textDelta);
         },
       });
 
-      const requestResult = this.#runtime.parseLLMRequest(result.requestText);
+      // intentRequestText 只承载 LLM 在隐藏请求区输出的指令文本，
+      // 这里统一交给 Runtime 做识别和安全校验，Core 只消费最终结果。
+      const intentRequestResult = this.#runtime.parseLLMRequest(
+        result.intentRequestText,
+      );
 
-      if (requestResult.followUpRequest) {
-        // FOLLOW_UP 说明当前外部 chat 还没有结束。
-        // 这里不能对外发送 completed，而是把当前任务收束为内部续跑链路。
-        const followUpTask = this.#buildFollowUpTask(
-          task,
-          requestResult.followUpRequest,
-        );
+      const shouldStopCompletion = await this.#processIntentRequests(
+        task,
+        intentRequestResult.safeRequests,
+      );
 
-        this.#taskQueue.updateTask(
-          task.id,
-          { state: TaskState.FOLLOW_UP },
-          { shouldSyncEvent: false },
-        );
-        await this.#taskQueue.addTask(followUpTask);
+      if (shouldStopCompletion) {
         return;
       }
 
@@ -180,6 +307,8 @@ export class Core {
         { shouldSyncEvent: false },
       );
 
+      // FOLLOW_UP 链路下，最终完成消息要优先使用 Runtime 已累计的可见输出，
+      // 避免 complete 事件只带最后一轮 transport 返回的那部分文本。
       const completedMessage = this.#runtime.getAccumulatedAssistantOutput();
 
       const payload: ChatCompletedEventPayload = {
