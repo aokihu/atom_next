@@ -1,5 +1,4 @@
-//@ts-nockeck
-
+// @ts-nocheck
 import { describe, expect, test } from "bun:test";
 import { sleep } from "radashi";
 import { ChatStatus } from "@/types/chat";

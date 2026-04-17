@@ -1,4 +1,3 @@
-//@ts-nockeck
 // @ts-nocheck
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ServiceManager } from "@/libs/service-manage";

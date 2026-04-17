@@ -1,4 +1,3 @@
-//@ts-nockeck
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
 import { finished } from "node:stream/promises";

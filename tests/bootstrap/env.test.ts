@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { writeFileSync, unlinkSync, existsSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";

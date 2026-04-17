@@ -1,4 +1,3 @@
-//@ts-nockeck
 // @ts-nocheck
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
