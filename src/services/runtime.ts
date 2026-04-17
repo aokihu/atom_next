@@ -58,6 +58,18 @@ export class RuntimeService extends BaseService {
   override async start() {}
 
   /**
+   * 同步用户代理提示词快照
+   * @description
+   * prompt 和 status 始终作为一份快照原子更新，
+   * 避免调用方读到“新状态 + 旧文本”或“新文本 + 旧状态”的中间态。
+   */
+  #syncUserAgentPromptSnapshot(prompt: string, status: WatchmanStatus) {
+    this.#userAgentPrompt = prompt;
+    this.#userAgentPromptStatus = structuredClone(status);
+    return this;
+  }
+
+  /**
    * 读取命令行参数。
    * 这里只服务 RuntimeService 内部，外部统一通过语义化方法获取配置。
    */
@@ -170,17 +182,6 @@ export class RuntimeService extends BaseService {
   }
 
   /**
-   * 设置用户代理提示词
-   * @description
-   * Watchman 会在每次编译结果发生变化时把最新内容同步到 RuntimeService，
-   * Runtime(Core) 之后只从 RuntimeService 读取，不再直接依赖 Watchman。
-   */
-  public setUserAgentPrompt(prompt: string) {
-    this.#userAgentPrompt = prompt;
-    return this;
-  }
-
-  /**
    * 获取用户代理提示词
    */
   public getUserAgentPrompt() {
@@ -188,13 +189,10 @@ export class RuntimeService extends BaseService {
   }
 
   /**
-   * 设置用户代理提示词状态
-   * @description
-   * 这份状态与 Watchman 保持一致，Runtime(Core) 会根据它决定是否等待用户提示词完成编译。
+   * 当前是否持有可用的用户代理提示词
    */
-  public setUserAgentPromptStatus(status: WatchmanStatus) {
-    this.#userAgentPromptStatus = structuredClone(status);
-    return this;
+  public hasUserAgentPrompt() {
+    return this.#userAgentPrompt !== "";
   }
 
   /**
@@ -202,6 +200,27 @@ export class RuntimeService extends BaseService {
    */
   public getUserAgentPromptStatus() {
     return structuredClone(this.#userAgentPromptStatus);
+  }
+
+  /**
+   * 原子更新用户代理提示词快照
+   * @description
+   * Watchman 作为生产者时，应优先使用这个接口一次写入完整快照。
+   */
+  public syncUserAgentPromptSnapshot(prompt: string, status: WatchmanStatus) {
+    return this.#syncUserAgentPromptSnapshot(prompt, status);
+  }
+
+  /**
+   * 重置用户代理提示词运行态
+   */
+  public resetUserAgentPrompt() {
+    return this.#syncUserAgentPromptSnapshot("", {
+      phase: WatchmanPhase.IDLE,
+      hash: null,
+      updatedAt: null,
+      error: null,
+    });
   }
 
   /**

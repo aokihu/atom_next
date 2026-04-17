@@ -386,12 +386,12 @@ export class Runtime {
       }
 
       if (status.phase === "error") {
-        throw new Error(status.error ?? "Watchman prompt compile failed");
+        throw new Error(status.error ?? "Agent prompt compile failed");
       }
 
       if (!hasWarned) {
         console.warn(
-          "Watchman prompt is not ready, waiting for compilation to finish.",
+          "Agent prompt is not ready, waiting for compilation to finish.",
         );
         hasWarned = true;
       }

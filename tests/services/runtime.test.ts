@@ -165,14 +165,12 @@ describe("RuntimeService", () => {
   test("stores user agent prompt and status", () => {
     const runtime = new RuntimeService();
 
-    runtime
-      .setUserAgentPrompt("# safe agents")
-      .setUserAgentPromptStatus({
-        phase: WatchmanPhase.READY,
-        hash: "hash-1",
-        updatedAt: 123,
-        error: null,
-      });
+    runtime.syncUserAgentPromptSnapshot("# safe agents", {
+      phase: WatchmanPhase.READY,
+      hash: "hash-1",
+      updatedAt: 123,
+      error: null,
+    });
 
     expect(runtime.getUserAgentPrompt()).toBe("# safe agents");
     expect(runtime.getUserAgentPromptStatus()).toEqual({
@@ -180,6 +178,82 @@ describe("RuntimeService", () => {
       hash: "hash-1",
       updatedAt: 123,
       error: null,
+    });
+  });
+
+  test("marks compile state only when no active prompt exists", () => {
+    const runtime = new RuntimeService();
+
+    runtime.syncUserAgentPromptSnapshot("", {
+      phase: WatchmanPhase.COMPILING,
+      hash: "hash-1",
+      updatedAt: 123,
+      error: null,
+    });
+
+    expect(runtime.getUserAgentPrompt()).toBe("");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: WatchmanPhase.COMPILING,
+      hash: "hash-1",
+      updatedAt: 123,
+      error: null,
+    });
+  });
+
+  test("replaces prompt and status atomically when syncing new ready snapshot", () => {
+    const runtime = new RuntimeService();
+
+    runtime.syncUserAgentPromptSnapshot("# safe agents", {
+      phase: WatchmanPhase.READY,
+      hash: "hash-ready",
+      updatedAt: 123,
+      error: null,
+    });
+
+    expect(runtime.getUserAgentPrompt()).toBe("# safe agents");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: WatchmanPhase.READY,
+      hash: "hash-ready",
+      updatedAt: 123,
+      error: null,
+    });
+  });
+
+  test("can keep previous ready snapshot by not overwriting it", () => {
+    const runtime = new RuntimeService();
+
+    runtime.syncUserAgentPromptSnapshot("# safe agents", {
+      phase: WatchmanPhase.READY,
+      hash: "hash-ready",
+      updatedAt: 123,
+      error: null,
+    });
+
+    expect(runtime.getUserAgentPrompt()).toBe("# safe agents");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: WatchmanPhase.READY,
+      hash: "hash-ready",
+      updatedAt: 123,
+      error: null,
+    });
+  });
+
+  test("can expose error snapshot when synced directly", () => {
+    const runtime = new RuntimeService();
+
+    runtime.syncUserAgentPromptSnapshot("", {
+      phase: WatchmanPhase.ERROR,
+      hash: "hash-1",
+      updatedAt: 456,
+      error: "compile failed",
+    });
+
+    expect(runtime.getUserAgentPrompt()).toBe("");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: WatchmanPhase.ERROR,
+      hash: "hash-1",
+      updatedAt: 456,
+      error: "compile failed",
     });
   });
 

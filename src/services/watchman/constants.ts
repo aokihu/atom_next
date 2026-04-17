@@ -6,6 +6,7 @@ export const WATCHMAN_META_VERSION = 1;
 export const WATCH_DEBOUNCE_MS = 120;
 export const WATCH_POLL_INTERVAL_MS = 1000;
 export const WATCHMAN_COMPILE_TIMEOUT_MS = 30_000;
+export const WATCHMAN_COMPILE_MAX_RETRIES = 3;
 export const MISSING_FILE_FINGERPRINT = "__missing__";
 
 export const WATCHMAN_COMPILE_SYSTEM_PROMPT = `

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
+import { EventEmitter } from "events";
 
 import { buildInternalTaskItem, buildTaskItem } from "@/core/queue/task";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
@@ -32,9 +33,17 @@ describe("buildTaskItem", () => {
     expect(task.state).toBe(TaskState.WAITING);
     expect(task.priority).toBe(2);
     expect(task.payload).toEqual([]);
+    expect(task.eventTarget).toBeUndefined();
     expect(task.channel).toEqual({ domain: "tui" });
     expect(task.createdAt).toBeGreaterThan(0);
     expect(task.updatedAt).toBe(task.createdAt);
+  });
+
+  test("keeps provided eventTarget as-is", () => {
+    const eventTarget = new EventEmitter();
+    const task = createTask({ eventTarget });
+
+    expect(task.eventTarget).toBe(eventTarget);
   });
 
   test("uses provided parameters", () => {
@@ -245,6 +254,7 @@ describe("buildTaskItem", () => {
     expect(task.state).toBe(TaskState.WAITING);
     expect(task.priority).toBe(1);
     expect(task.payload).toEqual([]);
+    expect(task.eventTarget).toBeUndefined();
     expect(task.channel).toEqual({ domain: "tui" });
     expect(task.chain_round).toBeUndefined();
   });

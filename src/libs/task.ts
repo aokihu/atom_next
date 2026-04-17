@@ -76,7 +76,7 @@ const createTaskItem = (
     structuredClone(params.channel ?? { domain: "tui" }),
   );
 
-  const task = {
+  const task: TaskItem = {
     id,
     chainId: params.chainId,
     ...(isNullish(params.chain_round)
@@ -89,13 +89,13 @@ const createTaskItem = (
     state: TaskState.WAITING,
     priority: params.priority,
     payload,
-    eventTarget: params.eventTarget ?? null,
+    eventTarget: params.eventTarget ?? undefined,
     channel,
     createdAt: now,
     updatedAt: now,
   };
 
-  return defineReadonlyTaskItem(task as TaskItem);
+  return defineReadonlyTaskItem(task);
 };
 
 /**

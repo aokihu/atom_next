@@ -400,6 +400,50 @@ describe("WatchmanService", () => {
     expect(compilePrompt).toHaveBeenCalledTimes(2);
   });
 
+  test("keeps runtime ready snapshot when hot reload compile exhausts retries", async () => {
+    const workspace = await createWorkspace();
+    const worker = createFakeWorker();
+    const compilePrompt = mock()
+      .mockResolvedValueOnce("# safe rules v1")
+      .mockRejectedValue(new Error("compile failed"));
+
+    await writeFile(join(workspace, "AGENTS.md"), "# rules v1");
+
+    const runtime = buildRuntime(workspace);
+    const service = new WatchmanService({
+      compilePrompt,
+      createWorker: () => worker,
+      maxCompileRetries: 1,
+    });
+    registerServices(runtime, service);
+    services.push(service);
+
+    await service.start();
+
+    await writeFile(join(workspace, "AGENTS.md"), "# rules v2");
+    worker.emit({
+      type: WatchmanWorkerSignal.CHANGED,
+    });
+
+    await waitFor(() => service.getStatus().phase === "error");
+
+    expect(service.getAgentsPrompt()).toBe("# safe rules v1");
+    expect(runtime.getUserAgentPrompt()).toBe("# safe rules v1");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
+      phase: "ready",
+      hash: parsePromptHash("# rules v1"),
+      updatedAt: expect.any(Number),
+      error: null,
+    });
+    expect(service.getStatus()).toEqual({
+      phase: "error",
+      hash: parsePromptHash("# rules v2"),
+      updatedAt: expect.any(Number),
+      error: "compile failed",
+    });
+    expect(compilePrompt).toHaveBeenCalledTimes(3);
+  });
+
   test("aborts in-flight compile when stopping service", async () => {
     const workspace = await createWorkspace();
     const worker = createFakeWorker();
@@ -457,6 +501,14 @@ describe("WatchmanService", () => {
     );
 
     expect(service.getStatus()).toEqual({
+      phase: "error",
+      hash: expect.any(String),
+      updatedAt: expect.any(Number),
+      error:
+        "Invalid transport model config: config.providerProfiles.basic contains unsupported provider (custom)",
+    });
+    expect(runtime.getUserAgentPrompt()).toBe("");
+    expect(runtime.getUserAgentPromptStatus()).toEqual({
       phase: "error",
       hash: expect.any(String),
       updatedAt: expect.any(Number),

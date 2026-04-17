@@ -2,13 +2,14 @@ import { generateText } from "ai";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { isPlainObject, isString } from "radashi";
+import { isPlainObject, isString, retry, tryit } from "radashi";
 import { createModelWithProvider } from "@/core/transport/model";
 import type { RuntimeService } from "@/services/runtime";
 import { BaseService } from "../base";
 import {
   AGENTS_FILE,
   COMPILED_PROMPTS_DIR,
+  WATCHMAN_COMPILE_MAX_RETRIES,
   WATCHMAN_COMPILE_TIMEOUT_MS,
   WATCHMAN_COMPILE_SYSTEM_PROMPT,
   WATCHMAN_FILE,
@@ -30,6 +31,7 @@ type WatchmanWorkerPort = Pick<Worker, "postMessage" | "terminate"> & {
 type WatchmanServiceOptions = {
   compilePrompt?: (content: string, abortSignal?: AbortSignal) => Promise<string>;
   createWorker?: () => WatchmanWorkerPort;
+  maxCompileRetries?: number;
 };
 
 /**
@@ -55,12 +57,12 @@ export class WatchmanService extends BaseService {
   /* ===================== */
 
   #worker: WatchmanWorkerPort | undefined;
-  #agentsPrompt: string;
   #status: WatchmanStatus;
   #syncTask: Promise<void>;
   #compilePrompt: (content: string, abortSignal?: AbortSignal) => Promise<string>;
   #createWorker: () => WatchmanWorkerPort;
   #compileAbortController: AbortController | undefined;
+  #compileMaxRetries: number;
 
   /* ===================== */
   /*      Constructor      */
@@ -70,7 +72,6 @@ export class WatchmanService extends BaseService {
     super();
     this._name = "watchman";
     this.#worker = undefined;
-    this.#agentsPrompt = "";
     this.#status = {
       phase: WatchmanPhase.IDLE,
       hash: null,
@@ -79,6 +80,8 @@ export class WatchmanService extends BaseService {
     };
     this.#syncTask = Promise.resolve();
     this.#compileAbortController = undefined;
+    this.#compileMaxRetries =
+      options.maxCompileRetries ?? WATCHMAN_COMPILE_MAX_RETRIES;
     this.#compilePrompt =
       options.compilePrompt ??
       ((content, abortSignal) => {
@@ -124,15 +127,20 @@ export class WatchmanService extends BaseService {
   }
 
   /**
-   * 同步用户代理提示词到 RuntimeService
-   * @description
-   * Runtime(Core) 只允许从 RuntimeService 读取用户提示词和状态，
-   * 因此 watchman 每次状态或编译结果变化后，都要把最新快照写回 RuntimeService。
+   * 当前 Runtime 是否已经持有可用的用户代理提示词
    */
-  #syncRuntimeUserAgentState() {
-    const runtime = this.#getRuntime();
-    runtime.setUserAgentPrompt(this.#agentsPrompt);
-    runtime.setUserAgentPromptStatus(this.#status);
+  #hasActiveRuntimePrompt() {
+    return this.#getRuntime().hasUserAgentPrompt();
+  }
+
+  /**
+   * 同步 Runtime 当前生效的用户代理提示词快照
+   * @description
+   * RuntimeService 只负责保存当前可读快照，
+   * 由 watchman 决定在什么时机提交 compiling/ready/error 状态。
+   */
+  #syncRuntimePromptSnapshot(prompt: string, status: WatchmanStatus) {
+    this.#getRuntime().syncUserAgentPromptSnapshot(prompt, status);
   }
 
   /**
@@ -309,18 +317,6 @@ export class WatchmanService extends BaseService {
       updatedAt: Date.now(),
       error: error ?? null,
     };
-    this.#syncRuntimeUserAgentState();
-  }
-
-  /**
-   * 设置当前编译后的用户提示词
-   * @description
-   * 这里统一维护内存提示词，并立即同步到 RuntimeService，
-   * 避免 watchman 和 runtime 之间出现不同步的状态。
-   */
-  #setAgentsPrompt(prompt: string) {
-    this.#agentsPrompt = prompt;
-    this.#syncRuntimeUserAgentState();
   }
 
   /**
@@ -367,23 +363,68 @@ export class WatchmanService extends BaseService {
    * watchman 停止或重启时，不能无限等待外部 LLM 返回，
    * 这里统一为编译过程挂上 abort signal 和超时控制。
    */
-  async #runCompilePrompt(content: string) {
+  async #runCompilePrompt(content: string, retrySignal?: AbortSignal) {
     const abortController = new AbortController();
     const timeout = setTimeout(() => {
       abortController.abort(new Error("Watchman compile timed out"));
     }, WATCHMAN_COMPILE_TIMEOUT_MS);
+    const stopCompile = () => {
+      abortController.abort(
+        retrySignal?.reason instanceof Error
+          ? retrySignal.reason
+          : new Error("Watchman compile stopped"),
+      );
+    };
 
-    this.#compileAbortController = abortController;
+    retrySignal?.addEventListener("abort", stopCompile, { once: true });
 
     try {
       return await this.#compilePrompt(content, abortController.signal);
     } finally {
       clearTimeout(timeout);
+      retrySignal?.removeEventListener("abort", stopCompile);
+    }
+  }
 
+  /**
+   * 执行带重试的提示词编译
+   * @description
+   * 失败重试的控制权只保留在 WatchmanService 内部，
+   * RuntimeService 只保存当前真正生效的提示词快照。
+   */
+  async #compileAgentsPromptWithRetry(content: string, promptHash: string) {
+    const abortController = new AbortController();
+    const tryRunCompilePrompt = tryit((prompt: string) => {
+      return this.#runCompilePrompt(prompt, abortController.signal);
+    });
+    this.#compileAbortController = abortController;
+
+    return retry(
+      {
+        times: this.#compileMaxRetries + 1,
+        signal: abortController.signal,
+      },
+      async () => {
+        const [error, compiledPrompt] = await tryRunCompilePrompt(content);
+
+        if (!error) {
+          return compiledPrompt;
+        }
+
+        if (
+          abortController.signal.aborted &&
+          abortController.signal.reason instanceof Error
+        ) {
+          throw abortController.signal.reason;
+        }
+
+        throw error;
+      },
+    ).finally(() => {
       if (this.#compileAbortController === abortController) {
         this.#compileAbortController = undefined;
       }
-    }
+    });
   }
 
   /**
@@ -400,13 +441,19 @@ export class WatchmanService extends BaseService {
    */
   async #syncAgentsPrompt(force = false) {
     let promptHash: string | null = null;
+    const runtime = this.#getRuntime();
 
     try {
       const meta = await this.#readWatchmanMeta();
       const agentsFile = Bun.file(this.#getAgentsFilePath());
 
       if (!(await agentsFile.exists())) {
-        this.#setAgentsPrompt("");
+        this.#syncRuntimePromptSnapshot("", {
+          phase: WatchmanPhase.READY,
+          hash: null,
+          updatedAt: Date.now(),
+          error: null,
+        });
         meta.currentHash = null;
         meta.updatedAt = Date.now();
         await this.#writeWatchmanMeta(meta);
@@ -418,7 +465,12 @@ export class WatchmanService extends BaseService {
       promptHash = this.#parsePromptHash(content);
 
       if (content.trim() === "") {
-        this.#setAgentsPrompt("");
+        this.#syncRuntimePromptSnapshot("", {
+          phase: WatchmanPhase.READY,
+          hash: promptHash,
+          updatedAt: Date.now(),
+          error: null,
+        });
         meta.currentHash = promptHash;
         meta.updatedAt = Date.now();
         await this.#writeWatchmanMeta(meta);
@@ -427,6 +479,14 @@ export class WatchmanService extends BaseService {
       }
 
       this.#setStatus(WatchmanPhase.COMPILING, promptHash);
+      if (!runtime.hasUserAgentPrompt()) {
+        this.#syncRuntimePromptSnapshot("", {
+          phase: WatchmanPhase.COMPILING,
+          hash: promptHash,
+          updatedAt: Date.now(),
+          error: null,
+        });
+      }
 
       if (!force) {
         const cacheEntry = meta.entries[promptHash];
@@ -435,7 +495,15 @@ export class WatchmanService extends BaseService {
           cacheEntry &&
           (await Bun.file(cacheEntry.compiledFile).exists())
         ) {
-          this.#setAgentsPrompt(await Bun.file(cacheEntry.compiledFile).text());
+          this.#syncRuntimePromptSnapshot(
+            await Bun.file(cacheEntry.compiledFile).text(),
+            {
+              phase: WatchmanPhase.READY,
+              hash: promptHash,
+              updatedAt: Date.now(),
+              error: null,
+            },
+          );
           meta.currentHash = promptHash;
           meta.updatedAt = Date.now();
           await this.#writeWatchmanMeta(meta);
@@ -444,7 +512,10 @@ export class WatchmanService extends BaseService {
         }
       }
 
-      const compiledPrompt = await this.#runCompilePrompt(content);
+      const compiledPrompt = await this.#compileAgentsPromptWithRetry(
+        content,
+        promptHash,
+      );
       const compiledFile = this.#getCompiledFilePath(promptHash);
       const compiledAt = Date.now();
 
@@ -459,13 +530,26 @@ export class WatchmanService extends BaseService {
 
       await this.#writeWatchmanMeta(meta);
 
-      this.#setAgentsPrompt(compiledPrompt);
+      this.#syncRuntimePromptSnapshot(compiledPrompt, {
+        phase: WatchmanPhase.READY,
+        hash: promptHash,
+        updatedAt: Date.now(),
+        error: null,
+      });
       this.#setStatus(WatchmanPhase.READY, promptHash);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown watchman error";
 
       this.#setStatus(WatchmanPhase.ERROR, promptHash ?? this.#status.hash, message);
+      if (!this.#hasActiveRuntimePrompt()) {
+        this.#syncRuntimePromptSnapshot("", {
+          phase: WatchmanPhase.ERROR,
+          hash: promptHash ?? this.#status.hash,
+          updatedAt: Date.now(),
+          error: message,
+        });
+      }
       throw error;
     }
   }
@@ -510,6 +594,14 @@ export class WatchmanService extends BaseService {
           : event.message || "Watchman worker failed";
 
       this.#setStatus(WatchmanPhase.ERROR, this.#status.hash, message);
+      if (!this.#hasActiveRuntimePrompt()) {
+        this.#syncRuntimePromptSnapshot("", {
+          phase: WatchmanPhase.ERROR,
+          hash: this.#status.hash,
+          updatedAt: Date.now(),
+          error: message,
+        });
+      }
     };
     this.#worker.postMessage({
       type: WatchmanWorkerSignal.START,
@@ -590,14 +682,13 @@ export class WatchmanService extends BaseService {
     this.#syncTask = Promise.resolve();
     this.#compileAbortController = undefined;
 
-    this.#agentsPrompt = "";
     this.#status = {
       phase: WatchmanPhase.IDLE,
       hash: null,
       updatedAt: null,
       error: null,
     };
-    this.#syncRuntimeUserAgentState();
+    this.#getRuntime().resetUserAgentPrompt();
   }
 
   /**
@@ -623,7 +714,8 @@ export class WatchmanService extends BaseService {
   /**
    * 获得 watchman 的当前状态
    * @description
-   * 返回的是状态快照副本，而不是内部引用，调用方不能直接篡改服务内部状态。
+   * 这里返回的是 watchman 自身的工作状态快照，
+   * 用于观察监听/编译流程本身，而不是 Runtime 当前生效中的提示词状态。
    */
   public getStatus() {
     return structuredClone(this.#status);
@@ -632,11 +724,11 @@ export class WatchmanService extends BaseService {
   /**
    * 获取当前可用的编译提示词
    * @description
-   * 这里返回的是已经完成安全编译后的文本。
-   * 当 `AGENTS.md` 缺失、为空或编译结果尚不可用时，返回空字符串。
+   * 当前真正生效中的提示词只保存在 RuntimeService，
+   * watchman 这里只透传 Runtime 已接受的最新可用结果。
    */
   public getAgentsPrompt() {
-    return this.#agentsPrompt;
+    return this.#getRuntime().getUserAgentPrompt();
   }
 
   /**
