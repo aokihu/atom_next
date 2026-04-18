@@ -10,7 +10,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
-    "ai": "^6.0.156",
+    "ai": "^6.0.168",
     "radashi": "^12.7.2"
   },
   "peerDependencies": {
@@ -18,11 +18,11 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^2.0.29",
-    "@ai-sdk/openai": "^3.0.52",
+    "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
-    "@opentui/core": "^0.1.97",
-    "@opentui/react": "^0.1.97",
-    "dotenv": "^17.4.1",
+    "@opentui/core": "^0.1.100",
+    "@opentui/react": "^0.1.100",
+    "dotenv": "^17.4.2",
     "react": "^19.2.5",
     "react-devtools-core": "^7.0.1",
     "web-tree-sitter": "0.25.10",
