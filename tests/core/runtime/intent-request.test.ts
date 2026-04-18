@@ -44,7 +44,7 @@ describe("parseIntentRequests", () => {
 
   test("parses save memory request with memory scope", () => {
     const result = parseIntentRequests(
-      '[SAVE_MEMORY, "保存这段记忆", content=skill cache ready;scope=long]',
+      '[SAVE_MEMORY, "保存这段记忆", text=skill cache ready;scope=long]',
     );
 
     expect(result).toEqual([
@@ -52,8 +52,25 @@ describe("parseIntentRequests", () => {
         request: "SAVE_MEMORY",
         intent: "保存这段记忆",
         params: {
-          content: "skill cache ready",
+          text: "skill cache ready",
           scope: "long",
+        },
+      },
+    ]);
+  });
+
+  test("parses save memory request with optional summary", () => {
+    const result = parseIntentRequests(
+      '[SAVE_MEMORY, "保存设计记忆", text=MemoryNode 使用独立存储;summary=MemoryNode 独立存储]',
+    );
+
+    expect(result).toEqual([
+      {
+        request: "SAVE_MEMORY",
+        intent: "保存设计记忆",
+        params: {
+          text: "MemoryNode 使用独立存储",
+          summary: "MemoryNode 独立存储",
         },
       },
     ]);
@@ -123,7 +140,7 @@ describe("parseIntentRequests", () => {
 
   test("ignores save memory request when scope is invalid", () => {
     const result = parseIntentRequests(
-      '[SAVE_MEMORY, "保存这段记忆", content=skill cache ready;scope=archive]',
+      '[SAVE_MEMORY, "保存这段记忆", text=skill cache ready;scope=archive]',
     );
 
     expect(result).toEqual([]);

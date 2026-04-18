@@ -206,10 +206,15 @@ const parseSaveMemoryIntentRequest = (
   intent: string,
   params: RawIntentRequestParams,
 ): SaveMemoryIntentRequest | null => {
-  const content = params.content;
+  const text = params.text;
+  const summary = params.summary;
   const scope = params.scope;
 
-  if (!isString(content) || isEmpty(content)) {
+  if (!isString(text) || isEmpty(text)) {
+    return null;
+  }
+
+  if (isString(summary) && isEmpty(summary)) {
     return null;
   }
 
@@ -221,7 +226,8 @@ const parseSaveMemoryIntentRequest = (
     request: IntentRequestType.SAVE_MEMORY,
     intent,
     params: {
-      content,
+      text,
+      ...(isString(summary) ? { summary } : {}),
       ...(isString(scope) ? { scope } : {}),
     },
   };

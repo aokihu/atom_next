@@ -69,7 +69,8 @@ export type SearchMemoryIntentRequestParams = {
 };
 
 export type SaveMemoryIntentRequestParams = {
-  content: string;
+  text: string;
+  summary?: string;
   scope?: IntentRequestMemoryScope;
 };
 

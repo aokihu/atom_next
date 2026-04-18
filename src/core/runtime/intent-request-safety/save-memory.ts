@@ -8,11 +8,11 @@ import {
 export const checkSaveMemoryIntentRequestSafety = (
   request: SaveMemoryIntentRequest,
 ): RejectedIntentRequest | null => {
-  if (request.params.content.length > MAX_MEMORY_CONTENT_LENGTH) {
+  if (request.params.text.length > MAX_MEMORY_CONTENT_LENGTH) {
     return createRejectedIntentRequest(
       request,
       IntentRequestSafetyIssueCode.MEMORY_CONTENT_TOO_LONG,
-      `SAVE_MEMORY.content length cannot exceed ${MAX_MEMORY_CONTENT_LENGTH}`,
+      `SAVE_MEMORY.text length cannot exceed ${MAX_MEMORY_CONTENT_LENGTH}`,
     );
   }
 
