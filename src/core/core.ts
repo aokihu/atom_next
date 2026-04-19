@@ -24,7 +24,11 @@ import {
 import { isEmpty, isNumber, sleep } from "radashi";
 import type { MemoryService } from "@/services";
 import { TaskQueue } from "./queue";
-import { parseIntentPredictionText, Runtime } from "./runtime";
+import {
+  createRuntimeIntentContext,
+  parseIntentPredictionText,
+  Runtime,
+} from "./runtime";
 import { Transport } from "./transport";
 
 type IntentRequestProcessResult =
@@ -420,25 +424,49 @@ export class Core {
     };
   }
 
+  /**
+   * 将当前 external chat 的意图降级为保守默认值。
+   * @description
+   * intent 预判只是路由增强，不应该成为主回答链路的前置硬依赖。
+   * 当预测失败时，这里显式写入 unknown/no-memory 的默认上下文，
+   * 避免旧 session 中残留的 intent 继续污染当前 chat。
+   */
+  #setFallbackIntentContext(task: TaskItem) {
+    const fallbackIntent = createRuntimeIntentContext();
+
+    this.#runtime.setIntentContext({
+      sessionId: task.sessionId,
+      type: fallbackIntent.type,
+      needsMemory: fallbackIntent.needsMemory,
+      needsMemorySave: fallbackIntent.needsMemorySave,
+      memoryQuery: fallbackIntent.memoryQuery,
+      confidence: fallbackIntent.confidence,
+    });
+  }
+
   async #predictIntentIfNeeded(task: TaskItem) {
     if (task.source !== TaskSource.EXTERNAL) {
       return;
     }
 
-    const predictionText = await this.#transport.predictIntent(
-      this.#runtime.exportIntentPrompt(),
-      this.#runtime.exportUserPrompt(),
-    );
-    const parsedIntent = parseIntentPredictionText(predictionText);
+    try {
+      const predictionText = await this.#transport.predictIntent(
+        this.#runtime.exportIntentPrompt(),
+        this.#runtime.exportUserPrompt(),
+      );
+      const parsedIntent = parseIntentPredictionText(predictionText);
 
-    this.#runtime.setIntentContext({
-      sessionId: task.sessionId,
-      type: parsedIntent.type,
-      needsMemory: parsedIntent.needsMemory,
-      needsMemorySave: parsedIntent.needsMemorySave,
-      memoryQuery: parsedIntent.memoryQuery,
-      confidence: parsedIntent.confidence,
-    });
+      this.#runtime.setIntentContext({
+        sessionId: task.sessionId,
+        type: parsedIntent.type,
+        needsMemory: parsedIntent.needsMemory,
+        needsMemorySave: parsedIntent.needsMemorySave,
+        memoryQuery: parsedIntent.memoryQuery,
+        confidence: parsedIntent.confidence,
+      });
+    } catch {
+      this.#setFallbackIntentContext(task);
+    }
   }
 
   #hydrateMemoryFromIntent(task: TaskItem) {
@@ -475,6 +503,23 @@ export class Core {
         ? `Loaded ${scope} memory from intent query ${intent.memoryQuery}`
         : `No ${scope} memory matched intent query ${intent.memoryQuery}`,
     });
+  }
+
+  /**
+   * 将当前 chat 的最终答案回写到 session 连续上下文。
+   * @description
+   * external chat 直接完成时，使用当前轮原始输入；
+   * 需要 FOLLOW_UP 的链路则由最终收束的 internal 任务补写，
+   * 这样下一轮 session 对话看到的永远是该 chat 的最终稳定答案。
+   */
+  #commitSessionTurn(task: TaskItem, finalMessage: string) {
+    const originalUserInput = this.#runtime.getCurrentChatOriginalUserInput();
+
+    if (isEmpty(originalUserInput) || isEmpty(finalMessage)) {
+      return;
+    }
+
+    this.#runtime.commitSessionTurn(originalUserInput, finalMessage);
   }
 
   /**
@@ -688,12 +733,7 @@ export class Core {
         ? this.#runtime.getAccumulatedAssistantOutput() || result.text
         : completedMessage;
 
-      if (task.source === TaskSource.EXTERNAL) {
-        this.#runtime.commitSessionTurn(
-          this.#runtime.getCurrentChatOriginalUserInput(),
-          finalMessage,
-        );
-      }
+      this.#commitSessionTurn(task, finalMessage);
 
       const payload: ChatCompletedEventPayload = {
         sessionId: task.sessionId,

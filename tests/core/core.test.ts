@@ -635,6 +635,64 @@ describe("Core memory intent requests", () => {
     );
   });
 
+  test("falls back to unknown intent when intent prediction fails", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-intent-fallback-"));
+    workspaces.push(workspace);
+
+    const { serviceManager } = await buildServiceManager(workspace);
+
+    generateText.mockRejectedValueOnce(new Error("intent model unavailable"));
+
+    const streamCalls = [];
+    streamText.mockImplementation((options) => {
+      streamCalls.push(options);
+
+      return buildStreamResult({
+        chunks: [
+          {
+            type: "text-delta",
+            text: "这是在意图预测失败后的正常回答。",
+            options,
+          },
+        ],
+      });
+    });
+
+    const completedEvents = [];
+    const failedEvents = [];
+    const eventTarget = new EventEmitter();
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+      completedEvents.push(payload);
+    });
+    eventTarget.on(ChatEvents.CHAT_FAILED, (payload) => {
+      failedEvents.push(payload);
+    });
+
+    const task = buildTaskItem({
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "随便回答一个当前问题" }],
+      eventTarget,
+      channel: { domain: "tui" },
+    });
+
+    const core = new Core(serviceManager);
+    await core.addTask(task);
+    await core.runOnce();
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(streamCalls).toHaveLength(1);
+    expect(streamCalls[0].system).toContain("<Intent>");
+    expect(streamCalls[0].system).toContain("<Type>unknown</Type>");
+    expect(streamCalls[0].system).toContain("<NeedsMemory>false</NeedsMemory>");
+    expect(streamCalls[0].system).toContain("<MemoryQuery></MemoryQuery>");
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0].message.data).toBe(
+      "这是在意图预测失败后的正常回答。",
+    );
+    expect(failedEvents).toHaveLength(0);
+  });
+
   test("keeps session continuity across chats in the same session", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-session-continuity-"));
     workspaces.push(workspace);
@@ -741,6 +799,132 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[1].system).toContain("Watchman 服务负责 AGENTS.md 的编译缓存");
     expect(streamCalls[1].prompt).toBe("是的");
     expect(completedEvents).toHaveLength(2);
+    expect(completedEvents[1].message.data).toBe(
+      "可以继续展开：这条记忆说明 AGENTS.md 的编译缓存归 Watchman 负责，而 Memory 持久化属于独立的记忆系统职责。",
+    );
+  });
+
+  test("commits final follow up answer into session continuity context", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-follow-up-session-commit-"));
+    workspaces.push(workspace);
+
+    const { memory, serviceManager } = await buildServiceManager(workspace);
+    memoryServices.push(memory);
+
+    memory.saveMemory({
+      text: "Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。",
+      suggested_key: "watchman memory boundary",
+      created_by: "core-test",
+    });
+
+    generateText
+      .mockResolvedValueOnce({
+        text: [
+          "TYPE=memory_lookup",
+          "NEEDS_MEMORY=true",
+          "NEEDS_MEMORY_SAVE=false",
+          "MEMORY_QUERY=AGENTS md",
+          "CONFIDENCE=0.96",
+        ].join("\n"),
+      })
+      .mockResolvedValueOnce({
+        text: [
+          "TYPE=follow_up",
+          "NEEDS_MEMORY=false",
+          "NEEDS_MEMORY_SAVE=false",
+          "MEMORY_QUERY=",
+          "CONFIDENCE=0.87",
+        ].join("\n"),
+      });
+
+    const streamCalls = [];
+    const responses = [
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text:
+              "先搜索相关长期记忆。\n<<<REQUEST>>>\n"
+              + '[SEARCH_MEMORY, "搜索 AGENTS 记忆", words=AGENTS md]'
+              + "\n"
+              + '[FOLLOW_UP, "基于记忆继续回答", sessionId=session-1;chatId=chat-1]',
+          },
+        ],
+      },
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text:
+              "有一条相关长期记忆：Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。你希望了解更多信息吗？",
+          },
+        ],
+      },
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text:
+              "可以继续展开：这条记忆说明 AGENTS.md 的编译缓存归 Watchman 负责，而 Memory 持久化属于独立的记忆系统职责。",
+          },
+        ],
+      },
+    ];
+
+    streamText.mockImplementation((options) => {
+      streamCalls.push(options);
+      const response = responses.shift();
+
+      return buildStreamResult({
+        chunks: response.chunks.map((chunk) => ({
+          ...chunk,
+          options,
+        })),
+      });
+    });
+
+    const completedEvents = [];
+    const eventTarget = new EventEmitter();
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+      completedEvents.push(payload);
+    });
+
+    const core = new Core(serviceManager);
+
+    await core.addTask(
+      buildTaskItem({
+        sessionId: "session-1",
+        chatId: "chat-1",
+        payload: [{ type: "text", data: "你有 AGENTS.md 相关的记忆吗" }],
+        eventTarget,
+        channel: { domain: "tui" },
+      }),
+    );
+
+    await core.runOnce();
+    await core.runOnce();
+
+    await core.addTask(
+      buildTaskItem({
+        sessionId: "session-1",
+        chatId: "chat-2",
+        payload: [{ type: "text", data: "是的" }],
+        eventTarget,
+        channel: { domain: "tui" },
+      }),
+    );
+    await core.runOnce();
+
+    expect(streamCalls).toHaveLength(3);
+    expect(streamCalls[2].system).toContain("<Conversation>");
+    expect(streamCalls[2].system).toContain("你有 AGENTS.md 相关的记忆吗");
+    expect(streamCalls[2].system).toContain(
+      "有一条相关长期记忆：Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。你希望了解更多信息吗？",
+    );
+    expect(completedEvents).toHaveLength(2);
+    expect(completedEvents[0].message.data).toBe(
+      "有一条相关长期记忆：Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。你希望了解更多信息吗？",
+    );
     expect(completedEvents[1].message.data).toBe(
       "可以继续展开：这条记忆说明 AGENTS.md 的编译缓存归 Watchman 负责，而 Memory 持久化属于独立的记忆系统职责。",
     );

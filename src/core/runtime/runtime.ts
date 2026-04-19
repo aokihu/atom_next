@@ -85,6 +85,12 @@ type RuntimeSessionContext = {
   conversation: RuntimeConversationContext;
 };
 
+type SessionMemoryClearPolicy =
+  | "manual"
+  | "topic_change"
+  | "session_reset"
+  | "lifecycle";
+
 type RuntimeTaskSession = {
   sessionId: UUID;
   chatId: UUID;
@@ -740,6 +746,9 @@ export class Runtime {
 
   /**
    * 写入指定 scope 的记忆上下文。
+   * @description
+   * 0.10 里 session 级记忆默认持续驻留，直到显式覆盖或清空。
+   * 0.11 会在这个边界上补充自动失效和策略化移除。
    */
   public setMemoryContext(
     scope: MemoryScope,
@@ -806,6 +815,10 @@ export class Runtime {
 
   /**
    * 清空记忆上下文。
+   * @description
+   * 当前只支持显式清空。
+   * 0.11 会在 session 级记忆生命周期完善后，
+   * 通过 clearSessionMemoryByPolicy 承接自动卸载策略。
    */
   public clearMemoryContext(scope?: MemoryScope) {
     const sessionContext = this.#getActiveSessionContext();
@@ -823,6 +836,33 @@ export class Runtime {
    */
   public getMemoryContext(scope: MemoryScope) {
     return structuredClone(this.#getActiveSessionContext().memory[scope]);
+  }
+
+  /**
+   * 读取当前 session 的完整记忆快照。
+   * @description
+   * 预留给 0.11 的生命周期策略层使用；
+   * 当前阶段只提供只读快照，不附带自动移除逻辑。
+   */
+  public getSessionMemorySnapshot() {
+    return structuredClone(this.#getActiveSessionContext().memory);
+  }
+
+  /**
+   * 预留 session 级记忆生命周期清理入口。
+   * @description
+   * 0.10 不实现策略化移除，只保留统一入口，
+   * 让 0.11 可以在不改动 Core 热路径签名的前提下接入记忆卸载策略。
+   */
+  public clearSessionMemoryByPolicy(
+    policy: SessionMemoryClearPolicy,
+    options: {
+      scope?: MemoryScope;
+    } = {},
+  ) {
+    if (policy === "manual") {
+      this.clearMemoryContext(options.scope);
+    }
   }
 
   /**
