@@ -95,11 +95,14 @@ describe("MemoryService", () => {
       )
       .all() as Array<{ name: string }>;
 
-    expect(tables.map((item) => item.name)).toEqual([
-      "link_nodes",
-      "memory_events",
-      "memory_nodes",
-    ]);
+    expect(tables.map((item) => item.name)).toEqual(
+      expect.arrayContaining([
+        "link_nodes",
+        "memory_events",
+        "memory_nodes",
+        "memory_nodes_fts",
+      ]),
+    );
     expect(indexes.map((item) => item.name)).toEqual([
       "idx_link_nodes_source_memory_id",
       "idx_link_nodes_source_memory_key",
@@ -283,10 +286,11 @@ describe("MemoryService", () => {
     expect(byKey?.memory.memory_key).toBe(saved.memory_key);
 
     const search = memory.searchMemory({
-      words: "sqlite",
+      words: "sqlite design decisions",
     });
     expect(search).toHaveLength(1);
     expect(search[0]?.retrieval.mode).toBe("search");
+    expect(search[0]?.retrieval.reason).toContain("FTS5 matched sqlite design decisions");
 
     const updated = memory.updateMemory({
       memory_key: saved.memory_key,
@@ -348,5 +352,27 @@ describe("MemoryService", () => {
       "status_changed",
     ]);
     database.close();
+  });
+
+  test("matches multi-term mixed-language queries through fts5", async () => {
+    const workspace = await createWorkspace();
+    const { memory } = buildServices(workspace);
+
+    await memory.start();
+
+    const saved = memory.saveMemory({
+      text: "MemoryService 的默认 scope 是 long，默认 type 是 note。",
+      suggested_key: "memoryservice defaults",
+    });
+
+    const search = memory.searchMemory({
+      words: "默认 scope MemoryService 默认 type",
+    });
+
+    expect(search).toHaveLength(1);
+    expect(search[0]?.memory.memory_key).toBe(saved.memory_key);
+    expect(search[0]?.retrieval.reason).toContain(
+      "FTS5 matched 默认 scope MemoryService 默认 type",
+    );
   });
 });

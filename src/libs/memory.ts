@@ -59,6 +59,14 @@ CREATE TABLE IF NOT EXISTS memory_events (
   created_by TEXT NOT NULL
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_nodes_fts USING fts5(
+  memory_id UNINDEXED,
+  memory_key,
+  summary,
+  text,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
 CREATE INDEX IF NOT EXISTS idx_memory_nodes_memory_key
 ON memory_nodes(memory_key);
 
@@ -91,6 +99,13 @@ ON memory_events(memory_id);
 
 CREATE INDEX IF NOT EXISTS idx_memory_events_memory_key
 ON memory_events(memory_key);
+`;
+
+const MEMORY_FTS_REBUILD_SQL = `
+INSERT INTO memory_nodes_fts(memory_nodes_fts) VALUES('delete-all');
+INSERT INTO memory_nodes_fts(memory_id, memory_key, summary, text)
+SELECT id, memory_key, summary, text
+FROM memory_nodes;
 `;
 
 type MemoryNodeRow = Record<string, unknown>;
@@ -220,6 +235,7 @@ export class MemoryStorage {
     });
     this.#database.exec("PRAGMA foreign_keys = ON;");
     this.#database.exec(MEMORY_SCHEMA);
+    this.#database.exec(MEMORY_FTS_REBUILD_SQL);
 
     return this.#database;
   }

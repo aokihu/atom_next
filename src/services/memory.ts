@@ -32,7 +32,7 @@ const DEFAULT_CREATED_BY = "memory_service";
 
 type SearchMemoryRow = Record<string, unknown> & {
   exact_key_match: number;
-  summary_match: number;
+  fts_rank: number;
 };
 
 export class MemoryService extends BaseService {
@@ -111,16 +111,15 @@ export class MemoryService extends BaseService {
       : `Matched memory by search: ${detail}`;
   }
 
-  #calculateSearchRelevance(row: SearchMemoryRow) {
-    if (Number(row.exact_key_match) > 0) {
+  #calculateSearchRelevance(exactKeyMatch: number, ftsRank: number) {
+    if (exactKeyMatch > 0) {
       return 1;
     }
 
-    if (Number(row.summary_match) > 0) {
-      return 0.8;
-    }
+    const normalizedRank = Number.isFinite(ftsRank) ? Math.abs(ftsRank) : 1;
+    const relevance = 1 / (1 + normalizedRank);
 
-    return 0.6;
+    return Math.max(0.3, Math.min(0.95, relevance));
   }
 
   #calculateLinkScore(
@@ -132,6 +131,36 @@ export class MemoryService extends BaseService {
       weight * 50 + sourceImportance * 25 + targetImportance * 25;
 
     return Math.max(0, Math.min(100, Math.round(rawScore * 100) / 100));
+  }
+
+  #parseSearchTerms(words: string) {
+    return Array.from(
+      new Set(
+        (words.match(/[\p{L}\p{N}_]+/gu) ?? [])
+          .map((term) => term.trim())
+          .filter((term) => term !== ""),
+      ),
+    );
+  }
+
+  #buildFtsQuery(words: string) {
+    return this.#parseSearchTerms(words).join(" ");
+  }
+
+  #syncMemorySearchDocument(database: Database, memory: MemoryNode) {
+    database.query("DELETE FROM memory_nodes_fts WHERE memory_id = ?").run(memory.id);
+    database
+      .query(
+        `
+          INSERT INTO memory_nodes_fts (
+            memory_id,
+            memory_key,
+            summary,
+            text
+          ) VALUES (?, ?, ?, ?)
+        `,
+      )
+      .run(memory.id, memory.memory_key, memory.summary, memory.text);
   }
 
   #getReadableMemoryRowByKey(database: Database, memoryKey: string) {
@@ -519,51 +548,45 @@ export class MemoryService extends BaseService {
   public searchMemory(input: SearchMemoryInput) {
     const database = this.#getDatabase();
     const searchWords = input.words.trim();
+    const ftsQuery = this.#buildFtsQuery(searchWords);
 
-    if (searchWords === "") {
+    if (searchWords === "" || ftsQuery === "") {
       return [];
     }
 
-    const likePattern = `%${searchWords}%`;
     const rows = database
       .query(
         `
           SELECT
             memory_nodes.*,
             CASE WHEN LOWER(memory_nodes.memory_key) = ? THEN 1 ELSE 0 END AS exact_key_match,
-            CASE WHEN memory_nodes.summary LIKE ? THEN 1 ELSE 0 END AS summary_match
-          FROM memory_nodes
-          WHERE memory_nodes.scope = ?
+            bm25(memory_nodes_fts, 5.0, 3.0, 1.0) AS fts_rank
+          FROM memory_nodes_fts
+          INNER JOIN memory_nodes
+            ON memory_nodes.id = memory_nodes_fts.memory_id
+          WHERE memory_nodes_fts MATCH ?
+            AND memory_nodes.scope = ?
             AND memory_nodes.status != 'deleted'
-            AND (
-              memory_nodes.memory_key LIKE ?
-              OR memory_nodes.summary LIKE ?
-              OR memory_nodes.text LIKE ?
-            )
-          ORDER BY exact_key_match DESC, memory_nodes.score DESC, memory_nodes.updated_at DESC
+          ORDER BY exact_key_match DESC, fts_rank ASC, memory_nodes.score DESC, memory_nodes.updated_at DESC
           LIMIT ?
         `,
       )
       .all(
         searchWords.toLowerCase(),
-        likePattern,
+        ftsQuery,
         input.scope ?? DEFAULT_MEMORY_SCOPE,
-        likePattern,
-        likePattern,
-        likePattern,
         input.limit ?? DEFAULT_SEARCH_LIMIT,
       ) as SearchMemoryRow[];
 
     return rows.map((row) => {
       const memory = mapMemoryNode(row);
       const links = this.#getRelatedMemoriesBySourceId(database, memory.id);
-      const relevance = this.#calculateSearchRelevance(row);
-      const reason =
-        Number(row.exact_key_match) > 0
-          ? `Exact key match for ${searchWords}`
-          : Number(row.summary_match) > 0
-            ? `Summary matched ${searchWords}`
-            : `Text matched ${searchWords}`;
+      const exactKeyMatch = Number(row.exact_key_match);
+      const ftsRank = Number(row.fts_rank);
+      const relevance = this.#calculateSearchRelevance(exactKeyMatch, ftsRank);
+      const reason = exactKeyMatch > 0
+        ? `Exact key match for ${searchWords}`
+        : `FTS5 matched ${searchWords} with query ${ftsQuery}`;
 
       return this.#buildMemoryOutput(
         memory,
@@ -671,6 +694,7 @@ export class MemoryService extends BaseService {
       }
 
       const memory = mapMemoryNode(memoryRow);
+      this.#syncMemorySearchDocument(transactionDatabase, memory);
 
       this.#insertMemoryEvent(transactionDatabase, {
         memory_id: memory.id,
@@ -781,6 +805,20 @@ export class MemoryService extends BaseService {
           input.memory_key,
         );
 
+      const refreshedRow = this.#getReadableMemoryRowByKey(
+        transactionDatabase,
+        input.memory_key,
+      );
+
+      if (!refreshedRow) {
+        throw new Error(`Memory not found after update: ${input.memory_key}`);
+      }
+
+      this.#syncMemorySearchDocument(
+        transactionDatabase,
+        mapMemoryNode(refreshedRow),
+      );
+
       this.#insertMemoryEvent(transactionDatabase, {
         memory_id: currentMemory.id,
         memory_key: currentMemory.memory_key,
@@ -858,6 +896,26 @@ export class MemoryService extends BaseService {
           createMemoryTimestamp(),
           input.memory_key,
         );
+
+      if (input.status === "deleted") {
+        transactionDatabase
+          .query("DELETE FROM memory_nodes_fts WHERE memory_id = ?")
+          .run(currentMemory.id);
+      } else {
+        const refreshedRow = this.#getReadableMemoryRowByKey(
+          transactionDatabase,
+          input.memory_key,
+        );
+
+        if (!refreshedRow) {
+          throw new Error(`Memory not found after status update: ${input.memory_key}`);
+        }
+
+        this.#syncMemorySearchDocument(
+          transactionDatabase,
+          mapMemoryNode(refreshedRow),
+        );
+      }
 
       this.#insertMemoryEvent(transactionDatabase, {
         memory_id: currentMemory.id,
