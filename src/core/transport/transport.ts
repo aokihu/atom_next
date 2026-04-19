@@ -1,5 +1,5 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
-import { streamText } from "ai";
+import { generateText, streamText } from "ai";
 import { finished } from "node:stream/promises";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
@@ -47,6 +47,17 @@ export class Transport {
       selectedModel,
       providerConfig,
       "config.providerProfiles.balanced",
+    );
+  }
+
+  #createIntentModel() {
+    const { selectedModel, providerConfig } =
+      this.#runtime.getModelProfileConfigWithLevel("basic");
+
+    return createModelWithProvider(
+      selectedModel,
+      providerConfig,
+      "config.providerProfiles.basic",
     );
   }
 
@@ -129,5 +140,21 @@ export class Transport {
       usage,
       totalUsage,
     };
+  }
+
+  public async predictIntent(
+    systemPrompt: string,
+    userPrompt: string,
+    maxOutputTokens = 120,
+  ) {
+    const model = this.#createIntentModel();
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      maxOutputTokens,
+    });
+
+    return result.text;
   }
 }

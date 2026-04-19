@@ -92,11 +92,17 @@ export type {
   ChatSubmissionBody,
   IntentRequest,
   SearchMemoryIntentRequestParams,
+  LoadMemoryIntentRequestParams,
+  UnloadMemoryIntentRequestParams,
   SaveMemoryIntentRequestParams,
+  UpdateMemoryIntentRequestParams,
   LoadSkillIntentRequestParams,
   FollowUpIntentRequestParams,
   SearchMemoryIntentRequest,
+  LoadMemoryIntentRequest,
+  UnloadMemoryIntentRequest,
   SaveMemoryIntentRequest,
+  UpdateMemoryIntentRequest,
   LoadSkillIntentRequest,
   FollowUpIntentRequest,
   IntentRequestSafetyContext,
@@ -109,12 +115,14 @@ export type {
 export {
   IntentRequestType,
   IntentRequestMemoryScope,
+  INTENT_REQUEST_MEMORY_UNLOAD_REASONS,
   IntentRequestSafetyIssueCode,
   IntentRequestDispatchStatus,
   INTENT_REQUEST_TYPES,
   INTENT_REQUEST_MEMORY_SCOPES,
   isIntentRequestType,
   isIntentRequestMemoryScope,
+  isIntentRequestMemoryUnloadReason,
 } from "./intent-request";
 
 /* ==================== */

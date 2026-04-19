@@ -9,9 +9,16 @@ import type {
   MemoryScope,
   RuntimeMemoryOutput,
 } from "@/types";
+import { MEMORY_SCOPES } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with {
+  type: "text",
+};
+import intentPromptText from "@/assets/prompts/intent.md" with {
+  type: "text",
+};
+import systemPromptText from "@/assets/prompts/system.md" with {
   type: "text",
 };
 import memoryPromptText from "@/assets/prompts/memory.md" with {
@@ -28,6 +35,10 @@ import {
   dispatchIntentRequests,
   parseIntentRequests,
 } from "./intent-request";
+import {
+  createRuntimeIntentContext,
+  type RuntimeIntentContext,
+} from "./intent-prediction";
 
 const WATCHMAN_WAIT_INTERVAL = 100;
 
@@ -49,17 +60,29 @@ type RuntimeContext = {
   channel: {
     source: TaskSource;
   };
-  memory: {
-    core: RuntimeMemoryScopeContext;
-    short: RuntimeMemoryScopeContext;
-    long: RuntimeMemoryScopeContext;
-  };
   followUp?: {
     chatId: UUID | EmptyString; // 当前续跑上下文所属的 chat ID
     chainRound: number | null; // 内部连续会话轮次,外部任务保持空值
     originalUserInput: string; // 当前 chat 第一次提交时的原始用户输入
     accumulatedAssistantOutput: string; // 当前 chat 下累计的 assistant 可见输出
+    lastAssistantOutput: string; // 当前 chat 最近一轮完整的 assistant 可见输出
   };
+};
+
+type RuntimeConversationContext = {
+  lastUserInput: string;
+  lastAssistantOutput: string;
+  updatedAt: number | null;
+};
+
+type RuntimeSessionContext = {
+  intent: RuntimeIntentContext;
+  memory: {
+    core: RuntimeMemoryScopeContext;
+    short: RuntimeMemoryScopeContext;
+    long: RuntimeMemoryScopeContext;
+  };
+  conversation: RuntimeConversationContext;
 };
 
 type RuntimeTaskSession = {
@@ -96,6 +119,22 @@ const createRuntimeMemoryContext = () => {
   };
 };
 
+const createRuntimeConversationContext = (): RuntimeConversationContext => {
+  return {
+    lastUserInput: "",
+    lastAssistantOutput: "",
+    updatedAt: null,
+  };
+};
+
+const createRuntimeSessionContext = (): RuntimeSessionContext => {
+  return {
+    intent: createRuntimeIntentContext(),
+    memory: createRuntimeMemoryContext(),
+    conversation: createRuntimeConversationContext(),
+  };
+};
+
 const MEMORY_SCOPE_TAGS: Record<MemoryScope, "Core" | "Long" | "Short"> = {
   core: "Core",
   long: "Long",
@@ -106,6 +145,7 @@ export class Runtime {
   #serviceManager: ServiceManager;
   #currentTask: TaskItem | null = null;
   #taskSessions: RuntimeTaskSession[];
+  #sessionContexts: Map<UUID, RuntimeSessionContext>;
   #context: RuntimeContext;
   #systemRules: string;
 
@@ -114,6 +154,7 @@ export class Runtime {
     // 这里暂时不对session数组做任何处理
     this.#serviceManager = serviceManager;
     this.#taskSessions = [];
+    this.#sessionContexts = new Map();
 
     // 系统规则提示词
     this.#systemRules = "";
@@ -126,7 +167,6 @@ export class Runtime {
       channel: {
         source: TaskSource.EXTERNAL,
       },
-      memory: createRuntimeMemoryContext(),
     } satisfies RuntimeContext;
   }
 
@@ -157,6 +197,23 @@ export class Runtime {
     return chainRound;
   }
 
+  #getActiveSessionContext() {
+    const sessionId = this.#context.meta.sessionId;
+
+    if (isEmpty(sessionId)) {
+      return createRuntimeSessionContext();
+    }
+
+    let sessionContext = this.#sessionContexts.get(sessionId as UUID);
+
+    if (!sessionContext) {
+      sessionContext = createRuntimeSessionContext();
+      this.#sessionContexts.set(sessionId as UUID, sessionContext);
+    }
+
+    return sessionContext;
+  }
+
   /**
    * 获取或初始化 FollowUp 上下文。
    * @description
@@ -170,6 +227,7 @@ export class Runtime {
         chainRound: null,
         originalUserInput: "",
         accumulatedAssistantOutput: "",
+        lastAssistantOutput: "",
       };
     }
 
@@ -208,13 +266,16 @@ export class Runtime {
    */
   #syncContextWithTask(task: TaskItem) {
     const followUp = this.#getOrCreateFollowUpContext();
+    const previousSessionId = this.#context.meta.sessionId;
     const previousChatId = followUp.chatId;
+    const hasSessionChanged = previousSessionId !== task.sessionId;
     const hasChatChanged = previousChatId !== task.chatId;
 
     this.#syncTaskRound(task);
 
     this.#context.meta.sessionId = task.sessionId;
     this.#context.channel.source = task.source;
+    this.#getActiveSessionContext();
     followUp.chatId = task.chatId;
     followUp.chainRound = this.#parseTaskChainRound(task);
 
@@ -222,10 +283,7 @@ export class Runtime {
       // chat 发生变化意味着进入了新的外部对话轮次，
       // 已累计的 assistant 输出必须归零，避免串到下一个 chat。
       followUp.accumulatedAssistantOutput = "";
-    }
-
-    if (task.source === TaskSource.EXTERNAL || hasChatChanged) {
-      this.clearMemoryContext();
+      followUp.lastAssistantOutput = "";
     }
 
     if (task.source === TaskSource.EXTERNAL) {
@@ -236,9 +294,28 @@ export class Runtime {
       return;
     }
 
-    if (hasChatChanged) {
+    if (hasChatChanged || hasSessionChanged) {
       followUp.originalUserInput = "";
     }
+  }
+
+  #convertConversationContextToPrompt() {
+    const conversation = this.#getActiveSessionContext().conversation;
+
+    if (conversation.updatedAt === null) {
+      return ["<Conversation></Conversation>"];
+    }
+
+    return [
+      "<Conversation>",
+      "<LastUserInput>",
+      conversation.lastUserInput,
+      "</LastUserInput>",
+      "<LastAssistantOutput>",
+      conversation.lastAssistantOutput,
+      "</LastAssistantOutput>",
+      "</Conversation>",
+    ];
   }
 
   /**
@@ -267,10 +344,32 @@ export class Runtime {
   }
 
   /**
+   * 将意图上下文转换成提示词片段。
+   */
+  #convertIntentContextToPrompt() {
+    const intent = this.#getActiveSessionContext().intent;
+
+    if (intent.updatedAt === null) {
+      return ["<Intent></Intent>"];
+    }
+
+    return [
+      "<Intent>",
+      `<SessionId>${intent.sessionId}</SessionId>`,
+      `<Type>${intent.type}</Type>`,
+      `<NeedsMemory>${intent.needsMemory}</NeedsMemory>`,
+      `<NeedsMemorySave>${intent.needsMemorySave}</NeedsMemorySave>`,
+      `<MemoryQuery>${intent.memoryQuery}</MemoryQuery>`,
+      `<Confidence>${intent.confidence ?? ""}</Confidence>`,
+      "</Intent>",
+    ];
+  }
+
+  /**
    * 读取指定 scope 的记忆上下文。
    */
   #readMemoryScopeContext(scope: MemoryScope) {
-    return this.#context.memory[scope];
+    return this.#getActiveSessionContext().memory[scope];
   }
 
   /**
@@ -364,6 +463,8 @@ export class Runtime {
       "<Channel>",
       `Source = ${this.#context.channel.source}`,
       "</Channel>",
+      ...this.#convertConversationContextToPrompt(),
+      ...this.#convertIntentContextToPrompt(),
       // 记忆数据
       "<Memory>",
       ...this.#convertMemoryScopeContextToPrompt("core"),
@@ -507,9 +608,21 @@ export class Runtime {
    * 这里统一拼接，避免调用方自己管理多份提示词顺序。
    */
   async #getIntentRequestPrompt() {
-    return [intentRequestPromptText, memoryPromptText, followUpPromptText]
+    return [
+      systemPromptText,
+      intentRequestPromptText,
+      memoryPromptText,
+      followUpPromptText,
+    ]
       .filter((chunk) => chunk.trim() !== "")
       .join("\n\n");
+  }
+
+  /**
+   * 获取独立的 Intent 预判提示词。
+   */
+  public exportIntentPrompt() {
+    return intentPromptText.trim();
   }
 
   /* ==================== */
@@ -579,6 +692,36 @@ export class Runtime {
   }
 
   /**
+   * 记录当前 chat 最近一轮完整的 assistant 可见输出。
+   * @description
+   * accumulatedAssistantOutput 用于给后续 follow-up 轮次提供上下文；
+   * lastAssistantOutput 只用于最终完成消息，避免把多轮编排文本直接拼成最终答案。
+   */
+  public setLastAssistantOutput(text: string) {
+    this.#getOrCreateFollowUpContext().lastAssistantOutput = text;
+  }
+
+  /**
+   * 提交当前 session 最近一轮稳定对话。
+   */
+  public commitSessionTurn(userInput: string, assistantOutput: string) {
+    const sessionContext = this.#getActiveSessionContext();
+
+    sessionContext.conversation = {
+      lastUserInput: userInput.trim(),
+      lastAssistantOutput: assistantOutput.trim(),
+      updatedAt: Date.now(),
+    };
+  }
+
+  /**
+   * 获取当前 chat 的原始用户输入。
+   */
+  public getCurrentChatOriginalUserInput() {
+    return this.#context.followUp?.originalUserInput ?? "";
+  }
+
+  /**
    * 读取当前 chat 已累计的 assistant 可见输出。
    * @description
    * FOLLOW_UP 结束时需要把整段累计输出作为最终结果，
@@ -586,6 +729,13 @@ export class Runtime {
    */
   public getAccumulatedAssistantOutput() {
     return this.#context.followUp?.accumulatedAssistantOutput ?? "";
+  }
+
+  /**
+   * 读取当前 chat 最近一轮完整的 assistant 可见输出。
+   */
+  public getLastAssistantOutput() {
+    return this.#context.followUp?.lastAssistantOutput ?? "";
   }
 
   /**
@@ -599,7 +749,7 @@ export class Runtime {
       reason?: string;
     } = {},
   ) {
-    this.#context.memory[scope] = {
+    this.#getActiveSessionContext().memory[scope] = {
       status: "loaded",
       query: options.query?.trim() ?? "",
       reason: options.reason?.trim() ?? "",
@@ -618,7 +768,7 @@ export class Runtime {
       reason: string;
     },
   ) {
-    this.#context.memory[scope] = {
+    this.#getActiveSessionContext().memory[scope] = {
       status: "empty",
       query: options.query.trim(),
       reason: options.reason.trim(),
@@ -658,19 +808,79 @@ export class Runtime {
    * 清空记忆上下文。
    */
   public clearMemoryContext(scope?: MemoryScope) {
+    const sessionContext = this.#getActiveSessionContext();
+
     if (scope) {
-      this.#context.memory[scope] = createRuntimeMemoryScopeContext();
+      sessionContext.memory[scope] = createRuntimeMemoryScopeContext();
       return;
     }
 
-    this.#context.memory = createRuntimeMemoryContext();
+    sessionContext.memory = createRuntimeMemoryContext();
   }
 
   /**
    * 读取记忆上下文快照。
    */
   public getMemoryContext(scope: MemoryScope) {
-    return structuredClone(this.#context.memory[scope]);
+    return structuredClone(this.#getActiveSessionContext().memory[scope]);
+  }
+
+  /**
+   * 写入当前 chat 的意图上下文。
+   */
+  public setIntentContext(
+    input: Omit<RuntimeIntentContext, "updatedAt">,
+  ) {
+    this.#getActiveSessionContext().intent = {
+      ...input,
+      updatedAt: Date.now(),
+    };
+  }
+
+  /**
+   * 清空意图上下文。
+   */
+  public clearIntentContext() {
+    this.#getActiveSessionContext().intent = createRuntimeIntentContext();
+  }
+
+  /**
+   * 读取意图上下文快照。
+   */
+  public getIntentContext() {
+    return structuredClone(this.#getActiveSessionContext().intent);
+  }
+
+  /**
+   * 读取已加载记忆所在的 scope。
+   */
+  public getLoadedMemoryScopeByKey(memoryKey: string): MemoryScope | null {
+    for (const scope of MEMORY_SCOPES) {
+      const memoryContext = this.#getActiveSessionContext().memory[scope];
+
+      if (
+        memoryContext.status === "loaded"
+        && memoryContext.output?.memory.key === memoryKey
+      ) {
+        return scope;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 按 memory key 卸载已加载的记忆上下文。
+   */
+  public unloadMemoryContextByKey(memoryKey: string) {
+    const scope = this.getLoadedMemoryScopeByKey(memoryKey);
+
+    if (!scope) {
+      return false;
+    }
+
+    this.clearMemoryContext(scope);
+    return true;
   }
 
   /**

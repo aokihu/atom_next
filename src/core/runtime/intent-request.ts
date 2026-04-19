@@ -2,12 +2,16 @@ import type {
   FollowUpIntentRequest,
   IntentRequest,
   IntentRequestDispatchResult,
+  LoadMemoryIntentRequest,
   LoadSkillIntentRequest,
   SaveMemoryIntentRequest,
   SearchMemoryIntentRequest,
+  UnloadMemoryIntentRequest,
+  UpdateMemoryIntentRequest,
 } from "@/types";
 import {
   IntentRequestDispatchStatus,
+  isIntentRequestMemoryUnloadReason,
   IntentRequestType,
   isIntentRequestMemoryScope,
   isIntentRequestType,
@@ -200,6 +204,56 @@ const parseSearchMemoryIntentRequest = (
 };
 
 /**
+ * 解析 LOAD_MEMORY 请求。
+ */
+const parseLoadMemoryIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): LoadMemoryIntentRequest | null => {
+  const key = params.key;
+
+  if (!isString(key) || isEmpty(key)) {
+    return null;
+  }
+
+  return {
+    request: IntentRequestType.LOAD_MEMORY,
+    intent,
+    params: {
+      key,
+    },
+  };
+};
+
+/**
+ * 解析 UNLOAD_MEMORY 请求。
+ */
+const parseUnloadMemoryIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): UnloadMemoryIntentRequest | null => {
+  const key = params.key;
+  const reason = params.reason;
+
+  if (!isString(key) || isEmpty(key)) {
+    return null;
+  }
+
+  if (!isString(reason) || !isIntentRequestMemoryUnloadReason(reason)) {
+    return null;
+  }
+
+  return {
+    request: IntentRequestType.UNLOAD_MEMORY,
+    intent,
+    params: {
+      key,
+      reason,
+    },
+  };
+};
+
+/**
  * 解析 SAVE_MEMORY 请求。
  */
 const parseSaveMemoryIntentRequest = (
@@ -229,6 +283,44 @@ const parseSaveMemoryIntentRequest = (
       text,
       ...(isString(summary) ? { summary } : {}),
       ...(isString(scope) ? { scope } : {}),
+    },
+  };
+};
+
+/**
+ * 解析 UPDATE_MEMORY 请求。
+ */
+const parseUpdateMemoryIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): UpdateMemoryIntentRequest | null => {
+  const key = params.key;
+  const text = params.text;
+  const summary = params.summary;
+
+  if (!isString(key) || isEmpty(key)) {
+    return null;
+  }
+
+  if (!isString(text) && !isString(summary)) {
+    return null;
+  }
+
+  if (isString(text) && isEmpty(text)) {
+    return null;
+  }
+
+  if (isString(summary) && isEmpty(summary)) {
+    return null;
+  }
+
+  return {
+    request: IntentRequestType.UPDATE_MEMORY,
+    intent,
+    params: {
+      key,
+      ...(isString(text) ? { text } : {}),
+      ...(isString(summary) ? { summary } : {}),
     },
   };
 };
@@ -295,8 +387,14 @@ const parseTypedIntentRequest = (
   switch (request) {
     case IntentRequestType.SEARCH_MEMORY:
       return parseSearchMemoryIntentRequest(intent, params);
+    case IntentRequestType.LOAD_MEMORY:
+      return parseLoadMemoryIntentRequest(intent, params);
+    case IntentRequestType.UNLOAD_MEMORY:
+      return parseUnloadMemoryIntentRequest(intent, params);
     case IntentRequestType.SAVE_MEMORY:
       return parseSaveMemoryIntentRequest(intent, params);
+    case IntentRequestType.UPDATE_MEMORY:
+      return parseUpdateMemoryIntentRequest(intent, params);
     case IntentRequestType.LOAD_SKILL:
       return parseLoadSkillIntentRequest(intent, params);
     case IntentRequestType.FOLLOW_UP:
@@ -335,12 +433,39 @@ const dispatchSearchMemoryIntentRequest = (
   );
 };
 
+const dispatchLoadMemoryIntentRequest = (
+  request: LoadMemoryIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "LOAD_MEMORY request accepted and will be executed by Core before follow up scheduling",
+  );
+};
+
+const dispatchUnloadMemoryIntentRequest = (
+  request: UnloadMemoryIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "UNLOAD_MEMORY request accepted and will be executed by Core after current output finishes",
+  );
+};
+
 const dispatchSaveMemoryIntentRequest = (
   request: SaveMemoryIntentRequest,
 ) => {
   return createAcceptedDispatchResult(
     request,
     "SAVE_MEMORY request accepted and will be executed by Core after current output finishes",
+  );
+};
+
+const dispatchUpdateMemoryIntentRequest = (
+  request: UpdateMemoryIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "UPDATE_MEMORY request accepted and will be executed by Core after current output finishes",
   );
 };
 
@@ -382,8 +507,14 @@ export const dispatchIntentRequests = (
     switch (request.request) {
       case IntentRequestType.SEARCH_MEMORY:
         return dispatchSearchMemoryIntentRequest(request);
+      case IntentRequestType.LOAD_MEMORY:
+        return dispatchLoadMemoryIntentRequest(request);
+      case IntentRequestType.UNLOAD_MEMORY:
+        return dispatchUnloadMemoryIntentRequest(request);
       case IntentRequestType.SAVE_MEMORY:
         return dispatchSaveMemoryIntentRequest(request);
+      case IntentRequestType.UPDATE_MEMORY:
+        return dispatchUpdateMemoryIntentRequest(request);
       case IntentRequestType.LOAD_SKILL:
         return dispatchLoadSkillIntentRequest(request);
       case IntentRequestType.FOLLOW_UP:

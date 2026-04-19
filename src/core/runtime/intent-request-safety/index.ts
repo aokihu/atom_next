@@ -5,9 +5,12 @@ import type {
 } from "@/types";
 import { IntentRequestSafetyIssueCode, IntentRequestType } from "@/types";
 import { checkFollowUpIntentRequestSafety } from "./follow-up";
+import { checkLoadMemoryIntentRequestSafety } from "./load-memory";
 import { checkLoadSkillIntentRequestSafety } from "./load-skill";
 import { checkSaveMemoryIntentRequestSafety } from "./save-memory";
 import { checkSearchMemoryIntentRequestSafety } from "./search-memory";
+import { checkUnloadMemoryIntentRequestSafety } from "./unload-memory";
+import { checkUpdateMemoryIntentRequestSafety } from "./update-memory";
 import {
   checkIntentRequestBaseSafety,
   createRejectedIntentRequest,
@@ -27,8 +30,14 @@ const checkSingleIntentRequestSafety = (
   switch (request.request) {
     case IntentRequestType.SEARCH_MEMORY:
       return checkSearchMemoryIntentRequestSafety(request);
+    case IntentRequestType.LOAD_MEMORY:
+      return checkLoadMemoryIntentRequestSafety(request);
+    case IntentRequestType.UNLOAD_MEMORY:
+      return checkUnloadMemoryIntentRequestSafety(request);
     case IntentRequestType.SAVE_MEMORY:
       return checkSaveMemoryIntentRequestSafety(request);
+    case IntentRequestType.UPDATE_MEMORY:
+      return checkUpdateMemoryIntentRequestSafety(request);
     case IntentRequestType.LOAD_SKILL:
       return checkLoadSkillIntentRequestSafety(request);
     case IntentRequestType.FOLLOW_UP:

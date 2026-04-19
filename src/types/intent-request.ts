@@ -20,7 +20,10 @@ export type ChatSubmissionBody = {
  */
 export enum IntentRequestType {
   SEARCH_MEMORY = "SEARCH_MEMORY",
+  LOAD_MEMORY = "LOAD_MEMORY",
+  UNLOAD_MEMORY = "UNLOAD_MEMORY",
   SAVE_MEMORY = "SAVE_MEMORY",
+  UPDATE_MEMORY = "UPDATE_MEMORY",
   LOAD_SKILL = "LOAD_SKILL",
   FOLLOW_UP = "FOLLOW_UP",
 }
@@ -42,6 +45,13 @@ export const INTENT_REQUEST_MEMORY_SCOPES = Object.values(
   IntentRequestMemoryScope,
 );
 
+export const INTENT_REQUEST_MEMORY_UNLOAD_REASONS = [
+  "answer_completed",
+  "memory_irrelevant",
+  "memory_replaced",
+  "memory_conflicted",
+] as const;
+
 export const isIntentRequestType = (
   value: string,
 ): value is IntentRequestType => {
@@ -53,6 +63,17 @@ export const isIntentRequestMemoryScope = (
 ): value is IntentRequestMemoryScope => {
   return INTENT_REQUEST_MEMORY_SCOPES.includes(
     value as IntentRequestMemoryScope,
+  );
+};
+
+export type IntentRequestMemoryUnloadReason =
+  (typeof INTENT_REQUEST_MEMORY_UNLOAD_REASONS)[number];
+
+export const isIntentRequestMemoryUnloadReason = (
+  value: string,
+): value is IntentRequestMemoryUnloadReason => {
+  return INTENT_REQUEST_MEMORY_UNLOAD_REASONS.includes(
+    value as IntentRequestMemoryUnloadReason,
   );
 };
 
@@ -68,10 +89,25 @@ export type SearchMemoryIntentRequestParams = {
   scope?: IntentRequestMemoryScope;
 };
 
+export type LoadMemoryIntentRequestParams = {
+  key: string;
+};
+
+export type UnloadMemoryIntentRequestParams = {
+  key: string;
+  reason: IntentRequestMemoryUnloadReason;
+};
+
 export type SaveMemoryIntentRequestParams = {
   text: string;
   summary?: string;
   scope?: IntentRequestMemoryScope;
+};
+
+export type UpdateMemoryIntentRequestParams = {
+  key: string;
+  text?: string;
+  summary?: string;
 };
 
 export type LoadSkillIntentRequestParams = {
@@ -88,9 +124,24 @@ export type SearchMemoryIntentRequest = BaseIntentRequest<
   SearchMemoryIntentRequestParams
 >;
 
+export type LoadMemoryIntentRequest = BaseIntentRequest<
+  IntentRequestType.LOAD_MEMORY,
+  LoadMemoryIntentRequestParams
+>;
+
+export type UnloadMemoryIntentRequest = BaseIntentRequest<
+  IntentRequestType.UNLOAD_MEMORY,
+  UnloadMemoryIntentRequestParams
+>;
+
 export type SaveMemoryIntentRequest = BaseIntentRequest<
   IntentRequestType.SAVE_MEMORY,
   SaveMemoryIntentRequestParams
+>;
+
+export type UpdateMemoryIntentRequest = BaseIntentRequest<
+  IntentRequestType.UPDATE_MEMORY,
+  UpdateMemoryIntentRequestParams
 >;
 
 export type LoadSkillIntentRequest = BaseIntentRequest<
@@ -110,7 +161,10 @@ export type FollowUpIntentRequest = BaseIntentRequest<
  */
 export type IntentRequest =
   | SearchMemoryIntentRequest
+  | LoadMemoryIntentRequest
+  | UnloadMemoryIntentRequest
   | SaveMemoryIntentRequest
+  | UpdateMemoryIntentRequest
   | LoadSkillIntentRequest
   | FollowUpIntentRequest;
 
@@ -133,6 +187,7 @@ export enum IntentRequestSafetyIssueCode {
   MISSING_RUNTIME_CONTEXT = "missing_runtime_context",
   TOO_MANY_REQUESTS = "too_many_requests",
   INTENT_TOO_LONG = "intent_too_long",
+  MEMORY_KEY_TOO_LONG = "memory_key_too_long",
   SEARCH_WORDS_TOO_LONG = "search_words_too_long",
   SEARCH_LIMIT_TOO_LARGE = "search_limit_too_large",
   MEMORY_CONTENT_TOO_LONG = "memory_content_too_long",

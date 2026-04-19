@@ -76,6 +76,56 @@ describe("parseIntentRequests", () => {
     ]);
   });
 
+  test("parses load memory request", () => {
+    const result = parseIntentRequests(
+      '[LOAD_MEMORY, "加载明确记忆", key=long.note.watchman_memory_boundary]',
+    );
+
+    expect(result).toEqual([
+      {
+        request: "LOAD_MEMORY",
+        intent: "加载明确记忆",
+        params: {
+          key: "long.note.watchman_memory_boundary",
+        },
+      },
+    ]);
+  });
+
+  test("parses unload memory request with fixed reason", () => {
+    const result = parseIntentRequests(
+      '[UNLOAD_MEMORY, "卸载已完成回答的记忆", key=long.note.watchman_memory_boundary;reason=answer_completed]',
+    );
+
+    expect(result).toEqual([
+      {
+        request: "UNLOAD_MEMORY",
+        intent: "卸载已完成回答的记忆",
+        params: {
+          key: "long.note.watchman_memory_boundary",
+          reason: "answer_completed",
+        },
+      },
+    ]);
+  });
+
+  test("parses update memory request", () => {
+    const result = parseIntentRequests(
+      '[UPDATE_MEMORY, "修正已有记忆正文", key=long.note.watchman_memory_boundary;text=Watchman 不负责 Memory 持久化。]',
+    );
+
+    expect(result).toEqual([
+      {
+        request: "UPDATE_MEMORY",
+        intent: "修正已有记忆正文",
+        params: {
+          key: "long.note.watchman_memory_boundary",
+          text: "Watchman 不负责 Memory 持久化。",
+        },
+      },
+    ]);
+  });
+
   test("parses load skill request", () => {
     const result = parseIntentRequests(
       '[LOAD_SKILL, "需要查看技能说明", skill=github:gh-fix-ci]',
@@ -141,6 +191,14 @@ describe("parseIntentRequests", () => {
   test("ignores save memory request when scope is invalid", () => {
     const result = parseIntentRequests(
       '[SAVE_MEMORY, "保存这段记忆", text=skill cache ready;scope=archive]',
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  test("ignores unload memory request when reason is invalid", () => {
+    const result = parseIntentRequests(
+      '[UNLOAD_MEMORY, "卸载记忆", key=long.note.watchman_memory_boundary;reason=custom_reason]',
     );
 
     expect(result).toEqual([]);
@@ -223,6 +281,9 @@ describe("parseIntentRequests", () => {
   test("dispatches safe requests into explicit core execution results", () => {
     const requests = parseIntentRequests(`
 [SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
+[LOAD_MEMORY, "加载明确记忆", key=long.note.watchman_memory_boundary]
+[UNLOAD_MEMORY, "卸载记忆", key=long.note.watchman_memory_boundary;reason=answer_completed]
+[UPDATE_MEMORY, "修正记忆正文", key=long.note.watchman_memory_boundary;text=updated]
 [FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
     `);
     const safetyResult = checkIntentRequestSafety(requests, {
@@ -244,6 +305,44 @@ describe("parseIntentRequests", () => {
         status: "accepted",
         message:
           "SEARCH_MEMORY request accepted and will be executed by Core before follow up scheduling",
+      },
+      {
+        request: {
+          request: "LOAD_MEMORY",
+          intent: "加载明确记忆",
+          params: {
+            key: "long.note.watchman_memory_boundary",
+          },
+        },
+        status: "accepted",
+        message:
+          "LOAD_MEMORY request accepted and will be executed by Core before follow up scheduling",
+      },
+      {
+        request: {
+          request: "UNLOAD_MEMORY",
+          intent: "卸载记忆",
+          params: {
+            key: "long.note.watchman_memory_boundary",
+            reason: "answer_completed",
+          },
+        },
+        status: "accepted",
+        message:
+          "UNLOAD_MEMORY request accepted and will be executed by Core after current output finishes",
+      },
+      {
+        request: {
+          request: "UPDATE_MEMORY",
+          intent: "修正记忆正文",
+          params: {
+            key: "long.note.watchman_memory_boundary",
+            text: "updated",
+          },
+        },
+        status: "accepted",
+        message:
+          "UPDATE_MEMORY request accepted and will be executed by Core after current output finishes",
       },
       {
         request: {
