@@ -118,6 +118,48 @@ export {
 } from "./intent-request";
 
 /* ==================== */
+/* Memory Types         */
+/* ==================== */
+
+export type {
+  MemoryScope,
+  MemoryType,
+  MemorySource,
+  MemoryStatus,
+  LinkType,
+  SaveMemoryDecision,
+  MemoryRetrievalMode,
+  MemoryNode,
+  LinkNode,
+  MemoryEvent,
+  SaveMemoryLinkInput,
+  SaveMemoryInput,
+  SearchMemoryInput,
+  UpdateMemoryInput,
+  MarkMemoryStatusInput,
+  RetrieveRuntimeContextInput,
+  MemoryRetrieval,
+  RelatedMemoryLink,
+  MemoryOutput,
+  RuntimeMemoryLink,
+  RuntimeMemoryOutput,
+  SaveMemoryResult,
+  LinkScoreRecalculationResult,
+  CleanupMemoriesResult,
+  MergeMemoriesResult,
+} from "./memory";
+
+export {
+  MEMORY_SCOPES,
+  MEMORY_TYPES,
+  MEMORY_SOURCES,
+  MEMORY_STATUSES,
+  LINK_TYPES,
+  SAVE_MEMORY_DECISIONS,
+  MEMORY_RETRIEVAL_MODES,
+} from "./memory";
+
+/* ==================== */
 /* Config Types         */
 /* ==================== */
 

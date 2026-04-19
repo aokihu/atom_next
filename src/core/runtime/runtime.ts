@@ -12,6 +12,9 @@ import type { RuntimeService } from "@/services/runtime";
 import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with {
   type: "text",
 };
+import memoryPromptText from "@/assets/prompts/memory.md" with {
+  type: "text",
+};
 import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with {
   type: "text",
 };
@@ -386,7 +389,7 @@ export class Runtime {
    * 这里统一拼接，避免调用方自己管理多份提示词顺序。
    */
   async #getIntentRequestPrompt() {
-    return [intentRequestPromptText, followUpPromptText]
+    return [intentRequestPromptText, memoryPromptText, followUpPromptText]
       .filter((chunk) => chunk.trim() !== "")
       .join("\n\n");
   }

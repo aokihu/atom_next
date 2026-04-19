@@ -50,10 +50,15 @@ describe("Runtime context", () => {
     });
 
     expect(prompt).toContain("# Intent Request 使用规范");
+    expect(prompt).toContain("# Memory 使用规范");
     expect(prompt).toContain("# FOLLOW_UP 使用规范");
     expect(prompt).toContain("<<<REQUEST>>>");
+    expect(prompt).toContain("当你提交 `SEARCH_MEMORY` 请求时");
+    expect(prompt).toContain("不要只单独提交 `SEARCH_MEMORY`");
+    expect(prompt).toContain("当前只允许触发一次");
+    expect(prompt).toContain("如果 `<Memory>` 仍然为空");
     expect(prompt).toContain("当一次回答无法在单轮输出中安全完成时");
-    expect(prompt).not.toContain("<FollowUp>");
+    expect(prompt).not.toContain("<FollowUp>\n<ChatId>");
     expect(prompt).toContain("Round = 1");
   });
 

@@ -1,4 +1,4 @@
-import type { TaskItem } from "@/types/task";
+import { TaskSource, type TaskItem } from "@/types/task";
 import type { ServiceManager } from "@/libs/service-manage";
 import { buildInternalTaskItem } from "@/libs";
 import {
@@ -32,6 +32,7 @@ type IntentRequestProcessResult =
 
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
+  static readonly MAX_SEARCH_MEMORY_FOLLOW_UP_ROUND = 1;
 
   #serviceManager: ServiceManager;
   #taskQueue: TaskQueue;
@@ -175,6 +176,31 @@ export class Core {
   }
 
   /**
+   * 判断是否应拦截“记忆搜索 -> FOLLOW_UP”的重复续跑。
+   * @description
+   * 当前 SEARCH_MEMORY 还没有把结果真正回灌到 Runtime <Memory>，
+   * 如果内部续跑轮次里继续重复发 SEARCH_MEMORY + FOLLOW_UP，
+   * 模型会在空上下文下自循环复读。
+   * 因此这里先做最小收口：
+   * 外部轮次允许发起一次记忆续跑，进入内部轮次后再出现同类请求则直接停止继续派生。
+   */
+  #shouldStopRepeatedSearchMemoryFollowUp(task: TaskItem, requests: IntentRequest[]) {
+    if (task.source !== TaskSource.INTERNAL) {
+      return false;
+    }
+
+    const chainRound = this.#parseTaskChainRound(task);
+
+    if (chainRound < Core.MAX_SEARCH_MEMORY_FOLLOW_UP_ROUND) {
+      return false;
+    }
+
+    return requests.some((request) => {
+      return request.request === IntentRequestType.SEARCH_MEMORY;
+    });
+  }
+
+  /**
    * 处理单条 Intent Request。
    * @description
    * 当前阶段默认串行消费请求。
@@ -232,7 +258,17 @@ export class Core {
    * 一旦某条请求真正改变了任务流转，就停止继续处理后续请求。
    */
   async #processIntentRequests(task: TaskItem, requests: IntentRequest[]) {
+    const shouldStopRepeatedSearchMemoryFollowUp =
+      this.#shouldStopRepeatedSearchMemoryFollowUp(task, requests);
+
     for (const request of requests) {
+      if (
+        shouldStopRepeatedSearchMemoryFollowUp &&
+        request.request === IntentRequestType.FOLLOW_UP
+      ) {
+        continue;
+      }
+
       const processResult = this.#processIntentRequest(task, request);
       const shouldStop = await this.#applyIntentRequestProcessResult(
         task,

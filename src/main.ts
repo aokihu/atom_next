@@ -10,7 +10,7 @@ import type { BootstrapResult } from "@/bootstrap/bootstrap";
 import { Core } from "@/core";
 import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
-import { RuntimeService, WatchmanService } from "@/services";
+import { MemoryService, RuntimeService, WatchmanService } from "@/services";
 import { startTui } from "@/tui";
 
 const startServerApp = async (args: BootstrapResult) => {
@@ -22,10 +22,11 @@ const startServerApp = async (args: BootstrapResult) => {
 
   /* ----- 创建Watchman服务 ----- */
   const watchman = new WatchmanService();
+  const memory = new MemoryService();
 
   /* ----- 启动服务管理器 ----- */
   const serviceManager = new ServiceManager();
-  serviceManager.register(runtime, watchman);
+  serviceManager.register(runtime, watchman, memory);
   const startResults = await serviceManager.startAllServices();
   const rejectedResult = startResults.find(
     (result) => result.status === "rejected",

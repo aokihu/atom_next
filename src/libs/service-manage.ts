@@ -1,7 +1,7 @@
 import type { BaseService } from "@/services/base";
 import { isArray } from "radashi";
 
-type ServiceName = "runtime" | "watchman";
+type ServiceName = "runtime" | "watchman" | "memory";
 
 /**
  * 服务管理器
