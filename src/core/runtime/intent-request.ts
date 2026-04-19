@@ -315,27 +315,32 @@ const createUnimplementedDispatchResult = (
   };
 };
 
+const createAcceptedDispatchResult = (
+  request: IntentRequest,
+  message: string,
+): IntentRequestDispatchResult => {
+  return {
+    request,
+    status: IntentRequestDispatchStatus.ACCEPTED,
+    message,
+  };
+};
+
 const dispatchSearchMemoryIntentRequest = (
   request: SearchMemoryIntentRequest,
 ) => {
-  // Placeholder:
-  // SEARCH_MEMORY 的真实记忆检索和 Context 回灌能力还未接入，
-  // 当前阶段只保留分发入口，后续在记忆模块落地后替换这里。
-  return createUnimplementedDispatchResult(
+  return createAcceptedDispatchResult(
     request,
-    "SEARCH_MEMORY dispatch is reserved but not implemented yet",
+    "SEARCH_MEMORY request accepted and will be executed by Core before follow up scheduling",
   );
 };
 
 const dispatchSaveMemoryIntentRequest = (
   request: SaveMemoryIntentRequest,
 ) => {
-  // Placeholder:
-  // SAVE_MEMORY 的真实记忆持久化能力还未接入，
-  // 当前阶段只保留分发入口，后续在记忆模块落地后替换这里。
-  return createUnimplementedDispatchResult(
+  return createAcceptedDispatchResult(
     request,
-    "SAVE_MEMORY dispatch is reserved but not implemented yet",
+    "SAVE_MEMORY request accepted and will be executed by Core after current output finishes",
   );
 };
 
@@ -367,7 +372,8 @@ const dispatchFollowUpIntentRequest = (
 /**
  * 分发安全通过的 Intent Request。
  * @description
- * 当前阶段只实现标准化分发结果，尚未接入具体业务动作。
+ * 当前阶段负责标准化分发结果；
+ * 真实动作由 Core 串行消费 safeRequests 后执行。
  */
 export const dispatchIntentRequests = (
   requests: IntentRequest[],

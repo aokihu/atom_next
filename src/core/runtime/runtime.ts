@@ -6,6 +6,8 @@ import type {
   IntentRequestSafetyContext,
   RejectedIntentRequest,
   IntentRequestDispatchResult,
+  MemoryScope,
+  RuntimeMemoryOutput,
 } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
@@ -48,9 +50,9 @@ type RuntimeContext = {
     source: TaskSource;
   };
   memory: {
-    core: any[];
-    short: any[];
-    long: any[];
+    core: RuntimeMemoryScopeContext;
+    short: RuntimeMemoryScopeContext;
+    long: RuntimeMemoryScopeContext;
   };
   followUp?: {
     chatId: UUID | EmptyString; // 当前续跑上下文所属的 chat ID
@@ -64,6 +66,40 @@ type RuntimeTaskSession = {
   sessionId: UUID;
   chatId: UUID;
   round: number;
+};
+
+type RuntimeMemoryScopeStatus = "idle" | "loaded" | "empty";
+
+type RuntimeMemoryScopeContext = {
+  status: RuntimeMemoryScopeStatus;
+  query: string;
+  reason: string;
+  output: RuntimeMemoryOutput | null;
+  updatedAt: number | null;
+};
+
+const createRuntimeMemoryScopeContext = (): RuntimeMemoryScopeContext => {
+  return {
+    status: "idle",
+    query: "",
+    reason: "",
+    output: null,
+    updatedAt: null,
+  };
+};
+
+const createRuntimeMemoryContext = () => {
+  return {
+    core: createRuntimeMemoryScopeContext(),
+    short: createRuntimeMemoryScopeContext(),
+    long: createRuntimeMemoryScopeContext(),
+  };
+};
+
+const MEMORY_SCOPE_TAGS: Record<MemoryScope, "Core" | "Long" | "Short"> = {
+  core: "Core",
+  long: "Long",
+  short: "Short",
 };
 
 export class Runtime {
@@ -90,11 +126,7 @@ export class Runtime {
       channel: {
         source: TaskSource.EXTERNAL,
       },
-      memory: {
-        core: [],
-        short: [],
-        long: [],
-      },
+      memory: createRuntimeMemoryContext(),
     } satisfies RuntimeContext;
   }
 
@@ -192,6 +224,10 @@ export class Runtime {
       followUp.accumulatedAssistantOutput = "";
     }
 
+    if (task.source === TaskSource.EXTERNAL || hasChatChanged) {
+      this.clearMemoryContext();
+    }
+
     if (task.source === TaskSource.EXTERNAL) {
       // 外部任务代表一次新的用户提交。
       // 这里把当前 payload 文本保存为该 chat 的原始用户输入，
@@ -231,6 +267,88 @@ export class Runtime {
   }
 
   /**
+   * 读取指定 scope 的记忆上下文。
+   */
+  #readMemoryScopeContext(scope: MemoryScope) {
+    return this.#context.memory[scope];
+  }
+
+  /**
+   * 将单个 scope 的记忆上下文转换成提示词片段。
+   * @description
+   * idle 保持空标签；
+   * loaded/empty 则写入结构化结果，让 FOLLOW_UP 能区分“已命中”或“已搜索但为空”。
+   */
+  #convertMemoryScopeContextToPrompt(scope: MemoryScope) {
+    const tag = MEMORY_SCOPE_TAGS[scope];
+    const memoryContext = this.#readMemoryScopeContext(scope);
+
+    if (memoryContext.status === "idle") {
+      return [`<${tag}></${tag}>`];
+    }
+
+    const prompt = [`<${tag}>`, `<Status>${memoryContext.status}</Status>`];
+
+    if (!isEmpty(memoryContext.query)) {
+      prompt.push(`<Query>${memoryContext.query}</Query>`);
+    }
+
+    if (!isEmpty(memoryContext.reason)) {
+      prompt.push(`<Reason>${memoryContext.reason}</Reason>`);
+    }
+
+    if (memoryContext.status === "loaded" && memoryContext.output) {
+      const { output } = memoryContext;
+
+      prompt.push(
+        "<MemoryItem>",
+        `<Key>${output.memory.key}</Key>`,
+        "<Text>",
+        output.memory.text,
+        "</Text>",
+        "<Meta>",
+        `<CreatedAt>${output.memory.meta.created_at}</CreatedAt>`,
+        `<UpdatedAt>${output.memory.meta.updated_at}</UpdatedAt>`,
+        `<Score>${output.memory.meta.score}</Score>`,
+        `<Status>${output.memory.meta.status}</Status>`,
+        `<Confidence>${output.memory.meta.confidence}</Confidence>`,
+        `<Type>${output.memory.meta.type}</Type>`,
+        "</Meta>",
+        "<Retrieval>",
+        `<Mode>${output.retrieval.mode}</Mode>`,
+        `<Relevance>${output.retrieval.relevance}</Relevance>`,
+        `<Reason>${output.retrieval.reason}</Reason>`,
+        "</Retrieval>",
+      );
+
+      if (output.links.length === 0) {
+        prompt.push("<Links></Links>");
+      } else {
+        prompt.push("<Links>");
+
+        for (const link of output.links) {
+          prompt.push(
+            "<Link>",
+            `<TargetMemoryKey>${link.target_memory_key}</TargetMemoryKey>`,
+            `<TargetSummary>${link.target_summary}</TargetSummary>`,
+            `<LinkType>${link.link_type}</LinkType>`,
+            `<Term>${link.term}</Term>`,
+            `<Weight>${link.weight}</Weight>`,
+            "</Link>",
+          );
+        }
+
+        prompt.push("</Links>");
+      }
+
+      prompt.push("</MemoryItem>");
+    }
+
+    prompt.push(`</${tag}>`);
+    return prompt;
+  }
+
+  /**
    * 将RuntimeContext转换成提示词格式
    */
   #convertContextToPrompt() {
@@ -248,9 +366,9 @@ export class Runtime {
       "</Channel>",
       // 记忆数据
       "<Memory>",
-      "<Core></Core>",
-      "<Long></Long>",
-      "<Short></Short>",
+      ...this.#convertMemoryScopeContextToPrompt("core"),
+      ...this.#convertMemoryScopeContextToPrompt("long"),
+      ...this.#convertMemoryScopeContextToPrompt("short"),
       "</Memory>",
       ...this.#convertFollowUpContextToPrompt(),
       "</Context>",
@@ -468,6 +586,91 @@ export class Runtime {
    */
   public getAccumulatedAssistantOutput() {
     return this.#context.followUp?.accumulatedAssistantOutput ?? "";
+  }
+
+  /**
+   * 写入指定 scope 的记忆上下文。
+   */
+  public setMemoryContext(
+    scope: MemoryScope,
+    output: RuntimeMemoryOutput,
+    options: {
+      query?: string;
+      reason?: string;
+    } = {},
+  ) {
+    this.#context.memory[scope] = {
+      status: "loaded",
+      query: options.query?.trim() ?? "",
+      reason: options.reason?.trim() ?? "",
+      output: structuredClone(output),
+      updatedAt: Date.now(),
+    };
+  }
+
+  /**
+   * 记录一次已执行但未命中的记忆搜索。
+   */
+  public setMemorySearchMiss(
+    scope: MemoryScope,
+    options: {
+      query: string;
+      reason: string;
+    },
+  ) {
+    this.#context.memory[scope] = {
+      status: "empty",
+      query: options.query.trim(),
+      reason: options.reason.trim(),
+      output: null,
+      updatedAt: Date.now(),
+    };
+  }
+
+  /**
+   * 记录一次记忆搜索结果。
+   */
+  public recordMemorySearchResult(
+    scope: MemoryScope,
+    options: {
+      words: string;
+      output: RuntimeMemoryOutput | null;
+      reason?: string;
+    },
+  ) {
+    if (options.output) {
+      this.setMemoryContext(scope, options.output, {
+        query: options.words,
+        reason: options.reason,
+      });
+      return;
+    }
+
+    this.setMemorySearchMiss(scope, {
+      query: options.words,
+      reason:
+        options.reason?.trim()
+        || `No ${scope} memory matched ${options.words.trim()}`,
+    });
+  }
+
+  /**
+   * 清空记忆上下文。
+   */
+  public clearMemoryContext(scope?: MemoryScope) {
+    if (scope) {
+      this.#context.memory[scope] = createRuntimeMemoryScopeContext();
+      return;
+    }
+
+    this.#context.memory = createRuntimeMemoryContext();
+  }
+
+  /**
+   * 读取记忆上下文快照。
+   */
+  public getMemoryContext(scope: MemoryScope) {
+    return structuredClone(this.#context.memory[scope]);
   }
 
   /**

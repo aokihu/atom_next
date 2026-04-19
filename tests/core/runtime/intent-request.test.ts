@@ -220,7 +220,7 @@ describe("parseIntentRequests", () => {
     expect(result.rejectedRequests[0]?.code).toBe("skill_name_invalid");
   });
 
-  test("dispatches safe requests into explicit placeholder results", () => {
+  test("dispatches safe requests into explicit core execution results", () => {
     const requests = parseIntentRequests(`
 [SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
 [FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
@@ -241,8 +241,9 @@ describe("parseIntentRequests", () => {
             limit: 10,
           },
         },
-        status: "unimplemented",
-        message: "SEARCH_MEMORY dispatch is reserved but not implemented yet",
+        status: "accepted",
+        message:
+          "SEARCH_MEMORY request accepted and will be executed by Core before follow up scheduling",
       },
       {
         request: {

@@ -13,9 +13,13 @@ import {
   TaskState,
   type FollowUpIntentRequest,
   type IntentRequest,
+  type MemoryScope,
+  type SaveMemoryIntentRequest,
+  type SearchMemoryIntentRequest,
 } from "@/types";
 
 import { isEmpty, isNumber, sleep } from "radashi";
+import type { MemoryService } from "@/services";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
 import { Transport } from "./transport";
@@ -32,7 +36,6 @@ type IntentRequestProcessResult =
 
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
-  static readonly MAX_SEARCH_MEMORY_FOLLOW_UP_ROUND = 1;
 
   #serviceManager: ServiceManager;
   #taskQueue: TaskQueue;
@@ -60,6 +63,16 @@ export class Core {
   async #emptyRunloop() {
     await sleep(500);
     this.runloop();
+  }
+
+  #getMemoryService() {
+    const memory = this.#serviceManager.getService<MemoryService>("memory");
+
+    if (!memory) {
+      throw new Error("Memory service not found");
+    }
+
+    return memory;
   }
 
   /**
@@ -175,29 +188,86 @@ export class Core {
     };
   }
 
+  #resolveMemoryScope(scope?: string): MemoryScope {
+    return (scope ?? "long") as MemoryScope;
+  }
+
   /**
-   * 判断是否应拦截“记忆搜索 -> FOLLOW_UP”的重复续跑。
+   * 判断当前 SEARCH_MEMORY 是否只是重复搜索同一条未命中的 query。
    * @description
-   * 当前 SEARCH_MEMORY 还没有把结果真正回灌到 Runtime <Memory>，
-   * 如果内部续跑轮次里继续重复发 SEARCH_MEMORY + FOLLOW_UP，
-   * 模型会在空上下文下自循环复读。
-   * 因此这里先做最小收口：
-   * 外部轮次允许发起一次记忆续跑，进入内部轮次后再出现同类请求则直接停止继续派生。
+   * 只有 internal FOLLOW_UP 轮次且 Runtime 已明确记录为 empty 时才拦截，
+   * 这样首次 miss 仍然可以进入一轮解释性 FOLLOW_UP，避免过早截断正常回答。
    */
-  #shouldStopRepeatedSearchMemoryFollowUp(task: TaskItem, requests: IntentRequest[]) {
+  #shouldSkipRepeatedEmptySearchMemory(
+    task: TaskItem,
+    request: SearchMemoryIntentRequest,
+  ) {
     if (task.source !== TaskSource.INTERNAL) {
       return false;
     }
 
-    const chainRound = this.#parseTaskChainRound(task);
+    const scope = this.#resolveMemoryScope(request.params.scope);
+    const memoryContext = this.#runtime.getMemoryContext(scope);
 
-    if (chainRound < Core.MAX_SEARCH_MEMORY_FOLLOW_UP_ROUND) {
-      return false;
+    return (
+      memoryContext.status === "empty"
+      && memoryContext.query === request.params.words.trim()
+    );
+  }
+
+  #processSearchMemoryIntentRequest(
+    request: SearchMemoryIntentRequest,
+  ): IntentRequestProcessResult {
+    const memory = this.#getMemoryService();
+    const scope = this.#resolveMemoryScope(request.params.scope);
+    const words = request.params.words.trim();
+    const output = memory.retrieveRuntimeContext({
+      words,
+      scope,
+    });
+
+    this.#runtime.recordMemorySearchResult(scope, {
+      words,
+      output,
+      reason: output
+        ? `Loaded ${scope} memory for ${words}`
+        : `No ${scope} memory matched ${words}`,
+    });
+
+    return {
+      status: "continue",
+    };
+  }
+
+  #processSaveMemoryIntentRequest(
+    task: TaskItem,
+    request: SaveMemoryIntentRequest,
+  ): IntentRequestProcessResult {
+    const memory = this.#getMemoryService();
+    const scope = this.#resolveMemoryScope(request.params.scope);
+    const saveResult = memory.saveMemory({
+      text: request.params.text,
+      summary: request.params.summary,
+      scope,
+      source: "assistant",
+      source_ref: task.chatId,
+      created_by: "core_intent_request",
+    });
+    const output = memory.retrieveRuntimeContext({
+      memory_key: saveResult.memory_key,
+      scope,
+    });
+
+    if (output) {
+      this.#runtime.setMemoryContext(scope, output, {
+        query: saveResult.memory_key,
+        reason: `Saved memory as ${saveResult.memory_key}`,
+      });
     }
 
-    return requests.some((request) => {
-      return request.request === IntentRequestType.SEARCH_MEMORY;
-    });
+    return {
+      status: "continue",
+    };
   }
 
   /**
@@ -211,10 +281,12 @@ export class Core {
     request: IntentRequest,
   ): IntentRequestProcessResult {
     switch (request.request) {
+      case IntentRequestType.SEARCH_MEMORY:
+        return this.#processSearchMemoryIntentRequest(request);
+      case IntentRequestType.SAVE_MEMORY:
+        return this.#processSaveMemoryIntentRequest(task, request);
       case IntentRequestType.FOLLOW_UP:
         return this.#processFollowUpIntentRequest(task, request);
-      case IntentRequestType.SEARCH_MEMORY:
-      case IntentRequestType.SAVE_MEMORY:
       case IntentRequestType.LOAD_SKILL:
         return {
           status: "continue",
@@ -258,14 +330,19 @@ export class Core {
    * 一旦某条请求真正改变了任务流转，就停止继续处理后续请求。
    */
   async #processIntentRequests(task: TaskItem, requests: IntentRequest[]) {
-    const shouldStopRepeatedSearchMemoryFollowUp =
-      this.#shouldStopRepeatedSearchMemoryFollowUp(task, requests);
+    let shouldSkipNextFollowUp = false;
 
     for (const request of requests) {
       if (
-        shouldStopRepeatedSearchMemoryFollowUp &&
-        request.request === IntentRequestType.FOLLOW_UP
+        request.request === IntentRequestType.SEARCH_MEMORY
+        && this.#shouldSkipRepeatedEmptySearchMemory(task, request)
       ) {
+        shouldSkipNextFollowUp = true;
+        continue;
+      }
+
+      if (shouldSkipNextFollowUp && request.request === IntentRequestType.FOLLOW_UP) {
+        shouldSkipNextFollowUp = false;
         continue;
       }
 
@@ -293,11 +370,13 @@ export class Core {
    * 4. 解析 intentRequestText，必要时派生 FOLLOW_UP 内部任务
    * 5. 在完成或失败时收束最终事件
    */
-  async #workflow() {
+  async #workflow(shouldContinueRunloop = true) {
     const task = await this.#taskQueue.activateWorkableTask();
 
     if (!task) {
-      this.runloop();
+      if (shouldContinueRunloop) {
+        this.runloop();
+      }
       return;
     }
 
@@ -377,7 +456,9 @@ export class Core {
       task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
     } finally {
       this.#activedTask = undefined;
-      this.runloop();
+      if (shouldContinueRunloop) {
+        this.runloop();
+      }
     }
   }
 
@@ -391,6 +472,19 @@ export class Core {
     } else {
       this.#workflow();
     }
+  }
+
+  /**
+   * 只执行一轮任务流程。
+   * @description
+   * 测试和受控调用场景下使用，避免自动进入持续 runloop。
+   */
+  async runOnce() {
+    if (this.#taskQueue.isEmpty) {
+      return;
+    }
+
+    await this.#workflow(false);
   }
 
   /**

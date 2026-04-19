@@ -110,6 +110,29 @@ describe("Runtime context", () => {
     runtime.currentTask = buildTask("task-1", {
       payload: [{ type: "text", data: "original question" }],
     });
+    runtime.recordMemorySearchResult("long", {
+      words: "watchman",
+      output: {
+        memory: {
+          key: "long.note.watchman",
+          text: "Watchman 不负责 Memory 持久化。",
+          meta: {
+            created_at: 1,
+            updated_at: 2,
+            score: 80,
+            status: "active",
+            confidence: 0.9,
+            type: "note",
+          },
+        },
+        retrieval: {
+          mode: "context",
+          relevance: 1,
+          reason: "Loaded runtime context from search watchman",
+        },
+        links: [],
+      },
+    });
     runtime.appendAssistantOutput("existing output");
 
     runtime.currentTask = buildTask("task-2", {
@@ -138,6 +161,11 @@ describe("Runtime context", () => {
     expect(prompt).toContain(
       "<AccumulatedAssistantOutput>\nexisting output\n</AccumulatedAssistantOutput>",
     );
+    expect(prompt).toContain("<Long>");
+    expect(prompt).toContain("<Status>loaded</Status>");
+    expect(prompt).toContain("<Query>watchman</Query>");
+    expect(prompt).toContain("<Key>long.note.watchman</Key>");
+    expect(prompt).toContain("Watchman 不负责 Memory 持久化。");
   });
 
   test("resets accumulated output and increments round when chat changes", async () => {
@@ -168,6 +196,27 @@ describe("Runtime context", () => {
     expect(prompt).toContain(
       "<AccumulatedAssistantOutput>\n\n</AccumulatedAssistantOutput>",
     );
+    expect(prompt).toContain("<Long></Long>");
+  });
+
+  test("renders empty memory search state after miss", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-1");
+    runtime.recordMemorySearchResult("long", {
+      words: "missing memory",
+      output: null,
+      reason: 'No long memory matched "missing memory"',
+    });
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(prompt).toContain("<Long>");
+    expect(prompt).toContain("<Status>empty</Status>");
+    expect(prompt).toContain("<Query>missing memory</Query>");
+    expect(prompt).toContain('<Reason>No long memory matched "missing memory"</Reason>');
   });
 
   test("returns safe follow up request when runtime safety passes", () => {
