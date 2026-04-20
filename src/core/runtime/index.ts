@@ -1,13 +1,12 @@
 export { Runtime } from "./runtime";
+export { ContextManager } from "./context-manager";
 export {
   createPredictedIntent,
   parseIntentPredictionText,
-} from "./user-intent/intent-prediction";
-export {
   createIntentExecutionPolicy,
   resolveIntentPolicy,
-} from "./user-intent/intent-policy";
-export { UserIntentPredictionManager } from "./user-intent/user-intent-prediction-manager";
+  UserIntentPredictionManager,
+} from "./user-intent";
 export {
   parseIntentRequests,
   checkIntentRequestSafety,

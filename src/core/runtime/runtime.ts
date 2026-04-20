@@ -28,14 +28,13 @@ import {
   parseIntentRequests,
   type IntentRequestExecutionResult,
 } from "./intent-request";
-import { convertRuntimeContextToPrompt } from "./prompt/context-prompt";
-import { parseIntentPredictionText } from "./user-intent/intent-prediction";
-import { UserIntentPredictionManager } from "./user-intent/user-intent-prediction-manager";
-import type { Transport, TransportModelProfile } from "../transport";
+import { convertRuntimeContextToPrompt } from "./prompt";
 import {
-  ContextManager,
-  type SessionMemoryClearPolicy,
-} from "./context-manager";
+  parseIntentPredictionText,
+  UserIntentPredictionManager,
+} from "./user-intent";
+import type { Transport, TransportModelProfile } from "../transport";
+import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
 
 const WATCHMAN_WAIT_INTERVAL = 100;
 
