@@ -12,21 +12,11 @@ import type {
 import { MEMORY_SCOPES } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
-import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with {
-  type: "text",
-};
-import intentPromptText from "@/assets/prompts/intent.md" with {
-  type: "text",
-};
-import systemPromptText from "@/assets/prompts/system.md" with {
-  type: "text",
-};
-import memoryPromptText from "@/assets/prompts/memory.md" with {
-  type: "text",
-};
-import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with {
-  type: "text",
-};
+import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with { type: "text" };
+import intentPromptText from "@/assets/prompts/intent.md" with { type: "text" };
+import systemPromptText from "@/assets/prompts/system.md" with { type: "text" };
+import memoryPromptText from "@/assets/prompts/memory.md" with { type: "text" };
+import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with { type: "text" };
 import { TaskSource, type TaskItem } from "@/types/task";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import { isEmpty, isNumber, sleep } from "radashi";
@@ -36,9 +26,10 @@ import {
   parseIntentRequests,
 } from "./intent-request";
 import {
-  createRuntimeIntentContext,
-  type RuntimeIntentContext,
-} from "./intent-prediction";
+  convertConversationContextToPrompt,
+  convertFollowUpContextToPrompt,
+} from "./context-prompt";
+import { UserIntentPredictionManager } from "./user-intent-prediction-manager";
 
 const WATCHMAN_WAIT_INTERVAL = 100;
 
@@ -76,7 +67,6 @@ type RuntimeConversationContext = {
 };
 
 type RuntimeSessionContext = {
-  intent: RuntimeIntentContext;
   memory: {
     core: RuntimeMemoryScopeContext;
     short: RuntimeMemoryScopeContext;
@@ -135,7 +125,6 @@ const createRuntimeConversationContext = (): RuntimeConversationContext => {
 
 const createRuntimeSessionContext = (): RuntimeSessionContext => {
   return {
-    intent: createRuntimeIntentContext(),
     memory: createRuntimeMemoryContext(),
     conversation: createRuntimeConversationContext(),
   };
@@ -152,6 +141,7 @@ export class Runtime {
   #currentTask: TaskItem | null = null;
   #taskSessions: RuntimeTaskSession[];
   #sessionContexts: Map<UUID, RuntimeSessionContext>;
+  #userIntentPredictionManager: UserIntentPredictionManager;
   #context: RuntimeContext;
   #systemRules: string;
 
@@ -161,6 +151,7 @@ export class Runtime {
     this.#serviceManager = serviceManager;
     this.#taskSessions = [];
     this.#sessionContexts = new Map();
+    this.#userIntentPredictionManager = new UserIntentPredictionManager();
 
     // 系统规则提示词
     this.#systemRules = "";
@@ -306,22 +297,9 @@ export class Runtime {
   }
 
   #convertConversationContextToPrompt() {
-    const conversation = this.#getActiveSessionContext().conversation;
-
-    if (conversation.updatedAt === null) {
-      return ["<Conversation></Conversation>"];
-    }
-
-    return [
-      "<Conversation>",
-      "<LastUserInput>",
-      conversation.lastUserInput,
-      "</LastUserInput>",
-      "<LastAssistantOutput>",
-      conversation.lastAssistantOutput,
-      "</LastAssistantOutput>",
-      "</Conversation>",
-    ];
+    return convertConversationContextToPrompt(
+      this.#getActiveSessionContext().conversation,
+    );
   }
 
   /**
@@ -331,44 +309,16 @@ export class Runtime {
    * 避免把空的续跑语义强行注入到所有系统提示词中。
    */
   #convertFollowUpContextToPrompt() {
-    if (!this.#context.followUp) {
-      return [];
-    }
-
-    return [
-      "<FollowUp>",
-      `<ChatId>${this.#context.followUp.chatId}</ChatId>`,
-      `<ChainRound>${this.#context.followUp.chainRound ?? ""}</ChainRound>`,
-      "<OriginalUserInput>",
-      this.#context.followUp.originalUserInput,
-      "</OriginalUserInput>",
-      "<AccumulatedAssistantOutput>",
-      this.#context.followUp.accumulatedAssistantOutput,
-      "</AccumulatedAssistantOutput>",
-      "</FollowUp>",
-    ];
+    return convertFollowUpContextToPrompt(this.#context.followUp);
   }
 
   /**
    * 将意图上下文转换成提示词片段。
    */
-  #convertIntentContextToPrompt() {
-    const intent = this.#getActiveSessionContext().intent;
-
-    if (intent.updatedAt === null) {
-      return ["<Intent></Intent>"];
-    }
-
-    return [
-      "<Intent>",
-      `<SessionId>${intent.sessionId}</SessionId>`,
-      `<Type>${intent.type}</Type>`,
-      `<NeedsMemory>${intent.needsMemory}</NeedsMemory>`,
-      `<NeedsMemorySave>${intent.needsMemorySave}</NeedsMemorySave>`,
-      `<MemoryQuery>${intent.memoryQuery}</MemoryQuery>`,
-      `<Confidence>${intent.confidence ?? ""}</Confidence>`,
-      "</Intent>",
-    ];
+  #convertIntentPolicyToPrompt() {
+    return this.#userIntentPredictionManager.exportIntentPolicyPrompt(
+      this.#context.meta.sessionId,
+    );
   }
 
   /**
@@ -470,7 +420,7 @@ export class Runtime {
       `Source = ${this.#context.channel.source}`,
       "</Channel>",
       ...this.#convertConversationContextToPrompt(),
-      ...this.#convertIntentContextToPrompt(),
+      ...this.#convertIntentPolicyToPrompt(),
       // 记忆数据
       "<Memory>",
       ...this.#convertMemoryScopeContextToPrompt("core"),
@@ -808,8 +758,8 @@ export class Runtime {
     this.setMemorySearchMiss(scope, {
       query: options.words,
       reason:
-        options.reason?.trim()
-        || `No ${scope} memory matched ${options.words.trim()}`,
+        options.reason?.trim() ||
+        `No ${scope} memory matched ${options.words.trim()}`,
     });
   }
 
@@ -866,29 +816,27 @@ export class Runtime {
   }
 
   /**
-   * 写入当前 chat 的意图上下文。
+   * 写入当前 session 的原始预测意图。
    */
-  public setIntentContext(
-    input: Omit<RuntimeIntentContext, "updatedAt">,
-  ) {
-    this.#getActiveSessionContext().intent = {
-      ...input,
-      updatedAt: Date.now(),
-    };
+  /**
+   * 读取 UserIntentPredictionManager。
+   */
+  public getUserIntentPredictionManager() {
+    return this.#userIntentPredictionManager;
   }
 
   /**
-   * 清空意图上下文。
+   * 判断当前 session 是否已有稳定对话上下文。
    */
-  public clearIntentContext() {
-    this.#getActiveSessionContext().intent = createRuntimeIntentContext();
+  public hasSessionHistory() {
+    return this.#getActiveSessionContext().conversation.updatedAt !== null;
   }
 
   /**
-   * 读取意图上下文快照。
+   * 读取当前 chat 的续跑轮次。
    */
-  public getIntentContext() {
-    return structuredClone(this.#getActiveSessionContext().intent);
+  public getCurrentChainRound() {
+    return this.#context.followUp?.chainRound ?? null;
   }
 
   /**
@@ -899,8 +847,8 @@ export class Runtime {
       const memoryContext = this.#getActiveSessionContext().memory[scope];
 
       if (
-        memoryContext.status === "loaded"
-        && memoryContext.output?.memory.key === memoryKey
+        memoryContext.status === "loaded" &&
+        memoryContext.output?.memory.key === memoryKey
       ) {
         return scope;
       }
@@ -959,7 +907,10 @@ export class Runtime {
       };
     }
 
-    const safetyResult = checkIntentRequestSafety(parsedRequests, safetyContext);
+    const safetyResult = checkIntentRequestSafety(
+      parsedRequests,
+      safetyContext,
+    );
     const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
 
     this.#reportRejectedIntentRequests(safetyResult.rejectedRequests);

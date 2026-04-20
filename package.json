@@ -2,7 +2,7 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "scripts": {
     "build:bin": "bun run ./scripts/build.ts"

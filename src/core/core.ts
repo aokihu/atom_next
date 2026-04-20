@@ -25,7 +25,6 @@ import { isEmpty, isNumber, sleep } from "radashi";
 import type { MemoryService } from "@/services";
 import { TaskQueue } from "./queue";
 import {
-  createRuntimeIntentContext,
   parseIntentPredictionText,
   Runtime,
 } from "./runtime";
@@ -425,23 +424,16 @@ export class Core {
   }
 
   /**
-   * 将当前 external chat 的意图降级为保守默认值。
+   * 将当前 external chat 的原始预测降级为保守默认值。
    * @description
-   * intent 预判只是路由增强，不应该成为主回答链路的前置硬依赖。
-   * 当预测失败时，这里显式写入 unknown/no-memory 的默认上下文，
-   * 避免旧 session 中残留的 intent 继续污染当前 chat。
+   * intent prediction 只是候选信号，不应该成为主回答链路的硬依赖。
+   * 当预测失败时，这里显式写入 unknown/no-memory 的默认预测，
+   * 后续再由 resolver 产出默认 policy，避免旧 session 中残留的预测继续污染当前 chat。
    */
-  #setFallbackIntentContext(task: TaskItem) {
-    const fallbackIntent = createRuntimeIntentContext();
-
-    this.#runtime.setIntentContext({
-      sessionId: task.sessionId,
-      type: fallbackIntent.type,
-      needsMemory: fallbackIntent.needsMemory,
-      needsMemorySave: fallbackIntent.needsMemorySave,
-      memoryQuery: fallbackIntent.memoryQuery,
-      confidence: fallbackIntent.confidence,
-    });
+  #setFallbackPredictedIntent(task: TaskItem) {
+    this.#runtime.getUserIntentPredictionManager().setFallbackPredictedIntent(
+      task.sessionId,
+    );
   }
 
   async #predictIntentIfNeeded(task: TaskItem) {
@@ -456,27 +448,52 @@ export class Core {
       );
       const parsedIntent = parseIntentPredictionText(predictionText);
 
-      this.#runtime.setIntentContext({
+      this.#runtime.getUserIntentPredictionManager().setPredictedIntent(
+        task.sessionId,
+        {
         sessionId: task.sessionId,
         type: parsedIntent.type,
         needsMemory: parsedIntent.needsMemory,
         needsMemorySave: parsedIntent.needsMemorySave,
         memoryQuery: parsedIntent.memoryQuery,
         confidence: parsedIntent.confidence,
-      });
+        },
+      );
     } catch {
-      this.#setFallbackIntentContext(task);
+      this.#setFallbackPredictedIntent(task);
     }
   }
 
-  #hydrateMemoryFromIntent(task: TaskItem) {
+  #resolveIntentPolicyIfNeeded(task: TaskItem) {
     if (task.source !== TaskSource.EXTERNAL) {
       return;
     }
 
-    const intent = this.#runtime.getIntentContext();
+    this.#runtime.getUserIntentPredictionManager().resolveIntentPolicy(
+      task.sessionId,
+      {
+      taskSource: task.source,
+      chainRound: this.#runtime.getCurrentChainRound(),
+      currentMemoryState: {
+        core: this.#runtime.getMemoryContext("core").status,
+        short: this.#runtime.getMemoryContext("short").status,
+        long: this.#runtime.getMemoryContext("long").status,
+      },
+      sessionHistoryAvailable: this.#runtime.hasSessionHistory(),
+      },
+    );
+  }
 
-    if (!intent.needsMemory || isEmpty(intent.memoryQuery)) {
+  #hydrateMemoryFromPolicy(task: TaskItem) {
+    if (task.source !== TaskSource.EXTERNAL) {
+      return;
+    }
+
+    const policy = this.#runtime.getUserIntentPredictionManager().getIntentPolicy(
+      task.sessionId,
+    );
+
+    if (!policy.preloadMemory || isEmpty(policy.memoryQuery)) {
       return;
     }
 
@@ -485,23 +502,23 @@ export class Core {
 
     if (
       memoryContext.status !== "idle"
-      && memoryContext.query === intent.memoryQuery
+      && memoryContext.query === policy.memoryQuery
     ) {
       return;
     }
 
     const memory = this.#getMemoryService();
     const output = memory.retrieveRuntimeContext({
-      words: intent.memoryQuery,
+      words: policy.memoryQuery,
       scope,
     });
 
     this.#runtime.recordMemorySearchResult(scope, {
-      words: intent.memoryQuery,
+      words: policy.memoryQuery,
       output,
       reason: output
-        ? `Loaded ${scope} memory from intent query ${intent.memoryQuery}`
-        : `No ${scope} memory matched intent query ${intent.memoryQuery}`,
+        ? `Loaded ${scope} memory from intent policy query ${policy.memoryQuery}`
+        : `No ${scope} memory matched intent policy query ${policy.memoryQuery}`,
     });
   }
 
@@ -681,7 +698,8 @@ export class Core {
     try {
       this.#runtime.currentTask = task;
       await this.#predictIntentIfNeeded(task);
-      this.#hydrateMemoryFromIntent(task);
+      this.#resolveIntentPolicyIfNeeded(task);
+      this.#hydrateMemoryFromPolicy(task);
       const [systemPrompt, userPrompt] = await this.#runtime.exportPrompts();
       let hasSyncedProcessingState = false;
       let visibleTextBuffer = "";

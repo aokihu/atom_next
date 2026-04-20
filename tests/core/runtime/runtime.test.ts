@@ -63,13 +63,14 @@ describe("Runtime context", () => {
       prompt.indexOf("# FOLLOW_UP 使用规范"),
     );
     expect(prompt).toContain("<<<REQUEST>>>");
-    expect(prompt).toContain("<Intent></Intent>");
-    expect(prompt).toContain("<Conversation></Conversation>");
+    expect(prompt).toContain("<IntentPolicy>");
+    expect(prompt).not.toContain("ACCEPTED_INTENT_TYPE=");
+    expect(prompt).toContain("<Conversation>\nSTATE=empty\n</Conversation>");
     expect(prompt).toContain("如果问题明显属于第 2 类，必须优先按记忆规则执行");
     expect(prompt).toContain("不要跳过记忆流程，直接回答“没有找到相关记忆”或“我不记得”");
     expect(prompt).toContain("当当前轮必须依赖 Runtime(Core) 协助时");
     expect(prompt).toContain("不要先输出“我将搜索”“我已请求”这类中间态正文");
-    expect(prompt).not.toContain("<FollowUp>\n<ChatId>");
+    expect(prompt).not.toContain("<FollowUp>\nCHAT_ID=");
     expect(prompt).toContain("Round = 1");
   });
 
@@ -90,14 +91,13 @@ describe("Runtime context", () => {
     expect(runtime.exportUserPrompt()).toBe("line-1\nline-2");
     expect(prompt).toContain("Session ID = session-1");
     expect(prompt).toContain("Round = 1");
-    expect(prompt).toContain("<Intent></Intent>");
+    expect(prompt).toContain("<IntentPolicy>");
+    expect(prompt).not.toContain("ACCEPTED_INTENT_TYPE=");
     expect(prompt).toContain("<FollowUp>");
-    expect(prompt).toContain("<ChatId>chat-1</ChatId>");
-    expect(prompt).toContain("<ChainRound></ChainRound>");
-    expect(prompt).toContain("<OriginalUserInput>\nline-1\nline-2\n</OriginalUserInput>");
-    expect(prompt).toContain(
-      "<AccumulatedAssistantOutput>\n\n</AccumulatedAssistantOutput>",
-    );
+    expect(prompt).toContain("CHAT_ID=chat-1");
+    expect(prompt).toContain("CHAIN_ROUND=");
+    expect(prompt).toContain("ORIGINAL_USER_INPUT<<EOF\nline-1\nline-2\nEOF");
+    expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\n\nEOF");
   });
 
   test("appends assistant output in order and preserves multiline content", async () => {
@@ -111,9 +111,7 @@ describe("Runtime context", () => {
       ignoreWatchman: true,
     });
 
-    expect(prompt).toContain(
-      "<AccumulatedAssistantOutput>\npart-1\npart-2\n</AccumulatedAssistantOutput>",
-    );
+    expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\npart-1\npart-2\nEOF");
   });
 
   test("keeps original input and accumulated output for internal task in same chat", async () => {
@@ -165,14 +163,10 @@ describe("Runtime context", () => {
     expect(runtime.exportUserPrompt()).toBe("continue");
     expect(prompt).toContain("Round = 1");
     expect(prompt).toContain("Source = internal");
-    expect(prompt).toContain("<ChatId>chat-1</ChatId>");
-    expect(prompt).toContain("<ChainRound>1</ChainRound>");
-    expect(prompt).toContain(
-      "<OriginalUserInput>\noriginal question\n</OriginalUserInput>",
-    );
-    expect(prompt).toContain(
-      "<AccumulatedAssistantOutput>\nexisting output\n</AccumulatedAssistantOutput>",
-    );
+    expect(prompt).toContain("CHAT_ID=chat-1");
+    expect(prompt).toContain("CHAIN_ROUND=1");
+    expect(prompt).toContain("ORIGINAL_USER_INPUT<<EOF\noriginal question\nEOF");
+    expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\nexisting output\nEOF");
     expect(prompt).toContain("<Long>");
     expect(prompt).toContain("<Status>loaded</Status>");
     expect(prompt).toContain("<Query>watchman</Query>");
@@ -188,13 +182,16 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       payload: [{ type: "text", data: "first question" }],
     });
-    runtime.setIntentContext({
+    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
       sessionId: "session-1",
-      type: "memory_lookup",
-      needsMemory: true,
-      needsMemorySave: false,
+      acceptedIntentType: "memory_lookup",
+      preloadMemory: true,
       memoryQuery: "first question",
-      confidence: 0.9,
+      allowMemorySave: false,
+      maxFollowUpRounds: 2,
+      promptVariant: "recall",
+      predictionTrust: "high",
+      reasons: ["test policy"],
     });
     runtime.recordMemorySearchResult("long", {
       words: "watchman",
@@ -233,23 +230,20 @@ describe("Runtime context", () => {
     });
 
     expect(prompt).toContain("Round = 2");
-    expect(prompt).toContain("<ChatId>chat-2</ChatId>");
-    expect(prompt).toContain("<SessionId>session-1</SessionId>");
-    expect(prompt).toContain("<MemoryQuery>first question</MemoryQuery>");
-    expect(prompt).toContain(
-      "<OriginalUserInput>\nsecond question\n</OriginalUserInput>",
-    );
-    expect(prompt).toContain(
-      "<AccumulatedAssistantOutput>\n\n</AccumulatedAssistantOutput>",
-    );
+    expect(prompt).toContain("CHAT_ID=chat-2");
+    expect(prompt).toContain("<IntentPolicy>");
+    expect(prompt).toContain("SESSION_ID=session-1");
+    expect(prompt).toContain("ACCEPTED_INTENT_TYPE=memory_lookup");
+    expect(prompt).toContain("PRELOAD_MEMORY=true");
+    expect(prompt).toContain("MEMORY_QUERY=first question");
+    expect(prompt).toContain("ORIGINAL_USER_INPUT<<EOF\nsecond question\nEOF");
+    expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\n\nEOF");
     expect(prompt).toContain("<Long>");
     expect(prompt).toContain("<Status>loaded</Status>");
     expect(prompt).toContain("<Query>watchman</Query>");
     expect(prompt).toContain("<Conversation>");
-    expect(prompt).toContain("<LastUserInput>");
-    expect(prompt).toContain("first question");
-    expect(prompt).toContain("<LastAssistantOutput>");
-    expect(prompt).toContain("first answer");
+    expect(prompt).toContain("LAST_USER_INPUT<<EOF\nfirst question\nEOF");
+    expect(prompt).toContain("LAST_ASSISTANT_OUTPUT<<EOF\nfirst answer\nEOF");
   });
 
   test("renders empty memory search state after miss", async () => {
@@ -272,30 +266,34 @@ describe("Runtime context", () => {
     expect(prompt).toContain('<Reason>No long memory matched "missing memory"</Reason>');
   });
 
-  test("renders structured intent context after prediction is written", async () => {
+  test("renders structured intent policy after resolver output is written", async () => {
     const runtime = buildRuntime();
 
     runtime.currentTask = buildTask("task-1", {
       payload: [{ type: "text", data: "你有关于 AGENTS.md 的记忆吗" }],
     });
-    runtime.setIntentContext({
+    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
       sessionId: "session-1",
-      type: "memory_lookup",
-      needsMemory: true,
-      needsMemorySave: false,
+      acceptedIntentType: "memory_lookup",
+      preloadMemory: true,
       memoryQuery: "AGENTS md",
-      confidence: 0.96,
+      allowMemorySave: false,
+      maxFollowUpRounds: 2,
+      promptVariant: "recall",
+      predictionTrust: "high",
+      reasons: ["resolver accepted high-confidence recall"],
     });
 
     const prompt = await runtime.exportSystemPrompt({
       ignoreWatchman: true,
     });
 
-    expect(prompt).toContain("<Intent>");
-    expect(prompt).toContain("<SessionId>session-1</SessionId>");
-    expect(prompt).toContain("<Type>memory_lookup</Type>");
-    expect(prompt).toContain("<NeedsMemory>true</NeedsMemory>");
-    expect(prompt).toContain("<MemoryQuery>AGENTS md</MemoryQuery>");
+    expect(prompt).toContain("<IntentPolicy>");
+    expect(prompt).toContain("SESSION_ID=session-1");
+    expect(prompt).toContain("ACCEPTED_INTENT_TYPE=memory_lookup");
+    expect(prompt).toContain("PRELOAD_MEMORY=true");
+    expect(prompt).toContain("MEMORY_QUERY=AGENTS md");
+    expect(prompt).toContain("PROMPT_VARIANT=recall");
   });
 
   test("starts with empty session continuity when session changes", async () => {
@@ -306,13 +304,16 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       payload: [{ type: "text", data: "first question" }],
     });
-    runtime.setIntentContext({
+    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
       sessionId: "session-1",
-      type: "memory_lookup",
-      needsMemory: true,
-      needsMemorySave: false,
+      acceptedIntentType: "memory_lookup",
+      preloadMemory: true,
       memoryQuery: "watchman",
-      confidence: 0.8,
+      allowMemorySave: false,
+      maxFollowUpRounds: 1,
+      promptVariant: "recall",
+      predictionTrust: "high",
+      reasons: ["test policy"],
     });
     runtime.commitSessionTurn("first question", "first answer");
 
@@ -327,8 +328,9 @@ describe("Runtime context", () => {
     });
 
     expect(prompt).toContain("Session ID = session-2");
-    expect(prompt).toContain("<Intent></Intent>");
-    expect(prompt).toContain("<Conversation></Conversation>");
+    expect(prompt).toContain("<IntentPolicy>");
+    expect(prompt).not.toContain("ACCEPTED_INTENT_TYPE=");
+    expect(prompt).toContain("<Conversation>\nSTATE=empty\n</Conversation>");
     expect(prompt).toContain("<Long></Long>");
   });
 

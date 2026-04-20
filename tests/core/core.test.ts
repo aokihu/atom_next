@@ -623,10 +623,11 @@ describe("Core memory intent requests", () => {
 
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(streamCalls).toHaveLength(1);
-    expect(streamCalls[0].system).toContain("<Intent>");
-    expect(streamCalls[0].system).toContain("<Type>memory_lookup</Type>");
-    expect(streamCalls[0].system).toContain("<NeedsMemory>true</NeedsMemory>");
-    expect(streamCalls[0].system).toContain("<MemoryQuery>AGENTS md</MemoryQuery>");
+    expect(streamCalls[0].system).toContain("<IntentPolicy>");
+    expect(streamCalls[0].system).toContain("ACCEPTED_INTENT_TYPE=memory_lookup");
+    expect(streamCalls[0].system).toContain("PRELOAD_MEMORY=true");
+    expect(streamCalls[0].system).toContain("MEMORY_QUERY=AGENTS md");
+    expect(streamCalls[0].system).toContain("PROMPT_VARIANT=recall");
     expect(streamCalls[0].system).toContain("<Status>loaded</Status>");
     expect(streamCalls[0].system).toContain("Watchman 服务负责 AGENTS.md 的编译缓存");
     expect(completedEvents).toHaveLength(1);
@@ -682,10 +683,10 @@ describe("Core memory intent requests", () => {
 
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(streamCalls).toHaveLength(1);
-    expect(streamCalls[0].system).toContain("<Intent>");
-    expect(streamCalls[0].system).toContain("<Type>unknown</Type>");
-    expect(streamCalls[0].system).toContain("<NeedsMemory>false</NeedsMemory>");
-    expect(streamCalls[0].system).toContain("<MemoryQuery></MemoryQuery>");
+    expect(streamCalls[0].system).toContain("<IntentPolicy>");
+    expect(streamCalls[0].system).toContain("ACCEPTED_INTENT_TYPE=unknown");
+    expect(streamCalls[0].system).toContain("PRELOAD_MEMORY=false");
+    expect(streamCalls[0].system).toContain("MEMORY_QUERY=");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
       "这是在意图预测失败后的正常回答。",
@@ -792,6 +793,7 @@ describe("Core memory intent requests", () => {
 
     expect(generateText).toHaveBeenCalledTimes(2);
     expect(streamCalls).toHaveLength(2);
+    expect(streamCalls[0].system).toContain("PROMPT_VARIANT=recall");
     expect(streamCalls[1].system).toContain("<Conversation>");
     expect(streamCalls[1].system).toContain("你有 AGENTS.md 相关的记忆吗");
     expect(streamCalls[1].system).toContain("你希望了解更多信息吗？");

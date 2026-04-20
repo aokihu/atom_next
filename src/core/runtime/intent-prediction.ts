@@ -1,6 +1,6 @@
 import { isEmpty } from "radashi";
 
-export const RUNTIME_INTENT_TYPES = [
+export const PREDICTED_INTENT_TYPES = [
   "direct_answer",
   "memory_lookup",
   "memory_save",
@@ -9,11 +9,11 @@ export const RUNTIME_INTENT_TYPES = [
   "unknown",
 ] as const;
 
-export type RuntimeIntentType = (typeof RUNTIME_INTENT_TYPES)[number];
+export type PredictedIntentType = (typeof PREDICTED_INTENT_TYPES)[number];
 
-export type RuntimeIntentContext = {
+export type PredictedIntent = {
   sessionId: string;
-  type: RuntimeIntentType;
+  type: PredictedIntentType;
   needsMemory: boolean;
   needsMemorySave: boolean;
   memoryQuery: string;
@@ -21,7 +21,7 @@ export type RuntimeIntentContext = {
   updatedAt: number | null;
 };
 
-export const createRuntimeIntentContext = (): RuntimeIntentContext => {
+export const createPredictedIntent = (): PredictedIntent => {
   return {
     sessionId: "",
     type: "unknown",
@@ -33,8 +33,8 @@ export const createRuntimeIntentContext = (): RuntimeIntentContext => {
   };
 };
 
-const isRuntimeIntentType = (value: string): value is RuntimeIntentType => {
-  return RUNTIME_INTENT_TYPES.includes(value as RuntimeIntentType);
+const isPredictedIntentType = (value: string): value is PredictedIntentType => {
+  return PREDICTED_INTENT_TYPES.includes(value as PredictedIntentType);
 };
 
 const parseIntentBoolean = (value: string) => {
@@ -78,7 +78,7 @@ export const parseIntentPredictionText = (text: string) => {
   const confidence = Number(values.CONFIDENCE);
 
   return {
-    type: isRuntimeIntentType(type) ? type : "unknown",
+    type: isPredictedIntentType(type) ? type : "unknown",
     needsMemory: needsMemory ?? false,
     needsMemorySave: needsMemorySave ?? false,
     memoryQuery: values.MEMORY_QUERY?.trim() ?? "",
