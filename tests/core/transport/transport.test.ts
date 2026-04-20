@@ -73,6 +73,7 @@ describe("Transport.send", () => {
   beforeEach(() => {
     currentCallOptions = undefined;
     streamText.mockReset();
+    generateText.mockReset();
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
     process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
@@ -473,5 +474,59 @@ describe("Transport.send", () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  });
+});
+
+describe("Transport.generateText", () => {
+  beforeEach(() => {
+    generateText.mockReset();
+    streamText.mockReset();
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
+    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+  });
+
+  test("passes prompt options to generateText and returns full text", async () => {
+    const abortController = new AbortController();
+    generateText.mockResolvedValue({
+      text: "TYPE=unknown\nNEEDS_MEMORY=false",
+    });
+
+    const transport = new Transport(buildServiceManager());
+    const result = await transport.generateText("system prompt", "user prompt", {
+      abortSignal: abortController.signal,
+      maxOutputTokens: 64,
+    });
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]?.system).toBe("system prompt");
+    expect(generateText.mock.calls[0]?.[0]?.prompt).toBe("user prompt");
+    expect(generateText.mock.calls[0]?.[0]?.abortSignal).toBe(
+      abortController.signal,
+    );
+    expect(generateText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(64);
+    expect(result).toBe("TYPE=unknown\nNEEDS_MEMORY=false");
+  });
+
+  test("supports explicit model profile overrides", async () => {
+    generateText.mockResolvedValue({
+      text: "TYPE=memory_lookup",
+    });
+
+    const transport = new Transport(buildServiceManager());
+    const result = await transport.generateText("system prompt", "user prompt", {
+      modelProfile: {
+        level: "basic",
+        selectedModel: {
+          id: "deepseek/deepseek-chat",
+          provider: "deepseek",
+          model: "deepseek-chat",
+        },
+      },
+    });
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]?.model).toBeDefined();
+    expect(result).toBe("TYPE=memory_lookup");
   });
 });

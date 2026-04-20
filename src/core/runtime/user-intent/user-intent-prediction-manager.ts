@@ -9,7 +9,7 @@ import {
   type IntentControlInput,
   type IntentExecutionPolicy,
 } from "./intent-policy";
-import { convertIntentPolicyToPrompt } from "./context-prompt";
+import { convertIntentPolicyToPrompt } from "../prompt/context-prompt";
 
 type PredictionIntentSessionContext = {
   predictedIntent: PredictedIntent;

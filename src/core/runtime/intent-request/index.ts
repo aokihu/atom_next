@@ -17,9 +17,13 @@ import {
   isIntentRequestType,
 } from "@/types";
 import { isEmpty, isNumber, isString } from "radashi";
-import { checkIntentRequestSafety } from "./intent-request-safety";
+import { checkIntentRequestSafety } from "./safety";
 
-export { checkIntentRequestSafety } from "./intent-request-safety";
+export { checkIntentRequestSafety } from "./safety";
+export {
+  executeIntentRequests,
+  type IntentRequestExecutionResult,
+} from "./execution";
 
 type RawIntentRequestParams = Record<string, string>;
 

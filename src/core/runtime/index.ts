@@ -2,12 +2,12 @@ export { Runtime } from "./runtime";
 export {
   createPredictedIntent,
   parseIntentPredictionText,
-} from "./intent-prediction";
+} from "./user-intent/intent-prediction";
 export {
   createIntentExecutionPolicy,
   resolveIntentPolicy,
-} from "./intent-policy";
-export { UserIntentPredictionManager } from "./user-intent-prediction-manager";
+} from "./user-intent/intent-policy";
+export { UserIntentPredictionManager } from "./user-intent/user-intent-prediction-manager";
 export {
   parseIntentRequests,
   checkIntentRequestSafety,

@@ -11,12 +11,12 @@
 
 ## Step 2
 
-- [ ] 收口 `Intent Request` 执行流程
+- [x] 收口 `Intent Request` 执行流程
 
 ## Step 3
 
-- [ ] 收口正式对话结果收束流程
+- [x] 整理 `Runtime` 内部状态边界
 
 ## Step 4
 
-- [ ] 整理 `Runtime` 内部状态边界
+- [x] 收口正式对话结果收束流程

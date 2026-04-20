@@ -1,16 +1,35 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
-import { generateText, streamText } from "ai";
+import { generateText as runGenerateText, streamText } from "ai";
 import { finished } from "node:stream/promises";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
+import type {
+  ParsedProviderModel,
+  ProviderDefinition,
+  ProviderProfileLevel,
+} from "@/types/config";
 import { createModelWithProvider } from "./model";
 import { createRequestStreamParser } from "./request-stream";
+
+export type TransportModelProfile = {
+  level?: ProviderProfileLevel;
+  selectedModel: ParsedProviderModel;
+  providerConfig?: ProviderDefinition;
+};
 
 type SendOptions = {
   abortSignal?: AbortSignal;
   maxOutputTokens?: number;
+  modelProfile?: TransportModelProfile;
   onTextDelta?: (textDelta: string) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
+};
+
+type GenerateTextOptions = {
+  abortSignal?: AbortSignal;
+  maxOutputTokens?: number;
+  modelProfile?: TransportModelProfile;
 };
 
 type SendResult = {
@@ -21,6 +40,11 @@ type SendResult = {
   totalUsage: LanguageModelUsage;
 };
 
+type TransportModelCache = {
+  key: string;
+  model: LanguageModelV3;
+};
+
 /**
  * Core Transport
  * @class Transport
@@ -28,6 +52,8 @@ type SendResult = {
  */
 export class Transport {
   #runtime: RuntimeService;
+  #streamModelCache: TransportModelCache | null;
+  #textModelCache: TransportModelCache | null;
 
   #getRuntimeService(serviceManager: ServiceManager): RuntimeService {
     const runtime = serviceManager.getService<RuntimeService>("runtime");
@@ -39,30 +65,83 @@ export class Transport {
     return runtime;
   }
 
-  #createChatModel() {
-    const { selectedModel, providerConfig } =
-      this.#runtime.getModelProfileConfigWithLevel("balanced");
+  #createTransportModel(modelProfile: TransportModelProfile) {
+    const profilePath = modelProfile.level
+      ? `config.providerProfiles.${modelProfile.level}`
+      : "transport.modelProfile";
 
     return createModelWithProvider(
-      selectedModel,
-      providerConfig,
-      "config.providerProfiles.balanced",
+      modelProfile.selectedModel,
+      modelProfile.providerConfig,
+      profilePath,
     );
   }
 
-  #createIntentModel() {
-    const { selectedModel, providerConfig } =
-      this.#runtime.getModelProfileConfigWithLevel("basic");
+  #buildModelCacheKey(modelProfile: TransportModelProfile) {
+    return JSON.stringify({
+      level: modelProfile.level ?? "",
+      modelId: modelProfile.selectedModel.id,
+      providerConfig: modelProfile.providerConfig ?? null,
+    });
+  }
 
-    return createModelWithProvider(
-      selectedModel,
-      providerConfig,
-      "config.providerProfiles.basic",
-    );
+  #createBalancedModelProfile(): TransportModelProfile {
+    return {
+      level: "balanced",
+      ...this.#runtime.getModelProfileConfigWithLevel("balanced"),
+    };
+  }
+
+  #resolveModel(
+    kind: "stream" | "text",
+    modelProfile?: TransportModelProfile,
+  ) {
+    const cache = kind === "stream"
+      ? this.#streamModelCache
+      : this.#textModelCache;
+    const setCache = (nextCache: TransportModelCache) => {
+      if (kind === "stream") {
+        this.#streamModelCache = nextCache;
+        return;
+      }
+
+      this.#textModelCache = nextCache;
+    };
+
+    if (!modelProfile) {
+      if (cache) {
+        return cache.model;
+      }
+
+      const fallbackProfile = this.#createBalancedModelProfile();
+      const nextCache = {
+        key: this.#buildModelCacheKey(fallbackProfile),
+        model: this.#createTransportModel(fallbackProfile),
+      } satisfies TransportModelCache;
+
+      setCache(nextCache);
+      return nextCache.model;
+    }
+
+    const cacheKey = this.#buildModelCacheKey(modelProfile);
+
+    if (cache?.key === cacheKey) {
+      return cache.model;
+    }
+
+    const nextCache = {
+      key: cacheKey,
+      model: this.#createTransportModel(modelProfile),
+    } satisfies TransportModelCache;
+
+    setCache(nextCache);
+    return nextCache.model;
   }
 
   constructor(serviceManager: ServiceManager) {
     this.#runtime = this.#getRuntimeService(serviceManager);
+    this.#streamModelCache = null;
+    this.#textModelCache = null;
   }
 
   public async send(
@@ -75,7 +154,7 @@ export class Transport {
     let model;
 
     try {
-      model = this.#createChatModel();
+      model = this.#resolveModel("stream", options.modelProfile);
     } catch (error) {
       await options.onError?.(error);
       throw error;
@@ -142,17 +221,18 @@ export class Transport {
     };
   }
 
-  public async predictIntent(
+  public async generateText(
     systemPrompt: string,
     userPrompt: string,
-    maxOutputTokens = 120,
+    options: GenerateTextOptions = {},
   ) {
-    const model = this.#createIntentModel();
-    const result = await generateText({
+    const model = this.#resolveModel("text", options.modelProfile);
+    const result = await runGenerateText({
       model,
       system: systemPrompt,
       prompt: userPrompt,
-      maxOutputTokens,
+      abortSignal: options.abortSignal,
+      maxOutputTokens: options.maxOutputTokens,
     });
 
     return result.text;

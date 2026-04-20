@@ -1,9 +1,15 @@
 // @ts-nocheck
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { Runtime } from "@/core/runtime";
+import { Transport } from "@/core/transport";
 import { ServiceManager } from "@/libs/service-manage";
+import { MemoryService } from "@/services";
 import { RuntimeService } from "@/services/runtime";
+import { WatchmanPhase } from "@/services/watchman/types";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const buildRuntime = () => {
@@ -13,6 +19,55 @@ const buildRuntime = () => {
   serviceManager.register(runtimeService);
 
   return new Runtime(serviceManager);
+};
+
+const workspaces: string[] = [];
+const memoryServices: MemoryService[] = [];
+
+const buildRuntimeWithServices = async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "atom-next-runtime-step1-"));
+  workspaces.push(workspace);
+
+  const serviceManager = new ServiceManager();
+  const runtimeService = new RuntimeService();
+  runtimeService.loadCliArgs({
+    mode: "server",
+    workspace,
+    sandbox: workspace,
+    serverUrl: "http://127.0.0.1:8787",
+    address: "127.0.0.1",
+    port: 8787,
+  });
+  runtimeService.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+  });
+  runtimeService.syncUserAgentPromptSnapshot("", {
+    phase: WatchmanPhase.READY,
+    hash: null,
+    updatedAt: Date.now(),
+    error: null,
+  });
+
+  const memoryService = new MemoryService();
+  serviceManager.register(runtimeService, memoryService);
+  await memoryService.start();
+  memoryServices.push(memoryService);
+
+  return {
+    runtime: new Runtime(serviceManager),
+    memoryService,
+    transport: new Transport(serviceManager),
+  };
 };
 
 const buildTask = (
@@ -42,6 +97,19 @@ const buildTask = (
 };
 
 describe("Runtime context", () => {
+  afterEach(async () => {
+    await Promise.all(
+      memoryServices.splice(0).map(async (memoryService) => {
+        await memoryService.stop();
+      }),
+    );
+    await Promise.all(
+      workspaces.splice(0).map(async (workspace) => {
+        await rm(workspace, { recursive: true, force: true });
+      }),
+    );
+  });
+
   test("does not render follow up block before task is bound", async () => {
     const runtime = buildRuntime();
 
@@ -112,6 +180,43 @@ describe("Runtime context", () => {
     });
 
     expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\npart-1\npart-2\nEOF");
+  });
+
+  test("finalizeChatTurn resolves final message and commits session continuity", async () => {
+    const runtime = buildRuntime();
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "first question" }],
+    });
+    runtime.currentTask = task;
+    runtime.appendAssistantOutput("streamed answer");
+
+    const finalizationResult = runtime.finalizeChatTurn(task, {
+      resultText: "final answer",
+      visibleTextBuffer: "streamed answer",
+    });
+
+    expect(finalizationResult.finalMessage).toBe("final answer");
+    expect(finalizationResult.visibleChunk).toBe("streamed answer");
+    expect(finalizationResult.completedPayload.message.data).toBe(
+      "final answer",
+    );
+
+    runtime.currentTask = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-2",
+      payload: [{ type: "text", data: "second question" }],
+    });
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(prompt).toContain("<Conversation>");
+    expect(prompt).toContain("LAST_USER_INPUT<<EOF\nfirst question\nEOF");
+    expect(prompt).toContain("LAST_ASSISTANT_OUTPUT<<EOF\nfinal answer\nEOF");
   });
 
   test("keeps original input and accumulated output for internal task in same chat", async () => {
@@ -294,6 +399,198 @@ describe("Runtime context", () => {
     expect(prompt).toContain("PRELOAD_MEMORY=true");
     expect(prompt).toContain("MEMORY_QUERY=AGENTS md");
     expect(prompt).toContain("PROMPT_VARIANT=recall");
+  });
+
+  test("prepareExecutionContext predicts intent and preloads long memory for external task", async () => {
+    const { runtime, memoryService, transport } = await buildRuntimeWithServices();
+
+    memoryService.saveMemory({
+      text: "Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。",
+      suggested_key: "watchman agents boundary",
+      created_by: "runtime-test",
+    });
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "你有 AGENTS.md 相关的记忆吗" }],
+    });
+    runtime.currentTask = task;
+
+    transport.generateText = async () => {
+      return [
+        "TYPE=memory_lookup",
+        "NEEDS_MEMORY=true",
+        "NEEDS_MEMORY_SAVE=false",
+        "MEMORY_QUERY=AGENTS md",
+        "CONFIDENCE=0.95",
+      ].join("\n");
+    };
+
+    const policy = await runtime.prepareExecutionContext(task, transport);
+
+    expect(policy.acceptedIntentType).toBe("memory_lookup");
+    expect(policy.preloadMemory).toBe(true);
+    expect(policy.memoryQuery).toBe("AGENTS md");
+    expect(runtime.getMemoryContext("long").status).toBe("loaded");
+    expect(runtime.getMemoryContext("long").query).toBe("AGENTS md");
+  });
+
+  test("prepareExecutionContext skips prediction for internal task", async () => {
+    const { runtime, transport } = await buildRuntimeWithServices();
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      payload: [{ type: "text", data: "continue" }],
+      chain_round: 1,
+    });
+    runtime.currentTask = task;
+
+    let called = false;
+    transport.generateText = async () => {
+      called = true;
+      return "TYPE=memory_lookup";
+    };
+
+    const policy = await runtime.prepareExecutionContext(task, transport);
+
+    expect(called).toBe(false);
+    expect(policy.acceptedIntentType).toBe("unknown");
+    expect(runtime.getMemoryContext("long").status).toBe("idle");
+  });
+
+  test("executeIntentRequests loads memory search results before follow up continues", async () => {
+    const { runtime, memoryService } = await buildRuntimeWithServices();
+
+    memoryService.saveMemory({
+      text: "Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。",
+      suggested_key: "watchman agents boundary",
+      created_by: "runtime-test",
+    });
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "搜索 Watchman 相关记忆" }],
+    });
+    runtime.currentTask = task;
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "SEARCH_MEMORY",
+        intent: "搜索 Watchman 相关记忆",
+        params: {
+          words: "Watchman",
+        },
+      },
+      {
+        request: "FOLLOW_UP",
+        intent: "基于记忆继续回答",
+        params: {
+          sessionId: "session-1",
+          chatId: "chat-1",
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("stop");
+    expect(result.nextState).toBe(TaskState.FOLLOW_UP);
+    expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
+    expect(runtime.getMemoryContext("long").status).toBe("loaded");
+    expect(runtime.getMemoryContext("long").query).toBe("Watchman");
+  });
+
+  test("executeIntentRequests creates closure follow up when search has no explicit follow up", async () => {
+    const { runtime } = await buildRuntimeWithServices();
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "先搜索相关记忆，再回答" }],
+    });
+    runtime.currentTask = task;
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "SEARCH_MEMORY",
+        intent: "搜索默认配置",
+        params: {
+          words: "默认 scope",
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("stop");
+    expect(result.nextState).toBe(TaskState.FOLLOW_UP);
+    expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
+    expect(result.nextTask?.payload[0]?.data).toContain("本轮 SEARCH_MEMORY 已执行，但模型没有提交 FOLLOW_UP。");
+  });
+
+  test("executeIntentRequests keeps memory context in sync for save update and unload", async () => {
+    const { runtime } = await buildRuntimeWithServices();
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "处理记忆" }],
+    });
+    runtime.currentTask = task;
+
+    const saveResult = await runtime.executeIntentRequests(task, [
+      {
+        request: "SAVE_MEMORY",
+        intent: "保存默认配置记忆",
+        params: {
+          text: "MemoryService 默认 scope 是 long。",
+          scope: "long",
+        },
+      },
+    ]);
+
+    expect(saveResult).toEqual({
+      status: "continue",
+    });
+    const savedMemoryKey = runtime.getMemoryContext("long").query;
+    expect(runtime.getMemoryContext("long").status).toBe("loaded");
+    expect(runtime.getMemoryContext("long").output?.memory.text).toBe(
+      "MemoryService 默认 scope 是 long。",
+    );
+
+    const updateResult = await runtime.executeIntentRequests(task, [
+      {
+        request: "UPDATE_MEMORY",
+        intent: "更新默认配置记忆",
+        params: {
+          key: savedMemoryKey,
+          text: "MemoryService 默认 scope 是 long，默认 type 是 note。",
+        },
+      },
+    ]);
+
+    expect(updateResult).toEqual({
+      status: "continue",
+    });
+    expect(runtime.getMemoryContext("long").output?.memory.text).toBe(
+      "MemoryService 默认 scope 是 long，默认 type 是 note。",
+    );
+
+    const unloadResult = await runtime.executeIntentRequests(task, [
+      {
+        request: "UNLOAD_MEMORY",
+        intent: "卸载当前记忆",
+        params: {
+          key: savedMemoryKey,
+          reason: "answer_completed",
+        },
+      },
+    ]);
+
+    expect(unloadResult).toEqual({
+      status: "continue",
+    });
+    expect(runtime.getMemoryContext("long").status).toBe("idle");
   });
 
   test("starts with empty session continuity when session changes", async () => {

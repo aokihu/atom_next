@@ -1,44 +1,17 @@
-import { TaskSource, type TaskItem } from "@/types/task";
+import type { TaskItem } from "@/types/task";
 import type { ServiceManager } from "@/libs/service-manage";
-import { buildInternalTaskItem } from "@/libs";
 import {
   ChatEvents,
   type ChatChunkAppendedEventPayload,
   type ChatFailedEventPayload,
-  type ChatCompletedEventPayload,
 } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
-import {
-  IntentRequestType,
-  TaskState,
-  type FollowUpIntentRequest,
-  type IntentRequest,
-  type LoadMemoryIntentRequest,
-  type MemoryScope,
-  type SaveMemoryIntentRequest,
-  type SearchMemoryIntentRequest,
-  type UnloadMemoryIntentRequest,
-  type UpdateMemoryIntentRequest,
-} from "@/types";
+import { TaskState } from "@/types";
 
-import { isEmpty, isNumber, sleep } from "radashi";
-import type { MemoryService } from "@/services";
+import { sleep } from "radashi";
 import { TaskQueue } from "./queue";
-import {
-  parseIntentPredictionText,
-  Runtime,
-} from "./runtime";
+import { Runtime } from "./runtime";
 import { Transport } from "./transport";
-
-type IntentRequestProcessResult =
-  | {
-      status: "continue";
-    }
-  | {
-      status: "stop";
-      nextState?: TaskState;
-      nextTask?: TaskItem;
-    };
 
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
@@ -69,113 +42,6 @@ export class Core {
   async #emptyRunloop() {
     await sleep(500);
     this.runloop();
-  }
-
-  #getMemoryService() {
-    const memory = this.#serviceManager.getService<MemoryService>("memory");
-
-    if (!memory) {
-      throw new Error("Memory service not found");
-    }
-
-    return memory;
-  }
-
-  /**
-   * 读取当前任务的内部续跑轮次。
-   * @description
-   * 外部任务不带 chain_round，因此默认从 0 开始，
-   * 第一次派生 FOLLOW_UP 内部任务时再递增到 1。
-   */
-  #parseTaskChainRound(task: TaskItem) {
-    const chainRound = (
-      task as TaskItem & {
-        chain_round?: number;
-      }
-    ).chain_round;
-
-    if (!isNumber(chainRound) || chainRound < 1) {
-      return 0;
-    }
-
-    return chainRound;
-  }
-
-  /**
-   * 构造 FOLLOW_UP 内部任务。
-   * @description
-   * 内部任务只携带最小续跑提示，
-   * 真实上下文由 Runtime Context 负责维护和注入。
-   */
-  #buildFollowUpTask(task: TaskItem, request: FollowUpIntentRequest) {
-    const nextChainRound = this.#parseTaskChainRound(task) + 1;
-    const followUpIntent = isEmpty(request.intent)
-      ? "请基于当前 FollowUp 上下文继续当前回答，不要重复已经输出的内容。"
-      : request.intent;
-
-    return buildInternalTaskItem({
-      sessionId: request.params.sessionId,
-      chatId: request.params.chatId,
-      chainId: task.chainId,
-      parentId: task.id,
-      chain_round: nextChainRound,
-      priority: 1,
-      eventTarget: task.eventTarget,
-      channel: task.channel,
-      payload: [
-        {
-          type: "text",
-          data: followUpIntent,
-        },
-      ],
-    });
-  }
-
-  /**
-   * 构造“重复搜索后的强制收束”内部任务。
-   * @description
-   * 当 internal 续跑轮次里重复发起同一条 SEARCH_MEMORY 时，
-   * 说明模型没有消费当前 <Memory>，而是在重复“先搜索再回答”的模式。
-   * 这里派生一条更强约束的内部任务，明确禁止再次搜索，
-   * 要求直接基于当前 <Memory> 收束为最终回答。
-   */
-  #buildRepeatedSearchClosureTask(
-    task: TaskItem,
-    searchRequest: SearchMemoryIntentRequest,
-    reason: "repeated_search" | "missing_follow_up",
-  ) {
-    const nextChainRound = this.#parseTaskChainRound(task) + 1;
-    const scope = this.#resolveMemoryScope(searchRequest.params.scope);
-    const memoryContext = this.#runtime.getMemoryContext(scope);
-    const summary =
-      memoryContext.status === "loaded"
-        ? "系统已经完成该记忆搜索，结果已写入 <Memory>。"
-        : "系统已经完成该记忆搜索，但 <Memory> 没有命中。";
-    const triggerReason = reason === "repeated_search"
-      ? "重复搜索已被 Core 拦截。"
-      : "本轮 SEARCH_MEMORY 已执行，但模型没有提交 FOLLOW_UP。";
-
-    return buildInternalTaskItem({
-      sessionId: task.sessionId,
-      chatId: task.chatId,
-      chainId: task.chainId,
-      parentId: task.id,
-      chain_round: nextChainRound,
-      priority: 1,
-      eventTarget: task.eventTarget,
-      channel: task.channel,
-      payload: [
-        {
-          type: "text",
-          data: [
-            `${triggerReason}${summary}`,
-            `当前搜索 query = ${searchRequest.params.words.trim()}`,
-            "不要再次发起 SEARCH_MEMORY 或 FOLLOW_UP。",
-            "请直接基于当前 <Memory>、OriginalUserInput 和已累计输出给出最终回答，不要重复已经输出的内容。",
-          ].join("\n"),
-        },
-      ],
-    });
   }
 
   /**
@@ -225,348 +91,14 @@ export class Core {
   }
 
   /**
-   * 处理单条 FOLLOW_UP 请求。
+   * 执行当前用户输入的预处理流程。
    * @description
-   * FOLLOW_UP 会把当前任务收束为内部续跑链路：
-   * 当前任务切到 FOLLOW_UP 状态，并派生下一条内部任务入队。
+   * Step 1 中，core.ts 保留为函数式编排层：
+   * 这里只负责串起 Runtime 的统一预处理入口，
+   * 不再直接持有 prediction / policy / preload 的细节实现。
    */
-  #processFollowUpIntentRequest(
-    task: TaskItem,
-    request: FollowUpIntentRequest,
-  ): IntentRequestProcessResult {
-    return {
-      status: "stop",
-      nextState: TaskState.FOLLOW_UP,
-      nextTask: this.#buildFollowUpTask(task, request),
-    };
-  }
-
-  #processRepeatedSearchFollowUpIntentRequest(
-    task: TaskItem,
-    searchRequest: SearchMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    return {
-      status: "stop",
-      nextState: TaskState.FOLLOW_UP,
-      nextTask: this.#buildRepeatedSearchClosureTask(
-        task,
-        searchRequest,
-        "repeated_search",
-      ),
-    };
-  }
-
-  #processSearchMemoryWithoutFollowUpIntentRequest(
-    task: TaskItem,
-    searchRequest: SearchMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    return {
-      status: "stop",
-      nextState: TaskState.FOLLOW_UP,
-      nextTask: this.#buildRepeatedSearchClosureTask(
-        task,
-        searchRequest,
-        "missing_follow_up",
-      ),
-    };
-  }
-
-  #resolveMemoryScope(scope?: string): MemoryScope {
-    return (scope ?? "long") as MemoryScope;
-  }
-
-  /**
-   * 判断当前 SEARCH_MEMORY 是否只是重复搜索同一条 query。
-   * @description
-   * internal FOLLOW_UP 轮次里，如果 Runtime 已经持有同 scope + 同 query 的搜索结果，
-   * 无论上次结果是 loaded 还是 empty，都不应再次派生同一轮搜索，
-   * 否则模型可能在“先搜索再继续”的模式下自循环复读。
-   *
-   * 首次 external 搜索仍然放行；
-   * 只有进入 internal 续跑后，才根据 Runtime 中最近一次搜索快照进行去重拦截。
-   */
-  #shouldSkipRepeatedSearchMemory(
-    task: TaskItem,
-    request: SearchMemoryIntentRequest,
-  ) {
-    if (task.source !== TaskSource.INTERNAL) {
-      return false;
-    }
-
-    const scope = this.#resolveMemoryScope(request.params.scope);
-    const memoryContext = this.#runtime.getMemoryContext(scope);
-
-    return (
-      memoryContext.status !== "idle"
-      && memoryContext.query === request.params.words.trim()
-    );
-  }
-
-  #processSearchMemoryIntentRequest(
-    request: SearchMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    const memory = this.#getMemoryService();
-    const scope = this.#resolveMemoryScope(request.params.scope);
-    const words = request.params.words.trim();
-    const output = memory.retrieveRuntimeContext({
-      words,
-      scope,
-    });
-
-    this.#runtime.recordMemorySearchResult(scope, {
-      words,
-      output,
-      reason: output
-        ? `Loaded ${scope} memory for ${words}`
-        : `No ${scope} memory matched ${words}`,
-    });
-
-    return {
-      status: "continue",
-    };
-  }
-
-  #processLoadMemoryIntentRequest(
-    request: LoadMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    const memory = this.#getMemoryService();
-    const output = memory.getMemoryByKey(request.params.key);
-
-    if (!output) {
-      return {
-        status: "continue",
-      };
-    }
-
-    const runtimeOutput = memory.retrieveRuntimeContext({
-      memory_key: request.params.key,
-    });
-
-    if (runtimeOutput) {
-      this.#runtime.setMemoryContext(output.memory.scope, runtimeOutput, {
-        query: request.params.key,
-        reason: `Loaded memory by explicit key ${request.params.key}`,
-      });
-    }
-
-    return {
-      status: "continue",
-    };
-  }
-
-  #processSaveMemoryIntentRequest(
-    task: TaskItem,
-    request: SaveMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    const memory = this.#getMemoryService();
-    const scope = this.#resolveMemoryScope(request.params.scope);
-    const saveResult = memory.saveMemory({
-      text: request.params.text,
-      summary: request.params.summary,
-      scope,
-      source: "assistant",
-      source_ref: task.chatId,
-      created_by: "core_intent_request",
-    });
-    const output = memory.retrieveRuntimeContext({
-      memory_key: saveResult.memory_key,
-      scope,
-    });
-
-    if (output) {
-      this.#runtime.setMemoryContext(scope, output, {
-        query: saveResult.memory_key,
-        reason: `Saved memory as ${saveResult.memory_key}`,
-      });
-    }
-
-    return {
-      status: "continue",
-    };
-  }
-
-  #processUpdateMemoryIntentRequest(
-    task: TaskItem,
-    request: UpdateMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    const memory = this.#getMemoryService();
-    const output = memory.updateMemory({
-      memory_key: request.params.key,
-      ...(request.params.text ? { text: request.params.text } : {}),
-      ...(request.params.summary ? { summary: request.params.summary } : {}),
-      created_by: "core_intent_request",
-    });
-    const runtimeOutput = memory.retrieveRuntimeContext({
-      memory_key: request.params.key,
-    });
-    const loadedScope = this.#runtime.getLoadedMemoryScopeByKey(request.params.key);
-
-    if (runtimeOutput && loadedScope) {
-      this.#runtime.setMemoryContext(loadedScope, runtimeOutput, {
-        query: request.params.key,
-        reason: `Updated memory ${request.params.key}`,
-      });
-    }
-
-    return {
-      status: "continue",
-    };
-  }
-
-  #processUnloadMemoryIntentRequest(
-    request: UnloadMemoryIntentRequest,
-  ): IntentRequestProcessResult {
-    this.#runtime.unloadMemoryContextByKey(request.params.key);
-
-    return {
-      status: "continue",
-    };
-  }
-
-  /**
-   * 将当前 external chat 的原始预测降级为保守默认值。
-   * @description
-   * intent prediction 只是候选信号，不应该成为主回答链路的硬依赖。
-   * 当预测失败时，这里显式写入 unknown/no-memory 的默认预测，
-   * 后续再由 resolver 产出默认 policy，避免旧 session 中残留的预测继续污染当前 chat。
-   */
-  #setFallbackPredictedIntent(task: TaskItem) {
-    this.#runtime.getUserIntentPredictionManager().setFallbackPredictedIntent(
-      task.sessionId,
-    );
-  }
-
-  async #predictIntentIfNeeded(task: TaskItem) {
-    if (task.source !== TaskSource.EXTERNAL) {
-      return;
-    }
-
-    try {
-      const predictionText = await this.#transport.predictIntent(
-        this.#runtime.exportIntentPrompt(),
-        this.#runtime.exportUserPrompt(),
-      );
-      const parsedIntent = parseIntentPredictionText(predictionText);
-
-      this.#runtime.getUserIntentPredictionManager().setPredictedIntent(
-        task.sessionId,
-        {
-        sessionId: task.sessionId,
-        type: parsedIntent.type,
-        needsMemory: parsedIntent.needsMemory,
-        needsMemorySave: parsedIntent.needsMemorySave,
-        memoryQuery: parsedIntent.memoryQuery,
-        confidence: parsedIntent.confidence,
-        },
-      );
-    } catch {
-      this.#setFallbackPredictedIntent(task);
-    }
-  }
-
-  #resolveIntentPolicyIfNeeded(task: TaskItem) {
-    if (task.source !== TaskSource.EXTERNAL) {
-      return;
-    }
-
-    this.#runtime.getUserIntentPredictionManager().resolveIntentPolicy(
-      task.sessionId,
-      {
-      taskSource: task.source,
-      chainRound: this.#runtime.getCurrentChainRound(),
-      currentMemoryState: {
-        core: this.#runtime.getMemoryContext("core").status,
-        short: this.#runtime.getMemoryContext("short").status,
-        long: this.#runtime.getMemoryContext("long").status,
-      },
-      sessionHistoryAvailable: this.#runtime.hasSessionHistory(),
-      },
-    );
-  }
-
-  #hydrateMemoryFromPolicy(task: TaskItem) {
-    if (task.source !== TaskSource.EXTERNAL) {
-      return;
-    }
-
-    const policy = this.#runtime.getUserIntentPredictionManager().getIntentPolicy(
-      task.sessionId,
-    );
-
-    if (!policy.preloadMemory || isEmpty(policy.memoryQuery)) {
-      return;
-    }
-
-    const scope = "long" as MemoryScope;
-    const memoryContext = this.#runtime.getMemoryContext(scope);
-
-    if (
-      memoryContext.status !== "idle"
-      && memoryContext.query === policy.memoryQuery
-    ) {
-      return;
-    }
-
-    const memory = this.#getMemoryService();
-    const output = memory.retrieveRuntimeContext({
-      words: policy.memoryQuery,
-      scope,
-    });
-
-    this.#runtime.recordMemorySearchResult(scope, {
-      words: policy.memoryQuery,
-      output,
-      reason: output
-        ? `Loaded ${scope} memory from intent policy query ${policy.memoryQuery}`
-        : `No ${scope} memory matched intent policy query ${policy.memoryQuery}`,
-    });
-  }
-
-  /**
-   * 将当前 chat 的最终答案回写到 session 连续上下文。
-   * @description
-   * external chat 直接完成时，使用当前轮原始输入；
-   * 需要 FOLLOW_UP 的链路则由最终收束的 internal 任务补写，
-   * 这样下一轮 session 对话看到的永远是该 chat 的最终稳定答案。
-   */
-  #commitSessionTurn(task: TaskItem, finalMessage: string) {
-    const originalUserInput = this.#runtime.getCurrentChatOriginalUserInput();
-
-    if (isEmpty(originalUserInput) || isEmpty(finalMessage)) {
-      return;
-    }
-
-    this.#runtime.commitSessionTurn(originalUserInput, finalMessage);
-  }
-
-  /**
-   * 处理单条 Intent Request。
-   * @description
-   * 当前阶段默认串行消费请求。
-   * 只有真正改变任务流转的请求才会返回 stop，其余请求先保持最小 continue 行为。
-   */
-  #processIntentRequest(
-    task: TaskItem,
-    request: IntentRequest,
-  ): IntentRequestProcessResult {
-    switch (request.request) {
-      case IntentRequestType.SEARCH_MEMORY:
-        return this.#processSearchMemoryIntentRequest(request);
-      case IntentRequestType.LOAD_MEMORY:
-        return this.#processLoadMemoryIntentRequest(request);
-      case IntentRequestType.UNLOAD_MEMORY:
-        return this.#processUnloadMemoryIntentRequest(request);
-      case IntentRequestType.SAVE_MEMORY:
-        return this.#processSaveMemoryIntentRequest(task, request);
-      case IntentRequestType.UPDATE_MEMORY:
-        return this.#processUpdateMemoryIntentRequest(task, request);
-      case IntentRequestType.FOLLOW_UP:
-        return this.#processFollowUpIntentRequest(task, request);
-      case IntentRequestType.LOAD_SKILL:
-        return {
-          status: "continue",
-        };
-    }
+  async #prepareUserInputFlow(task: TaskItem) {
+    await this.#runtime.prepareExecutionContext(task, this.#transport);
   }
 
   /**
@@ -575,10 +107,7 @@ export class Core {
    * 这里统一负责把 handler 的结果映射到任务状态和队列变更，
    * 避免在主流程里散落多个 updateTask / addTask 分支。
    */
-  async #applyIntentRequestProcessResult(
-    task: TaskItem,
-    result: IntentRequestProcessResult,
-  ) {
+  async #applyIntentRequestProcessResult(task: TaskItem, result: Awaited<ReturnType<Runtime["executeIntentRequests"]>>) {
     if (result.status === "continue") {
       return false;
     }
@@ -596,81 +125,6 @@ export class Core {
     }
 
     return true;
-  }
-
-  /**
-   * 串行处理安全通过的 Intent Request。
-   * @description
-   * 当前阶段固定按数组顺序串行消费。
-   * 一旦某条请求真正改变了任务流转，就停止继续处理后续请求。
-   */
-  async #processIntentRequests(task: TaskItem, requests: IntentRequest[]) {
-    let repeatedSearchRequest: SearchMemoryIntentRequest | null = null;
-    let lastSearchRequest: SearchMemoryIntentRequest | null = null;
-    let hasFollowUpRequest = false;
-
-    for (const request of requests) {
-      if (
-        request.request === IntentRequestType.SEARCH_MEMORY
-        && this.#shouldSkipRepeatedSearchMemory(task, request)
-      ) {
-        repeatedSearchRequest = request;
-        lastSearchRequest = request;
-        continue;
-      }
-
-      if (
-        repeatedSearchRequest
-        && request.request === IntentRequestType.FOLLOW_UP
-      ) {
-        hasFollowUpRequest = true;
-        const processResult = this.#processRepeatedSearchFollowUpIntentRequest(
-          task,
-          repeatedSearchRequest,
-        );
-        const shouldStop = await this.#applyIntentRequestProcessResult(
-          task,
-          processResult,
-        );
-
-        if (shouldStop) {
-          return true;
-        }
-
-        repeatedSearchRequest = null;
-        continue;
-      }
-
-      if (request.request === IntentRequestType.SEARCH_MEMORY) {
-        lastSearchRequest = request;
-      }
-
-      if (request.request === IntentRequestType.FOLLOW_UP) {
-        hasFollowUpRequest = true;
-      }
-
-      const processResult = this.#processIntentRequest(task, request);
-      const shouldStop = await this.#applyIntentRequestProcessResult(
-        task,
-        processResult,
-      );
-
-      if (shouldStop) {
-        return true;
-      }
-    }
-
-    const pendingSearchRequest = repeatedSearchRequest ?? lastSearchRequest;
-
-    if (pendingSearchRequest && !hasFollowUpRequest) {
-      const processResult = this.#processSearchMemoryWithoutFollowUpIntentRequest(
-        task,
-        pendingSearchRequest,
-      );
-      return this.#applyIntentRequestProcessResult(task, processResult);
-    }
-
-    return false;
   }
 
   /**
@@ -697,9 +151,7 @@ export class Core {
 
     try {
       this.#runtime.currentTask = task;
-      await this.#predictIntentIfNeeded(task);
-      this.#resolveIntentPolicyIfNeeded(task);
-      this.#hydrateMemoryFromPolicy(task);
+      await this.#prepareUserInputFlow(task);
       const [systemPrompt, userPrompt] = await this.#runtime.exportPrompts();
       let hasSyncedProcessingState = false;
       let visibleTextBuffer = "";
@@ -717,7 +169,6 @@ export class Core {
           visibleTextBuffer += textDelta;
         },
       });
-      this.#runtime.setLastAssistantOutput(result.text);
 
       // intentRequestText 只承载 LLM 在隐藏请求区输出的指令文本，
       // 这里统一交给 Runtime 做识别和安全校验，Core 只消费最终结果。
@@ -725,17 +176,26 @@ export class Core {
         result.intentRequestText,
       );
 
-      const shouldStopCompletion = await this.#processIntentRequests(
+      const requestExecutionResult = await this.#runtime.executeIntentRequests(
         task,
         intentRequestResult.safeRequests,
+      );
+      const shouldStopCompletion = await this.#applyIntentRequestProcessResult(
+        task,
+        requestExecutionResult,
       );
 
       if (shouldStopCompletion) {
         return;
       }
 
-      if (!isEmpty(visibleTextBuffer)) {
-        this.#emitChatChunkAppendedEvent(task, visibleTextBuffer);
+      const finalizationResult = this.#runtime.finalizeChatTurn(task, {
+        resultText: result.text,
+        visibleTextBuffer,
+      });
+
+      if (finalizationResult.visibleChunk) {
+        this.#emitChatChunkAppendedEvent(task, finalizationResult.visibleChunk);
       }
 
       this.#taskQueue.updateTask(
@@ -743,27 +203,10 @@ export class Core {
         { state: TaskState.COMPLETE },
         { shouldSyncEvent: false },
       );
-
-      // FOLLOW_UP 链路下，最终完成消息要优先使用 Runtime 已累计的可见输出，
-      // 避免 complete 事件只带最后一轮 transport 返回的那部分文本。
-      const completedMessage = this.#runtime.getLastAssistantOutput();
-      const finalMessage = isEmpty(completedMessage)
-        ? this.#runtime.getAccumulatedAssistantOutput() || result.text
-        : completedMessage;
-
-      this.#commitSessionTurn(task, finalMessage);
-
-      const payload: ChatCompletedEventPayload = {
-        sessionId: task.sessionId,
-        chatId: task.chatId,
-        status: ChatStatus.COMPLETE,
-        message: {
-          createdAt: Date.now(),
-          data: finalMessage,
-        },
-      };
-
-      task.eventTarget?.emit(ChatEvents.CHAT_COMPLETED, payload);
+      task.eventTarget?.emit(
+        ChatEvents.CHAT_COMPLETED,
+        finalizationResult.completedPayload,
+      );
     } catch (error) {
       this.#taskQueue.updateTask(
         task.id,
