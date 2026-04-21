@@ -45,6 +45,16 @@ Queue -> Runtime -> Transport -> Runtime
 
 ### Runtime
 
+`Runtime` 是一个抽象的运行时服务域，不应该再被理解成某一个单独的类或某一个单独的文件。
+
+当前代码中的 `runtime.ts` 只是 `Runtime` 在 `Core` 内部的统一入口。
+
+后续开发时，必须基于下面这个认知：
+
+- `Runtime` = 一组运行时内核服务的集合
+- `runtime.ts` = `Runtime` 域在内核中的唯一对外暴露接口
+- `workflow` / `core.ts` / 其他内核模块不得直接依赖 `runtime/*` 子模块实现细节
+
 `Runtime` 负责运行时上下文与状态编排，包括但不限于：
 
 - session / chat 上下文管理
@@ -57,6 +67,21 @@ Queue -> Runtime -> Transport -> Runtime
 `Runtime` 是 `Core` 中主要的调度和分配模块。
 
 `Runtime` 不应该承担模型通信职责，也不应该承担任务排队职责。
+
+`Runtime` 对外应该只暴露高层动作，不应该把内部服务对象继续向外透传。
+
+默认约束：
+
+- `Runtime` 域内部可以继续拆分 `context`、`prompt`、`intent-request`、`prediction`、`finalize` 等子模块
+- 这些子模块属于 `Runtime` 的内部实现，不属于对外边界
+- 如果某个能力需要被 workflow 使用，应先收敛到 `Runtime` 统一入口，再由 workflow 调用
+- 不要通过 `getXxxManager()` 之类的方式把内部服务对象再暴露给外部
+
+判断标准：
+
+- 如果一个能力属于运行时上下文、策略编排、结果收束，它应该归属 `Runtime`
+- 如果一个能力只是 `Runtime` 的内部实现细节，它不应该被内核其他模块直接 import
+- 如果一个方法不是 workflow 真正需要的高层动作，不要继续挂到 `Runtime` 的对外接口上
 
 ### Transport
 
@@ -90,6 +115,13 @@ Queue -> Runtime -> Transport -> Runtime
 只有在确实需要跨模块协调时，才在 `core.ts` 这类协调层处理。
 
 不要把原本应该收敛到 `Runtime`、`Transport` 或 `Queue` 的职责继续堆积到单一协调器中。
+
+当涉及 `Runtime` 相关修改时，额外遵守下面规则：
+
+- 优先先判断这个改动是 `Runtime` 的对外动作，还是 `Runtime` 的内部服务实现
+- 如果是内部实现，优先下沉到 `runtime/*` 子模块，不要直接继续堆到 `runtime.ts`
+- 如果是对 workflow 暴露的能力，统一经由 `Runtime` 入口暴露，不要让 workflow 直接依赖内部子模块
+- 保持 `Runtime` 作为唯一对外入口，但不要把它扩张成“万能对象”
 
 ## Implementation Style
 
