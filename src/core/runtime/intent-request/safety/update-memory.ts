@@ -1,3 +1,8 @@
+/**
+ * intent-request/safety/update-memory.ts
+ * @description
+ * 校验 UPDATE_MEMORY 请求中的 key 和可选正文长度是否在允许边界内。
+ */
 import type { RejectedIntentRequest, UpdateMemoryIntentRequest } from "@/types";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import {
@@ -5,6 +10,10 @@ import {
   MAX_MEMORY_CONTENT_LENGTH,
   MAX_MEMORY_KEY_LENGTH,
 } from "./shared";
+
+/* ==================== */
+/* UPDATE_MEMORY Safety */
+/* ==================== */
 
 export const checkUpdateMemoryIntentRequestSafety = (
   request: UpdateMemoryIntentRequest,

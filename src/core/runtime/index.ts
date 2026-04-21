@@ -5,7 +5,6 @@ export {
   parseIntentPredictionText,
   createIntentExecutionPolicy,
   resolveIntentPolicy,
-  UserIntentPredictionManager,
 } from "./user-intent";
 export {
   parseIntentRequests,

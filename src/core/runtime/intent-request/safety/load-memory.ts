@@ -1,9 +1,18 @@
+/**
+ * intent-request/safety/load-memory.ts
+ * @description
+ * 校验 LOAD_MEMORY 请求中的 memory key 是否在允许边界内。
+ */
 import type { LoadMemoryIntentRequest, RejectedIntentRequest } from "@/types";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import {
   createRejectedIntentRequest,
   MAX_MEMORY_KEY_LENGTH,
 } from "./shared";
+
+/* ==================== */
+/* LOAD_MEMORY Safety   */
+/* ==================== */
 
 export const checkLoadMemoryIntentRequestSafety = (
   request: LoadMemoryIntentRequest,

@@ -1,3 +1,11 @@
+/**
+ * intent-request/safety/index.ts
+ * @description
+ * 负责对结构合法的 Intent Request 做安全边界校验。
+ *
+ * 这个文件只决定“请求是否允许进入执行阶段”，
+ * 不负责协议解析，也不负责执行动作。
+ */
 import type {
   IntentRequest,
   IntentRequestSafetyContext,
@@ -20,6 +28,10 @@ import {
   createRejectedIntentRequest,
   MAX_INTENT_REQUEST_COUNT,
 } from "./shared";
+
+/* ==================== */
+/* Safety Router        */
+/* ==================== */
 
 const checkSingleIntentRequestSafety = (
   request: IntentRequest,

@@ -2,8 +2,6 @@ import type {
   IntentRequestHandleResult,
   IntentRequest,
   IntentRequestSafetyContext,
-  RejectedIntentRequest,
-  IntentRequestDispatchResult,
   MemoryScope,
   PrepareConversationIntentRequest,
   RuntimeMemoryOutput,
@@ -11,44 +9,33 @@ import type {
 import type { ServiceManager } from "@/libs/service-manage";
 import type { MemoryService } from "@/services";
 import type { RuntimeService } from "@/services/runtime";
-import intentRequestPromptText from "@/assets/prompts/intent_request_prompt.md" with { type: "text" };
-import intentPromptText from "@/assets/prompts/intent.md" with { type: "text" };
-import systemPromptText from "@/assets/prompts/system.md" with { type: "text" };
-import memoryPromptText from "@/assets/prompts/memory.md" with { type: "text" };
-import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with { type: "text" };
-import { IntentRequestSource, IntentRequestType, IntentRequestSafetyIssueCode } from "@/types";
-import { TaskSource, type TaskItem } from "@/types/task";
-import type { ChatCompletedEventPayload } from "@/types/event";
+import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
-import { ChatStatus } from "@/types/chat";
-import { isEmpty, sleep } from "radashi";
+import { isEmpty } from "radashi";
 import {
-  checkIntentRequestSafety,
   executeIntentRequests as runIntentRequests,
-  dispatchIntentRequests,
-  parseIntentRequests,
   type IntentRequestExecutionResult,
 } from "./intent-request";
-import { convertRuntimeContextToPrompt } from "./prompt";
 import {
-  parseIntentPredictionText,
+  exportPredictionPrompt as runExportPredictionPrompt,
+  exportRuntimeSystemPrompt as runExportRuntimeSystemPrompt,
+  exportUserPrompt as runExportUserPrompt,
+  loadSystemRules as runLoadSystemRules,
+} from "./prompt";
+import {
+  type IntentControlInput,
   type IntentExecutionPolicy,
-  UserIntentPredictionManager,
+  type PredictedIntent,
 } from "./user-intent";
+import { UserIntentPredictionManager } from "./user-intent/user-intent-prediction-manager";
+import {
+  finalizeChatTurn as runFinalizeChatTurn,
+  type RuntimeChatFinalizationResult,
+} from "./finalize";
+import { handleIntentRequestRuntime as runHandleIntentRequestRuntime } from "./intent-request-runtime";
+import { prepareExecutionContext as runPrepareExecutionContext } from "./prepare";
 import type { Transport, TransportModelProfile } from "../transport";
 import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
-
-const WATCHMAN_WAIT_INTERVAL = 100;
-
-type ExportPromptOptions = {
-  ignoreWatchman?: boolean;
-};
-
-type RuntimeChatFinalizationResult = {
-  finalMessage: string;
-  visibleChunk: string | null;
-  completedPayload: ChatCompletedEventPayload;
-};
 
 export class Runtime {
   #serviceManager: ServiceManager;
@@ -62,25 +49,6 @@ export class Runtime {
     this.#contextManager = new ContextManager();
     this.#userIntentPredictionManager = new UserIntentPredictionManager();
     this.#systemRules = "";
-  }
-
-  /**
-   * 从任务中提取文本提示。
-   */
-  #convertTaskPayloadToPrompt(task: TaskItem) {
-    return task.payload
-      .filter((payload) => payload.type === "text")
-      .map((payload) => payload.data)
-      .join("\n");
-  }
-
-  /**
-   * 将任务转化成提示词
-   * @description 从task.payload字段中提取用户的输入信息
-   *              整理之后输出,当前只出了文本格式的数据
-   */
-  #convertTaskToPrompt() {
-    return this.#convertTaskPayloadToPrompt(this.#currentTask as TaskItem);
   }
 
   /**
@@ -100,6 +68,20 @@ export class Runtime {
   }
 
   /**
+   * 获取当前激活任务。
+   * @description
+   * prompt 导出和会话编排都依赖当前任务上下文。
+   * 这里显式收口约束，避免在调用点通过类型断言隐式跳过空值检查。
+   */
+  #getCurrentTaskOrThrow(): TaskItem {
+    if (!this.#currentTask) {
+      throw new Error("Runtime currentTask is missing");
+    }
+
+    return this.#currentTask;
+  }
+
+  /**
    * 判断当前模式是否允许直接输出 Intent Request 调试日志。
    * @description
    * TUI 和 both 模式会占用当前终端渲染界面，
@@ -111,60 +93,6 @@ export class Runtime {
     const mode = runtime.getAllArguments().mode;
 
     return mode === "server";
-  }
-
-  /**
-   * 记录被拒绝的 Intent Request。
-   */
-  #reportRejectedIntentRequests(rejectedRequests: RejectedIntentRequest[]) {
-    if (!this.#shouldReportIntentRequestLogs()) {
-      return;
-    }
-
-    for (const rejectedRequest of rejectedRequests) {
-      console.warn(
-        "[Intent Request] rejected %s: %s",
-        rejectedRequest.request.request,
-        rejectedRequest.reason,
-      );
-    }
-  }
-
-  /**
-   * 记录分发结果。
-   */
-  #reportIntentRequestDispatchResults(
-    dispatchResults: IntentRequestDispatchResult[],
-  ) {
-    if (!this.#shouldReportIntentRequestLogs()) {
-      return;
-    }
-
-    for (const dispatchResult of dispatchResults) {
-      console.info(
-        "[Intent Request] dispatched %s as %s: %s",
-        dispatchResult.request.request,
-        dispatchResult.status,
-        dispatchResult.message,
-      );
-    }
-  }
-
-  /**
-   * 记录 Intent Request 解析未命中。
-   * @description
-   * 当模型明确输出了 request 文本，但当前协议一条都没解析出来时，
-   * 这里补一层可观测性，用于排查 prompt 漂移或协议格式偏差。
-   */
-  #reportIntentRequestParseMiss(intentRequestText: string) {
-    if (!this.#shouldReportIntentRequestLogs()) {
-      return;
-    }
-
-    console.warn(
-      "[Intent Request] parse miss, raw request text was ignored:\n%s",
-      intentRequestText,
-    );
   }
 
   /**
@@ -191,61 +119,56 @@ export class Runtime {
   }
 
   /**
-   * 获取编译后的 AGENTS 提示词
-   */
-  async #getAgentsPrompt(options: ExportPromptOptions = {}) {
-    const runtime = this.#getRuntimeService();
-
-    let hasWarned = false;
-
-    while (true) {
-      const status = runtime.getUserAgentPromptStatus();
-
-      if (status.phase === "ready") {
-        return runtime.getUserAgentPrompt();
-      }
-
-      if (options.ignoreWatchman) {
-        return "";
-      }
-
-      if (status.phase === "error") {
-        throw new Error(status.error ?? "Agent prompt compile failed");
-      }
-
-      if (!hasWarned) {
-        console.warn(
-          "Agent prompt is not ready, waiting for compilation to finish.",
-        );
-        hasWarned = true;
-      }
-
-      await sleep(WATCHMAN_WAIT_INTERVAL);
-    }
-  }
-
-  /**
-   * 获取 Intent Request 的系统提示词。
-   * @description
-   * Intent Request 总规范和 FOLLOW_UP 专项规范都属于 Runtime(Core) 内置协议，
-   * 这里统一拼接，避免调用方自己管理多份提示词顺序。
-   */
-  async #getIntentRequestPrompt() {
-    return [
-      systemPromptText,
-      intentRequestPromptText,
-      memoryPromptText,
-      followUpPromptText,
-    ]
-      .filter((chunk) => chunk.trim() !== "")
-      .join("\n\n");
-  }
-
-  /**
    * 获取独立的 Intent 预判提示词。
    */
   public exportIntentPrompt() {
-    return intentPromptText.trim();
+    return runExportPredictionPrompt();
+  }
+
+  /**
+   * 导出当前 session 的 Intent Policy 提示词片段。
+   */
+  public exportIntentPolicyPrompt(sessionId: string) {
+    return this.#userIntentPredictionManager.exportIntentPolicyPrompt(sessionId);
+  }
+
+  /**
+   * 写入当前 session 的预测结果。
+   * @description
+   * Runtime 只暴露高层动作，不向外泄漏 user-intent 内部 manager 对象。
+   */
+  public setPredictedIntent(
+    sessionId: string,
+    input: Omit<PredictedIntent, "updatedAt">,
+  ) {
+    this.#userIntentPredictionManager.setPredictedIntent(sessionId, input);
+  }
+
+  /**
+   * 在预测失败时写入 fallback 预测结果。
+   */
+  public setFallbackPredictedIntent(sessionId: string) {
+    this.#userIntentPredictionManager.setFallbackPredictedIntent(sessionId);
+  }
+
+  /**
+   * 解析当前 session 的意图执行策略。
+   */
+  public resolveIntentPolicy(
+    sessionId: string,
+    input: Omit<IntentControlInput, "predictedIntent">,
+  ) {
+    return this.#userIntentPredictionManager.resolveIntentPolicy(sessionId, input);
+  }
+
+  /**
+   * 写入当前 session 的意图执行策略。
+   */
+  public setIntentPolicy(
+    sessionId: string,
+    input: Omit<IntentExecutionPolicy, "updatedAt">,
+  ) {
+    this.#userIntentPredictionManager.setIntentPolicy(sessionId, input);
   }
 
   /* ==================== */
@@ -266,12 +189,11 @@ export class Runtime {
    * @param file 系统规则文件路径
    */
   public async loadSystemRules(file: string) {
-    if (await Bun.file(file).exists()) {
-      const content = await Bun.file(file).text();
-      this.#systemRules = content;
-    } else {
+    try {
+      this.#systemRules = await runLoadSystemRules(file);
+    } catch (error) {
       this.#systemRules = "";
-      throw new Error(`System rules file not found: ${file}`);
+      throw error;
     }
   }
 
@@ -280,22 +202,16 @@ export class Runtime {
    * @description 输出来自Runtime Context的数据和系统内部强制规范提示词文本
    * @returns 系统提示词文本
    */
-  public async exportSystemPrompt(
-    options: ExportPromptOptions = {},
-  ): Promise<string> {
-    const runtimePrompt = convertRuntimeContextToPrompt({
-      ...this.#contextManager.createPromptContextSnapshot(),
-      intentPolicyPrompt:
-        this.#userIntentPredictionManager.exportIntentPolicyPrompt(
-          this.#currentTask?.sessionId ?? "",
-        ),
+  public async exportSystemPrompt(): Promise<string> {
+    return runExportRuntimeSystemPrompt({
+      runtimeService: this.#getRuntimeService(),
+      systemRules: this.#systemRules,
+      sessionId: this.#currentTask?.sessionId ?? "",
+      promptContext: this.#contextManager.createPromptContextSnapshot(),
+      exportIntentPolicyPrompt: (sessionId) => {
+        return this.exportIntentPolicyPrompt(sessionId);
+      },
     });
-    const agentsPrompt = await this.#getAgentsPrompt(options);
-    const intentRequestPrompt = await this.#getIntentRequestPrompt();
-
-    return [this.#systemRules, agentsPrompt, intentRequestPrompt, runtimePrompt]
-      .filter((chunk) => chunk.trim() !== "")
-      .join("\n");
   }
 
   /**
@@ -303,7 +219,7 @@ export class Runtime {
    * @returns 用户输入提示词文本
    */
   public exportUserPrompt(): string {
-    return this.#convertTaskToPrompt();
+    return runExportUserPrompt(this.#getCurrentTaskOrThrow());
   }
 
   /**
@@ -445,16 +361,6 @@ export class Runtime {
   }
 
   /**
-   * 写入当前 session 的原始预测意图。
-   */
-  /**
-   * 读取 UserIntentPredictionManager。
-   */
-  public getUserIntentPredictionManager() {
-    return this.#userIntentPredictionManager;
-  }
-
-  /**
    * 读取 Transport 使用的模型档位配置。
    * @description
    * Runtime 只负责提供模型参数，不负责 transport 适配器组装。
@@ -465,26 +371,6 @@ export class Runtime {
     return {
       level,
       ...this.#getRuntimeService().getModelProfileConfigWithLevel(level),
-    };
-  }
-
-  #createPrepareConversationIntentRequest(
-    task: TaskItem,
-    policy: IntentExecutionPolicy,
-  ): PrepareConversationIntentRequest {
-    return {
-      source: IntentRequestSource.PREDICTION,
-      request: IntentRequestType.PREPARE_CONVERSATION,
-      intent: "根据当前用户输入预测结果准备正式对话。",
-      params: {
-        acceptedIntentType: policy.acceptedIntentType,
-        preloadMemory: policy.preloadMemory,
-        memoryQuery: policy.memoryQuery,
-        allowMemorySave: policy.allowMemorySave,
-        maxFollowUpRounds: policy.maxFollowUpRounds,
-        promptVariant: policy.promptVariant,
-        predictionTrust: policy.predictionTrust,
-      },
     };
   }
 
@@ -499,50 +385,32 @@ export class Runtime {
     task: TaskItem,
     transport: Transport,
   ): Promise<PrepareConversationIntentRequest | null> {
-    if (task.source !== TaskSource.EXTERNAL) {
-      return null;
-    }
-
-    try {
-      const predictionText = await transport.generateText(
-        this.exportIntentPrompt(),
-        this.exportUserPrompt(),
-        {
-          maxOutputTokens: 120,
-          modelProfile: this.getTransportModelProfile("basic"),
-        },
-      );
-      const parsedIntent = parseIntentPredictionText(predictionText);
-
-      this.#userIntentPredictionManager.setPredictedIntent(task.sessionId, {
-        sessionId: task.sessionId,
-        type: parsedIntent.type,
-        needsMemory: parsedIntent.needsMemory,
-        needsMemorySave: parsedIntent.needsMemorySave,
-        memoryQuery: parsedIntent.memoryQuery,
-        confidence: parsedIntent.confidence,
-      });
-    } catch {
-      this.#userIntentPredictionManager.setFallbackPredictedIntent(
-        task.sessionId,
-      );
-    }
-
-    const policy = this.#userIntentPredictionManager.resolveIntentPolicy(
-      task.sessionId,
-      {
-        taskSource: task.source,
-        chainRound: this.getCurrentChainRound(),
-        currentMemoryState: {
+    return runPrepareExecutionContext(task, {
+      transport,
+      exportIntentPrompt: () => this.exportIntentPrompt(),
+      exportUserPrompt: () => this.exportUserPrompt(),
+      getTransportModelProfile: (level = "balanced") => {
+        return this.getTransportModelProfile(level);
+      },
+      setPredictedIntent: (sessionId, input) => {
+        this.setPredictedIntent(sessionId, input);
+      },
+      setFallbackPredictedIntent: (sessionId) => {
+        this.setFallbackPredictedIntent(sessionId);
+      },
+      resolveIntentPolicy: (sessionId, input) => {
+        return this.resolveIntentPolicy(sessionId, input);
+      },
+      getCurrentChainRound: () => this.getCurrentChainRound(),
+      getCurrentMemoryState: () => {
+        return {
           core: this.getMemoryContext("core").status,
           short: this.getMemoryContext("short").status,
           long: this.getMemoryContext("long").status,
-        },
-        sessionHistoryAvailable: this.hasSessionHistory(),
+        };
       },
-    );
-
-    return this.#createPrepareConversationIntentRequest(task, policy);
+      hasSessionHistory: () => this.hasSessionHistory(),
+    });
   }
 
   /**
@@ -592,44 +460,15 @@ export class Runtime {
       visibleTextBuffer: string;
     },
   ): RuntimeChatFinalizationResult {
-    this.#contextManager.setLastAssistantOutput(options.resultText);
-
-    const completedMessage = this.#contextManager.getLastAssistantOutput();
-    const finalMessage = isEmpty(completedMessage)
-      ? this.#contextManager.getAccumulatedAssistantOutput() ||
-        options.resultText
-      : completedMessage;
-    const originalUserInput = this.#contextManager.getCurrentChatOriginalUserInput();
-
-    if (!isEmpty(originalUserInput) && !isEmpty(finalMessage)) {
-      this.#contextManager.commitSessionTurn(originalUserInput, finalMessage);
-    }
-
-    return {
-      finalMessage,
-      visibleChunk: isEmpty(options.visibleTextBuffer)
-        ? null
-        : options.visibleTextBuffer,
-      completedPayload: {
-        sessionId: task.sessionId,
-        chatId: task.chatId,
-        status: ChatStatus.COMPLETE,
-        message: {
-          createdAt: Date.now(),
-          data: finalMessage,
-        },
-      },
-    };
+    return runFinalizeChatTurn(this.#contextManager, task, options);
   }
 
   /**
    * 输出提示词
    * @returns 返回一个数组,第一个元素是系统提示词,第二个元素是用户提示词
    */
-  public async exportPrompts(
-    options: ExportPromptOptions = {},
-  ): Promise<[string, string]> {
-    const systemPrompt = await this.exportSystemPrompt(options);
+  public async exportPrompts(): Promise<[string, string]> {
+    const systemPrompt = await this.exportSystemPrompt();
     const userPrompt = this.exportUserPrompt();
     return [systemPrompt, userPrompt];
   }
@@ -639,45 +478,11 @@ export class Runtime {
    * @param intentRequestText LLM返回的Intent Request请求文本
    */
   public parseIntentRequest(intentRequestText: string): IntentRequestHandleResult {
-    const parsedRequests = parseIntentRequests(intentRequestText);
-
-    if (intentRequestText.trim() !== "" && parsedRequests.length === 0) {
-      this.#reportIntentRequestParseMiss(intentRequestText);
-    }
-
-    const safetyContext = this.#createIntentRequestSafetyContext();
-
-    if (!safetyContext) {
-      return {
-        parsedRequests,
-        safeRequests: [],
-        rejectedRequests: parsedRequests.map((request) => {
-          return {
-            request,
-            code: IntentRequestSafetyIssueCode.MISSING_RUNTIME_CONTEXT,
-            reason:
-              "Runtime currentTask is missing, cannot validate or dispatch intent request",
-          };
-        }),
-        dispatchResults: [],
-      };
-    }
-
-    const safetyResult = checkIntentRequestSafety(
-      parsedRequests,
-      safetyContext,
-    );
-    const dispatchResults = dispatchIntentRequests(safetyResult.safeRequests);
-
-    this.#reportRejectedIntentRequests(safetyResult.rejectedRequests);
-    this.#reportIntentRequestDispatchResults(dispatchResults);
-
-    return {
-      parsedRequests,
-      safeRequests: safetyResult.safeRequests,
-      rejectedRequests: safetyResult.rejectedRequests,
-      dispatchResults,
-    };
+    return runHandleIntentRequestRuntime({
+      intentRequestText,
+      safetyContext: this.#createIntentRequestSafetyContext(),
+      shouldReportLogs: this.#shouldReportIntentRequestLogs(),
+    });
   }
 
   /**
@@ -712,7 +517,7 @@ export class Runtime {
         return this.unloadMemoryContextByKey(memoryKey);
       },
       setIntentPolicy: (sessionId, policy) => {
-        this.#userIntentPredictionManager.setIntentPolicy(sessionId, policy);
+        this.setIntentPolicy(sessionId, policy);
       },
     });
   }

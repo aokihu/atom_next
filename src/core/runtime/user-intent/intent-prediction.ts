@@ -1,4 +1,20 @@
+/**
+ * user-intent/intent-prediction.ts
+ * @description
+ * 定义用户输入预测结果的数据结构，以及 prediction 文本协议的解析规则。
+ *
+ * 这个文件只负责：
+ * - predicted intent 的默认值
+ * - 预测结果类型定义
+ * - LLM 返回文本到预测结果对象的纯解析
+ *
+ * 它不负责 session 状态保存，也不负责 policy 解析。
+ */
 import { isEmpty } from "radashi";
+
+/* ==================== */
+/* Prediction Types     */
+/* ==================== */
 
 export const PREDICTED_INTENT_TYPES = [
   "direct_answer",
@@ -21,6 +37,10 @@ export type PredictedIntent = {
   updatedAt: number | null;
 };
 
+/* ==================== */
+/* Prediction Factory   */
+/* ==================== */
+
 export const createPredictedIntent = (): PredictedIntent => {
   return {
     sessionId: "",
@@ -32,6 +52,10 @@ export const createPredictedIntent = (): PredictedIntent => {
     updatedAt: null,
   };
 };
+
+/* ==================== */
+/* Prediction Parsing   */
+/* ==================== */
 
 const isPredictedIntentType = (value: string): value is PredictedIntentType => {
   return PREDICTED_INTENT_TYPES.includes(value as PredictedIntentType);

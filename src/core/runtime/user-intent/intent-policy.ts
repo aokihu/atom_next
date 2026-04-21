@@ -1,5 +1,19 @@
+/**
+ * user-intent/intent-policy.ts
+ * @description
+ * 定义 user-intent 子域中的策略模型与策略解析规则。
+ *
+ * 这个文件负责把“预测结果 + 当前运行时条件”解析成一个稳定的执行策略，
+ * 比如是否预加载 memory、允许多少 follow-up、采用哪种 prompt variant。
+ *
+ * 它不持有 session 状态，只负责纯计算。
+ */
 import type { MemoryScope, TaskSource } from "@/types";
 import type { PredictedIntent, PredictedIntentType } from "./intent-prediction";
+
+/* ==================== */
+/* Policy Constants     */
+/* ==================== */
 
 export const INTENT_POLICY_PROMPT_VARIANTS = [
   "default",
@@ -18,6 +32,10 @@ export type IntentPolicyPromptVariant =
   (typeof INTENT_POLICY_PROMPT_VARIANTS)[number];
 export type IntentPolicyPredictionTrust =
   (typeof INTENT_POLICY_PREDICTION_TRUST)[number];
+
+/* ==================== */
+/* Policy Types         */
+/* ==================== */
 
 export type IntentExecutionPolicy = {
   sessionId: string;
@@ -43,6 +61,10 @@ export type IntentControlInput = {
   currentMemoryState: IntentMemoryState;
   sessionHistoryAvailable: boolean;
 };
+
+/* ==================== */
+/* Policy Rules         */
+/* ==================== */
 
 export const createIntentExecutionPolicy = (): IntentExecutionPolicy => {
   return {

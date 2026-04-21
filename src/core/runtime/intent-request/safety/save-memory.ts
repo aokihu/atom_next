@@ -1,9 +1,18 @@
+/**
+ * intent-request/safety/save-memory.ts
+ * @description
+ * 校验 SAVE_MEMORY 请求写入的正文长度是否在允许边界内。
+ */
 import type { SaveMemoryIntentRequest, RejectedIntentRequest } from "@/types";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import {
   createRejectedIntentRequest,
   MAX_MEMORY_CONTENT_LENGTH,
 } from "./shared";
+
+/* ==================== */
+/* SAVE_MEMORY Safety   */
+/* ==================== */
 
 export const checkSaveMemoryIntentRequestSafety = (
   request: SaveMemoryIntentRequest,

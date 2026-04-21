@@ -1,3 +1,8 @@
+/**
+ * intent-request/safety/load-skill.ts
+ * @description
+ * 校验 LOAD_SKILL 请求中的技能名是否合法，防止路径逃逸或非法字符。
+ */
 import type { LoadSkillIntentRequest, RejectedIntentRequest } from "@/types";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import {
@@ -5,6 +10,10 @@ import {
   MAX_SKILL_NAME_LENGTH,
   SKILL_NAME_PATTERN,
 } from "./shared";
+
+/* ==================== */
+/* LOAD_SKILL Safety    */
+/* ==================== */
 
 export const checkLoadSkillIntentRequestSafety = (
   request: LoadSkillIntentRequest,

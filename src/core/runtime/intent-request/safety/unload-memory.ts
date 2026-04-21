@@ -1,9 +1,18 @@
+/**
+ * intent-request/safety/unload-memory.ts
+ * @description
+ * 校验 UNLOAD_MEMORY 请求中的 memory key 是否在允许边界内。
+ */
 import type { RejectedIntentRequest, UnloadMemoryIntentRequest } from "@/types";
 import { IntentRequestSafetyIssueCode } from "@/types";
 import {
   createRejectedIntentRequest,
   MAX_MEMORY_KEY_LENGTH,
 } from "./shared";
+
+/* ==================== */
+/* UNLOAD_MEMORY Safety */
+/* ==================== */
 
 export const checkUnloadMemoryIntentRequestSafety = (
   request: UnloadMemoryIntentRequest,
