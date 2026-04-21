@@ -309,7 +309,7 @@ export class SessionManager {
     return chat;
   }
 
-  public async appendChunk(sessionId: UUID, chatId: UUID, data: any) {
+  public async appendOutputDelta(sessionId: UUID, chatId: UUID, data: any) {
     const session = await this.#loadSession(sessionId);
     const chat = this.#getChat(session, chatId);
     const nextChunk = createChatChunk(data);
@@ -320,7 +320,7 @@ export class SessionManager {
       chat.status === ChatStatus.FAILED
     ) {
       throw buildError(
-        `Cannot append chunk to chat in '${chat.status}' status`,
+        `Cannot append output delta to chat in '${chat.status}' status`,
         {
           cause: ErrorCause.InvalidState,
         },

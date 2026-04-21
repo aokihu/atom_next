@@ -1,5 +1,5 @@
 import type { TaskItem } from "@/types/task";
-import { ChatEvents, type ChatChunkAppendedEventPayload } from "@/types/event";
+import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types";
 import { promiseChain } from "radashi";
@@ -21,13 +21,19 @@ type RunFormalConversationWorkflowContext = {
   systemPrompt: string;
   userPrompt: string;
   transportResult?: Awaited<ReturnType<Transport["send"]>>;
-  intentRequestResult?: ReturnType<Runtime["parseLLMRequest"]>;
+  intentRequestResult?: ReturnType<Runtime["parseIntentRequest"]>;
   requestExecutionResult?: Awaited<
     ReturnType<Runtime["executeIntentRequests"]>
   >;
   decision: FormalConversationWorkflowDecision;
 };
 
+/**
+ * workflow context 只保留跨 step 必须共享的数据：
+ * - 执行依赖(task/runtime/transport)
+ * - 输出累计状态
+ * - 后续 step 需要消费的中间结果
+ */
 const createRunFormalConversationWorkflowContext = (
   task: TaskItem,
   taskQueue: TaskQueue,
@@ -74,15 +80,15 @@ const syncTaskProcessingState = (
   context.hasSyncedProcessingState = true;
 };
 
-const emitChatChunkAppendedEvent = (task: TaskItem, textDelta: string) => {
-  const payload: ChatChunkAppendedEventPayload = {
+const emitChatOutputUpdatedEvent = (task: TaskItem, textDelta: string) => {
+  const payload: ChatOutputUpdatedEventPayload = {
     sessionId: task.sessionId,
     chatId: task.chatId,
     status: ChatStatus.PROCESSING,
-    chunk: textDelta,
+    delta: textDelta,
   };
 
-  task.eventTarget?.emit(ChatEvents.CHAT_CHUNK_APPENDED, payload);
+  task.eventTarget?.emit(ChatEvents.CHAT_OUTPUT_UPDATED, payload);
 };
 
 const exportPrompts = async (context: RunFormalConversationWorkflowContext) => {
@@ -115,7 +121,7 @@ const sendConversation = async (
 const parseIntentRequests = async (
   context: RunFormalConversationWorkflowContext,
 ) => {
-  context.intentRequestResult = context.runtime.parseLLMRequest(
+  context.intentRequestResult = context.runtime.parseIntentRequest(
     context.transportResult?.intentRequestText ?? "",
   );
 
@@ -177,7 +183,7 @@ const finalizeConversation = async (
   });
 
   if (finalizationResult.visibleChunk) {
-    emitChatChunkAppendedEvent(context.task, finalizationResult.visibleChunk);
+    emitChatOutputUpdatedEvent(context.task, finalizationResult.visibleChunk);
   }
 
   context.taskQueue.updateTask(
@@ -219,9 +225,7 @@ export const runFormalConversationWorkflow = async (
       runtime,
       transport,
     ),
-  ).then((context): RunFormalConversationWorkflowResult => {
-    return {
-      decision: context.decision,
-    };
-  });
+  ).then((context): RunFormalConversationWorkflowResult => ({
+    decision: context.decision,
+  }));
 };

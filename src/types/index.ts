@@ -80,7 +80,7 @@ export {
 export type {
   ChatEnqueuedEventPayload,
   ChatActivatedEventPayload,
-  ChatChunkAppendedEventPayload,
+  ChatOutputUpdatedEventPayload,
   ChatCompletedEventPayload,
   ChatFailedEventPayload,
 } from "./event";

@@ -15,7 +15,7 @@ import type { UUID } from "./primitive";
 export enum ChatEvents {
   CHAT_ENQUEUED = "chat-enqueued",
   CHAT_ACTIVATED = "chat-activated",
-  CHAT_CHUNK_APPENDED = "chat-chunk-appended",
+  CHAT_OUTPUT_UPDATED = "chat-output-updated",
   CHAT_COMPLETED = "chat-completed",
   CHAT_FAILED = "chat-failed",
 }
@@ -36,11 +36,11 @@ export type ChatActivatedEventPayload = {
   status: ChatStatus.PENDING;
 };
 
-export type ChatChunkAppendedEventPayload = {
+export type ChatOutputUpdatedEventPayload = {
   sessionId: UUID;
   chatId: UUID;
   status: ChatStatus.PROCESSING;
-  chunk: ChatChunk["data"];
+  delta: ChatChunk["data"];
 };
 
 export type ChatCompletedEventPayload = {

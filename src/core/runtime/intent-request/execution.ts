@@ -61,11 +61,7 @@ const resolveMemoryScope = (scope?: string): MemoryScope => {
 };
 
 const parseTaskChainRound = (task: TaskItem) => {
-  const chainRound = (
-    task as TaskItem & {
-      chain_round?: number;
-    }
-  ).chain_round;
+  const chainRound = task.chain_round;
 
   if (!isNumber(chainRound) || chainRound < 1) {
     return 0;

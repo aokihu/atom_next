@@ -9,9 +9,7 @@
 import {
   ChatEvents,
   type ChatActivatedEventPayload,
-  type ChatCompletedEventPayload,
   type ChatEnqueuedEventPayload,
-  type ChatFailedEventPayload,
 } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import type { TaskItem, TaskItems } from "@/types/task";
@@ -150,8 +148,8 @@ export class TaskQueue {
    * 根据任务状态推断要发送的 Chat 事件
    * @param state 任务状态
    * @returns 对应的事件名
-   * @description 队列层只负责同步“任务状态切换”本身，不负责流式内容事件。
-   *              这样排查问题时，可以明确区分是队列阶段出错，还是执行阶段的流式同步出错。
+   * @description 队列层只负责同步“任务状态切换”本身。
+   *              输出增量和完成/失败等业务事件由 workflow/core 显式发出。
    */
   #parseTaskEvent(state: TaskState) {
     if (state === TaskState.WAITING) {
@@ -162,22 +160,14 @@ export class TaskQueue {
       return ChatEvents.CHAT_ACTIVATED;
     }
 
-    if (state === TaskState.COMPLETE) {
-      return ChatEvents.CHAT_COMPLETED;
-    }
-
-    if (state === TaskState.FAILED) {
-      return ChatEvents.CHAT_FAILED;
-    }
-
     return undefined;
   }
 
   /**
    * 向事件对象同步任务状态
    * @param task 当前任务
-   * @description 这里发送的都是“状态已经切换”的通知，不附带流式内容。
-   *              如果需要排查 chunk 丢失或流式阶段异常，应优先看 Core 发出的 CHAT_CHUNK_APPENDED。
+   * @description 这里发送的都是“状态已经切换”的通知，不附带输出增量。
+   *              如果需要排查 output delta 丢失或处理阶段异常，应优先看 Core 发出的 CHAT_OUTPUT_UPDATED。
    */
   #syncTaskState(task: TaskItem) {
     if (task.source !== TaskSource.EXTERNAL || isNullish(task.eventTarget)) {
@@ -206,40 +196,6 @@ export class TaskQueue {
         sessionId: task.sessionId,
         chatId: task.chatId,
         status,
-      };
-
-      task.eventTarget.emit(event, payload);
-      return;
-    }
-
-    if (event === ChatEvents.CHAT_COMPLETED && status === ChatStatus.COMPLETE) {
-      const taskMessage = (task as unknown as { message?: ChatCompletedEventPayload["message"] }).message;
-      if (!taskMessage) {
-        return;
-      }
-
-      const payload: ChatCompletedEventPayload = {
-        sessionId: task.sessionId,
-        chatId: task.chatId,
-        status,
-        message: taskMessage,
-      };
-
-      task.eventTarget.emit(event, payload);
-      return;
-    }
-
-    if (event === ChatEvents.CHAT_FAILED && status === ChatStatus.FAILED) {
-      const taskError = (task as unknown as { error?: ChatFailedEventPayload["error"] }).error;
-      if (!taskError) {
-        return;
-      }
-
-      const payload: ChatFailedEventPayload = {
-        sessionId: task.sessionId,
-        chatId: task.chatId,
-        status,
-        error: taskError,
       };
 
       task.eventTarget.emit(event, payload);
@@ -286,7 +242,8 @@ export class TaskQueue {
    * @param options 是否同步对外事件
    * @throws {Error} 任务未找到
    * @throws {Error} 更新失败,无效的属性字段,只能更新updatedAt和state
-   * @description 这里只能更新任务的updatedAt/state等时间和状态信息,其他数据都是不可修改的
+   * @description 这里只能更新任务的 updatedAt/state 等时间和状态信息，
+   *              不承担业务结果(message/error)的同步职责。
    */
   public updateTask(
     taskId: string,

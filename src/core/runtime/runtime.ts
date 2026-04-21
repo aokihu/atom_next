@@ -151,6 +151,23 @@ export class Runtime {
   }
 
   /**
+   * 记录 Intent Request 解析未命中。
+   * @description
+   * 当模型明确输出了 request 文本，但当前协议一条都没解析出来时，
+   * 这里补一层可观测性，用于排查 prompt 漂移或协议格式偏差。
+   */
+  #reportIntentRequestParseMiss(intentRequestText: string) {
+    if (!this.#shouldReportIntentRequestLogs()) {
+      return;
+    }
+
+    console.warn(
+      "[Intent Request] parse miss, raw request text was ignored:\n%s",
+      intentRequestText,
+    );
+  }
+
+  /**
    * 获取 Runtime 服务
    */
   #getRuntimeService() {
@@ -563,9 +580,10 @@ export class Runtime {
    * - 记录本轮完整 assistant 输出
    * - 选择最终完成消息
    * - 提交 session continuity
-   * - 生成 CHAT_COMPLETED 事件载荷
+   * - 生成供 workflow/core 发射的 CHAT_COMPLETED 事件载荷
    *
-   * Queue 状态推进和事件发射仍由 core.ts 负责。
+   * Queue 负责状态推进；
+   * 业务事件发射由 workflow/core 负责。
    */
   public finalizeChatTurn(
     task: TaskItem,
@@ -617,11 +635,16 @@ export class Runtime {
   }
 
   /**
-   * 解析LLM返回的Request请求
+   * 解析模型返回的 Intent Request 文本。
    * @param intentRequestText LLM返回的Intent Request请求文本
    */
-  public parseLLMRequest(intentRequestText: string): IntentRequestHandleResult {
+  public parseIntentRequest(intentRequestText: string): IntentRequestHandleResult {
     const parsedRequests = parseIntentRequests(intentRequestText);
+
+    if (intentRequestText.trim() !== "" && parsedRequests.length === 0) {
+      this.#reportIntentRequestParseMiss(intentRequestText);
+    }
+
     const safetyContext = this.#createIntentRequestSafetyContext();
 
     if (!safetyContext) {

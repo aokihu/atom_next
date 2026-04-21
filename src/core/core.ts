@@ -54,7 +54,7 @@ export class Core {
    * 这里串起一次完整的任务执行链路：
    * 1. 激活队列中的可执行任务
    * 2. 导出 Runtime 生成的 system/user prompt
-   * 3. 处理流式输出，并把可见文本持续同步回 Runtime 和外部事件
+   * 3. 处理模型输出，并把本轮可见文本累计到 Runtime
    * 4. 解析 intentRequestText，必要时派生 FOLLOW_UP 内部任务
    * 5. 在完成或失败时收束最终事件
    */

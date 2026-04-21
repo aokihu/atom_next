@@ -181,12 +181,12 @@ const main = async () => {
       }
     };
 
-    eventTarget.on(ChatEvents.CHAT_CHUNK_APPENDED, (payload) => {
+    eventTarget.on(ChatEvents.CHAT_OUTPUT_UPDATED, (payload) => {
       observedEvents.push({
         type: "chunk",
         sessionId: payload.sessionId,
         chatId: payload.chatId,
-        chunk: payload.chunk,
+        chunk: payload.delta,
       });
     });
 
