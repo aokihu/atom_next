@@ -7,8 +7,6 @@ import type {
   RuntimeMemoryOutput,
 } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
-import type { MemoryService } from "@/services";
-import type { RuntimeService } from "@/services/runtime";
 import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
 import { isEmpty } from "radashi";
@@ -34,6 +32,12 @@ import {
 } from "./finalize";
 import { handleIntentRequestRuntime as runHandleIntentRequestRuntime } from "./intent-request-runtime";
 import { prepareExecutionContext as runPrepareExecutionContext } from "./prepare";
+import {
+  resolveMemoryService,
+  resolveRuntimeService,
+  resolveTransportModelProfile,
+  shouldReportIntentRequestLogs,
+} from "./service-access";
 import type { Transport, TransportModelProfile } from "../transport";
 import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
 
@@ -79,43 +83,6 @@ export class Runtime {
     }
 
     return this.#currentTask;
-  }
-
-  /**
-   * 判断当前模式是否允许直接输出 Intent Request 调试日志。
-   * @description
-   * TUI 和 both 模式会占用当前终端渲染界面，
-   * 如果继续向 stdout/stderr 打日志，会直接污染界面显示。
-   * 这里先按最小策略收口：只有 server 模式才输出这类调试日志。
-   */
-  #shouldReportIntentRequestLogs() {
-    const runtime = this.#getRuntimeService();
-    const mode = runtime.getAllArguments().mode;
-
-    return mode === "server";
-  }
-
-  /**
-   * 获取 Runtime 服务
-   */
-  #getRuntimeService() {
-    const runtime = this.#serviceManager.getService<RuntimeService>("runtime");
-
-    if (!runtime) {
-      throw new Error("Runtime service not found");
-    }
-
-    return runtime;
-  }
-
-  #getMemoryService() {
-    const memory = this.#serviceManager.getService<MemoryService>("memory");
-
-    if (!memory) {
-      throw new Error("Memory service not found");
-    }
-
-    return memory;
   }
 
   /**
@@ -204,7 +171,7 @@ export class Runtime {
    */
   public async exportSystemPrompt(): Promise<string> {
     return runExportRuntimeSystemPrompt({
-      runtimeService: this.#getRuntimeService(),
+      runtimeService: resolveRuntimeService(this.#serviceManager),
       systemRules: this.#systemRules,
       sessionId: this.#currentTask?.sessionId ?? "",
       promptContext: this.#contextManager.createPromptContextSnapshot(),
@@ -368,10 +335,7 @@ export class Runtime {
   public getTransportModelProfile(
     level: ProviderProfileLevel = "balanced",
   ): TransportModelProfile {
-    return {
-      level,
-      ...this.#getRuntimeService().getModelProfileConfigWithLevel(level),
-    };
+    return resolveTransportModelProfile(this.#serviceManager, level);
   }
 
   /**
@@ -481,7 +445,7 @@ export class Runtime {
     return runHandleIntentRequestRuntime({
       intentRequestText,
       safetyContext: this.#createIntentRequestSafetyContext(),
-      shouldReportLogs: this.#shouldReportIntentRequestLogs(),
+      shouldReportLogs: shouldReportIntentRequestLogs(this.#serviceManager),
     });
   }
 
@@ -496,7 +460,7 @@ export class Runtime {
     requests: IntentRequest[],
   ): Promise<IntentRequestExecutionResult> {
     return runIntentRequests(task, requests, {
-      memory: this.#getMemoryService(),
+      memory: resolveMemoryService(this.#serviceManager),
       getMemoryContext: (scope) => {
         const memoryContext = this.getMemoryContext(scope);
         return {
