@@ -427,13 +427,14 @@ describe("Runtime context", () => {
       ].join("\n");
     };
 
-    const policy = await runtime.prepareExecutionContext(task, transport);
+    const request = await runtime.prepareExecutionContext(task, transport);
 
-    expect(policy.acceptedIntentType).toBe("memory_lookup");
-    expect(policy.preloadMemory).toBe(true);
-    expect(policy.memoryQuery).toBe("AGENTS md");
-    expect(runtime.getMemoryContext("long").status).toBe("loaded");
-    expect(runtime.getMemoryContext("long").query).toBe("AGENTS md");
+    expect(request?.source).toBe("prediction");
+    expect(request?.request).toBe("PREPARE_CONVERSATION");
+    expect(request?.params.acceptedIntentType).toBe("memory_lookup");
+    expect(request?.params.preloadMemory).toBe(true);
+    expect(request?.params.memoryQuery).toBe("AGENTS md");
+    expect(runtime.getMemoryContext("long").status).toBe("idle");
   });
 
   test("prepareExecutionContext skips prediction for internal task", async () => {
@@ -457,7 +458,7 @@ describe("Runtime context", () => {
     const policy = await runtime.prepareExecutionContext(task, transport);
 
     expect(called).toBe(false);
-    expect(policy.acceptedIntentType).toBe("unknown");
+    expect(policy).toBeNull();
     expect(runtime.getMemoryContext("long").status).toBe("idle");
   });
 
@@ -644,6 +645,7 @@ describe("Runtime context", () => {
     );
 
     expect(result.safeRequests).toEqual([{
+      source: "conversation",
       request: "FOLLOW_UP",
       intent: "已完成前半部分，下一轮继续补充实现步骤",
       params: {
@@ -670,6 +672,7 @@ describe("Runtime context", () => {
 
     expect(result.safeRequests).toEqual([
       {
+        source: "conversation",
         request: "SEARCH_MEMORY",
         intent: "搜索上下文记忆",
         params: {
@@ -677,6 +680,7 @@ describe("Runtime context", () => {
         },
       },
       {
+        source: "conversation",
         request: "FOLLOW_UP",
         intent: "继续当前回答",
         params: {

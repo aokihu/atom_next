@@ -15,6 +15,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "SEARCH_MEMORY",
         intent: "搜索与Skill相关的记忆",
         params: {
@@ -32,6 +33,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "FOLLOW_UP",
         intent: "",
         params: {
@@ -49,6 +51,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "SAVE_MEMORY",
         intent: "保存这段记忆",
         params: {
@@ -66,6 +69,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "SAVE_MEMORY",
         intent: "保存设计记忆",
         params: {
@@ -83,6 +87,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "LOAD_MEMORY",
         intent: "加载明确记忆",
         params: {
@@ -99,6 +104,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "UNLOAD_MEMORY",
         intent: "卸载已完成回答的记忆",
         params: {
@@ -116,6 +122,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "UPDATE_MEMORY",
         intent: "修正已有记忆正文",
         params: {
@@ -133,6 +140,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "LOAD_SKILL",
         intent: "需要查看技能说明",
         params: {
@@ -214,6 +222,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "SEARCH_MEMORY",
         intent: "搜索与Skill相关的记忆",
         params: {
@@ -222,6 +231,7 @@ describe("parseIntentRequests", () => {
         },
       },
       {
+        source: "conversation",
         request: "FOLLOW_UP",
         intent: "",
         params: {
@@ -239,6 +249,7 @@ describe("parseIntentRequests", () => {
 
     expect(result).toEqual([
       {
+        source: "conversation",
         request: "SEARCH_MEMORY",
         intent: '搜索 "Skill" 相关记忆',
         params: {
@@ -295,6 +306,7 @@ describe("parseIntentRequests", () => {
     expect(dispatchResults).toEqual([
       {
         request: {
+          source: "conversation",
           request: "SEARCH_MEMORY",
           intent: "搜索与Skill相关的记忆",
           params: {
@@ -308,6 +320,7 @@ describe("parseIntentRequests", () => {
       },
       {
         request: {
+          source: "conversation",
           request: "LOAD_MEMORY",
           intent: "加载明确记忆",
           params: {
@@ -320,6 +333,7 @@ describe("parseIntentRequests", () => {
       },
       {
         request: {
+          source: "conversation",
           request: "UNLOAD_MEMORY",
           intent: "卸载记忆",
           params: {
@@ -333,6 +347,7 @@ describe("parseIntentRequests", () => {
       },
       {
         request: {
+          source: "conversation",
           request: "UPDATE_MEMORY",
           intent: "修正记忆正文",
           params: {
@@ -346,6 +361,7 @@ describe("parseIntentRequests", () => {
       },
       {
         request: {
+          source: "conversation",
           request: "FOLLOW_UP",
           intent: "",
           params: {

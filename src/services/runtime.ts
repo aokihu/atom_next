@@ -212,6 +212,24 @@ export class RuntimeService extends BaseService {
   }
 
   /**
+   * 兼容旧脚本的单独 prompt 写入接口。
+   * @deprecated 优先使用 syncUserAgentPromptSnapshot
+   */
+  public setUserAgentPrompt(prompt: string) {
+    this.#userAgentPrompt = prompt;
+    return this;
+  }
+
+  /**
+   * 兼容旧脚本的单独 status 写入接口。
+   * @deprecated 优先使用 syncUserAgentPromptSnapshot
+   */
+  public setUserAgentPromptStatus(status: WatchmanStatus) {
+    this.#userAgentPromptStatus = structuredClone(status);
+    return this;
+  }
+
+  /**
    * 重置用户代理提示词运行态
    */
   public resetUserAgentPrompt() {

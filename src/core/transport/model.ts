@@ -9,6 +9,8 @@ import { createOpenAI, openai } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { isString } from "radashi";
 import type {
+  DeepseekModelID,
+  OpenAIModelID,
   ParsedProviderModel,
   ProviderDefinition,
   ProviderID,
@@ -54,16 +56,16 @@ const parseProviderModel = (
 
   if (selectedModel.provider === "openaiCompatible") {
     return {
-      id: selectedModel.id,
+      id: selectedModel.id as SelectedProviderModel<"openaiCompatible">["id"],
       provider: selectedModel.provider,
-      model: selectedModel.model,
+      model: selectedModel.model as SelectedProviderModel<"openaiCompatible">["model"],
     };
   }
 
   return {
-    id: selectedModel.id as never,
+    id: selectedModel.id as SelectedProviderModel["id"],
     provider: selectedModel.provider,
-    model: selectedModel.model as never,
+    model: selectedModel.model as SelectedProviderModel["model"],
   };
 };
 
@@ -117,7 +119,7 @@ const parseConfiguredProviderModel = (
 };
 
 const withConfiguredDeepseek = (
-  model: string,
+  model: DeepseekModelID,
   providerConfig?: ProviderDefinition<"deepseek">,
 ) => {
   if (!providerConfig) {
@@ -131,7 +133,7 @@ const withConfiguredDeepseek = (
 };
 
 const withConfiguredOpenAI = (
-  model: string,
+  model: OpenAIModelID,
   providerConfig?: ProviderDefinition<"openai">,
 ) => {
   if (!providerConfig) {

@@ -4,6 +4,7 @@ import type {
   IntentRequestDispatchResult,
   LoadMemoryIntentRequest,
   LoadSkillIntentRequest,
+  PrepareConversationIntentRequest,
   SaveMemoryIntentRequest,
   SearchMemoryIntentRequest,
   UnloadMemoryIntentRequest,
@@ -12,6 +13,7 @@ import type {
 import {
   IntentRequestDispatchStatus,
   isIntentRequestMemoryUnloadReason,
+  IntentRequestSource,
   IntentRequestType,
   isIntentRequestMemoryScope,
   isIntentRequestType,
@@ -197,6 +199,7 @@ const parseSearchMemoryIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.SEARCH_MEMORY,
     intent,
     params: {
@@ -221,6 +224,7 @@ const parseLoadMemoryIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.LOAD_MEMORY,
     intent,
     params: {
@@ -248,6 +252,7 @@ const parseUnloadMemoryIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.UNLOAD_MEMORY,
     intent,
     params: {
@@ -281,6 +286,7 @@ const parseSaveMemoryIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.SAVE_MEMORY,
     intent,
     params: {
@@ -319,6 +325,7 @@ const parseUpdateMemoryIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.UPDATE_MEMORY,
     intent,
     params: {
@@ -343,6 +350,7 @@ const parseLoadSkillIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.LOAD_SKILL,
     intent,
     params: {
@@ -371,6 +379,7 @@ const parseFollowUpIntentRequest = (
   }
 
   return {
+    source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.FOLLOW_UP,
     intent,
     params: {
@@ -389,6 +398,8 @@ const parseTypedIntentRequest = (
   params: RawIntentRequestParams,
 ): IntentRequest | null => {
   switch (request) {
+    case IntentRequestType.PREPARE_CONVERSATION:
+      return null;
     case IntentRequestType.SEARCH_MEMORY:
       return parseSearchMemoryIntentRequest(intent, params);
     case IntentRequestType.LOAD_MEMORY:
@@ -434,6 +445,15 @@ const dispatchSearchMemoryIntentRequest = (
   return createAcceptedDispatchResult(
     request,
     "SEARCH_MEMORY request accepted and will be executed by Core before follow up scheduling",
+  );
+};
+
+const dispatchPrepareConversationIntentRequest = (
+  request: PrepareConversationIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "PREPARE_CONVERSATION request accepted and will be executed by Core before formal conversation scheduling",
   );
 };
 
@@ -509,6 +529,8 @@ export const dispatchIntentRequests = (
 ): IntentRequestDispatchResult[] => {
   return requests.map((request) => {
     switch (request.request) {
+      case IntentRequestType.PREPARE_CONVERSATION:
+        return dispatchPrepareConversationIntentRequest(request);
       case IntentRequestType.SEARCH_MEMORY:
         return dispatchSearchMemoryIntentRequest(request);
       case IntentRequestType.LOAD_MEMORY:

@@ -19,6 +19,7 @@ export type ChatSubmissionBody = {
  * 定义 Runtime 当前支持的内部请求类型。
  */
 export enum IntentRequestType {
+  PREPARE_CONVERSATION = "PREPARE_CONVERSATION",
   SEARCH_MEMORY = "SEARCH_MEMORY",
   LOAD_MEMORY = "LOAD_MEMORY",
   UNLOAD_MEMORY = "UNLOAD_MEMORY",
@@ -40,6 +41,13 @@ export enum IntentRequestMemoryScope {
 }
 
 export const INTENT_REQUEST_TYPES = Object.values(IntentRequestType);
+
+export enum IntentRequestSource {
+  PREDICTION = "prediction",
+  CONVERSATION = "conversation",
+}
+
+export const INTENT_REQUEST_SOURCES = Object.values(IntentRequestSource);
 
 export const INTENT_REQUEST_MEMORY_SCOPES = Object.values(
   IntentRequestMemoryScope,
@@ -78,9 +86,49 @@ export const isIntentRequestMemoryUnloadReason = (
 };
 
 type BaseIntentRequest<TRequest extends IntentRequestType, TParams> = {
+  source: IntentRequestSource;
   request: TRequest;
   intent: string;
   params: TParams;
+};
+
+export const PREPARE_CONVERSATION_INTENT_TYPES = [
+  "direct_answer",
+  "memory_lookup",
+  "memory_save",
+  "follow_up",
+  "mixed",
+  "unknown",
+] as const;
+
+export const PREPARE_CONVERSATION_PROMPT_VARIANTS = [
+  "default",
+  "recall",
+  "continuity",
+  "strict",
+] as const;
+
+export const PREPARE_CONVERSATION_PREDICTION_TRUST = [
+  "high",
+  "medium",
+  "low",
+] as const;
+
+export type PrepareConversationIntentType =
+  (typeof PREPARE_CONVERSATION_INTENT_TYPES)[number];
+export type PrepareConversationPromptVariant =
+  (typeof PREPARE_CONVERSATION_PROMPT_VARIANTS)[number];
+export type PrepareConversationPredictionTrust =
+  (typeof PREPARE_CONVERSATION_PREDICTION_TRUST)[number];
+
+export type PrepareConversationIntentRequestParams = {
+  acceptedIntentType: PrepareConversationIntentType;
+  preloadMemory: boolean;
+  memoryQuery: string;
+  allowMemorySave: boolean;
+  maxFollowUpRounds: number;
+  promptVariant: PrepareConversationPromptVariant;
+  predictionTrust: PrepareConversationPredictionTrust;
 };
 
 export type SearchMemoryIntentRequestParams = {
@@ -118,6 +166,11 @@ export type FollowUpIntentRequestParams = {
   sessionId: UUID;
   chatId: UUID;
 };
+
+export type PrepareConversationIntentRequest = BaseIntentRequest<
+  IntentRequestType.PREPARE_CONVERSATION,
+  PrepareConversationIntentRequestParams
+>;
 
 export type SearchMemoryIntentRequest = BaseIntentRequest<
   IntentRequestType.SEARCH_MEMORY,
@@ -160,6 +213,7 @@ export type FollowUpIntentRequest = BaseIntentRequest<
  * Runtime 解析出的一条合法内部请求。
  */
 export type IntentRequest =
+  | PrepareConversationIntentRequest
   | SearchMemoryIntentRequest
   | LoadMemoryIntentRequest
   | UnloadMemoryIntentRequest
@@ -194,6 +248,7 @@ export enum IntentRequestSafetyIssueCode {
   SKILL_NAME_INVALID = "skill_name_invalid",
   FOLLOW_UP_SESSION_MISMATCH = "follow_up_session_mismatch",
   FOLLOW_UP_CHAT_MISMATCH = "follow_up_chat_mismatch",
+  INVALID_REQUEST_SOURCE = "invalid_request_source",
 }
 
 export type RejectedIntentRequest = {

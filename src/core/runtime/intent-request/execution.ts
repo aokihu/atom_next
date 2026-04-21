@@ -5,6 +5,7 @@ import type {
   IntentRequest,
   LoadMemoryIntentRequest,
   MemoryScope,
+  PrepareConversationIntentRequest,
   RuntimeMemoryOutput,
   SaveMemoryIntentRequest,
   SearchMemoryIntentRequest,
@@ -12,8 +13,9 @@ import type {
   UpdateMemoryIntentRequest,
 } from "@/types";
 import { IntentRequestType } from "@/types";
-import { TaskSource, TaskState, type TaskItem } from "@/types/task";
+import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
 import { isEmpty, isNumber } from "radashi";
+import type { IntentExecutionPolicy } from "../user-intent";
 
 export type IntentRequestExecutionResult =
   | {
@@ -51,6 +53,7 @@ type RuntimeIntentRequestExecutionContext = {
   ) => void;
   getLoadedMemoryScopeByKey: (memoryKey: string) => MemoryScope | null;
   unloadMemoryContextByKey: (memoryKey: string) => boolean;
+  setIntentPolicy: (sessionId: string, policy: Omit<IntentExecutionPolicy, "updatedAt">) => void;
 };
 
 const resolveMemoryScope = (scope?: string): MemoryScope => {
@@ -236,6 +239,70 @@ const processSaveMemoryIntentRequest = (
   };
 };
 
+const buildFormalConversationTask = (task: TaskItem) => {
+  return buildInternalTaskItem({
+    sessionId: task.sessionId,
+    chatId: task.chatId,
+    chainId: task.chainId,
+    parentId: task.id,
+    priority: 1,
+    eventTarget: task.eventTarget,
+    channel: task.channel,
+    payload: task.payload,
+    workflow: TaskWorkflow.FORMAL_CONVERSATION,
+  });
+};
+
+const processPrepareConversationIntentRequest = (
+  task: TaskItem,
+  request: PrepareConversationIntentRequest,
+  context: RuntimeIntentRequestExecutionContext,
+): IntentRequestExecutionResult => {
+  context.setIntentPolicy(task.sessionId, {
+    sessionId: task.sessionId,
+    acceptedIntentType: request.params.acceptedIntentType,
+    preloadMemory: request.params.preloadMemory,
+    memoryQuery: request.params.memoryQuery,
+    allowMemorySave: request.params.allowMemorySave,
+    maxFollowUpRounds: request.params.maxFollowUpRounds,
+    promptVariant: request.params.promptVariant,
+    predictionTrust: request.params.predictionTrust,
+    reasons: [],
+  });
+
+  if (
+    request.params.preloadMemory &&
+    !isEmpty(request.params.memoryQuery)
+  ) {
+    const scope = "long" as MemoryScope;
+    const memoryContext = context.getMemoryContext(scope);
+
+    if (
+      memoryContext.status === "idle" ||
+      memoryContext.query !== request.params.memoryQuery
+    ) {
+      const output = context.memory.retrieveRuntimeContext({
+        words: request.params.memoryQuery,
+        scope,
+      });
+
+      context.recordMemorySearchResult(scope, {
+        words: request.params.memoryQuery,
+        output,
+        reason: output
+          ? `Loaded ${scope} memory from prepare conversation query ${request.params.memoryQuery}`
+          : `No ${scope} memory matched prepare conversation query ${request.params.memoryQuery}`,
+      });
+    }
+  }
+
+  return {
+    status: "stop",
+    nextState: TaskState.FOLLOW_UP,
+    nextTask: buildFormalConversationTask(task),
+  };
+};
+
 const processUpdateMemoryIntentRequest = (
   request: UpdateMemoryIntentRequest,
   context: RuntimeIntentRequestExecutionContext,
@@ -335,6 +402,8 @@ const processIntentRequest = (
   context: RuntimeIntentRequestExecutionContext,
 ): IntentRequestExecutionResult => {
   switch (request.request) {
+    case IntentRequestType.PREPARE_CONVERSATION:
+      return processPrepareConversationIntentRequest(task, request, context);
     case IntentRequestType.SEARCH_MEMORY:
       return processSearchMemoryIntentRequest(request, context);
     case IntentRequestType.LOAD_MEMORY:

@@ -7,6 +7,7 @@ import { isNullish } from "radashi";
 import {
   TaskSource,
   TaskState,
+  TaskWorkflow,
   type TaskChannel,
   type InternalTaskItemInput,
   type TaskItemInput,
@@ -49,6 +50,7 @@ type BuildTaskLineageInput = {
   chainId: string;
   parentId: string | undefined;
   source: TaskSource;
+  workflow: TaskWorkflow;
   priority: number;
   chain_round?: number;
 };
@@ -79,13 +81,12 @@ const createTaskItem = (
   const task: TaskItem = {
     id,
     chainId: params.chainId,
-    ...(isNullish(params.chain_round)
-      ? {}
-      : { chain_round: params.chain_round }),
+    chain_round: params.chain_round ?? undefined,
     parentId: params.parentId,
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: params.source,
+    workflow: params.workflow,
     state: TaskState.WAITING,
     priority: params.priority,
     payload,
@@ -119,6 +120,7 @@ export const buildTaskItem = (params: TaskItemInput): TaskItem => {
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.EXTERNAL,
+    workflow: params.workflow ?? TaskWorkflow.PREDICT_USER_INTENT,
     priority: params.priority ?? 2,
     payload: params.payload,
     eventTarget: params.eventTarget,
@@ -155,6 +157,7 @@ export const buildInternalTaskItem = (
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.INTERNAL,
+    workflow: params.workflow ?? TaskWorkflow.FORMAL_CONVERSATION,
     priority: params.priority ?? 1,
     payload: params.payload,
     eventTarget: params.eventTarget,

@@ -87,9 +87,6 @@ afterAll(() => {
 describe("Milestone 0.5 TUI path", () => {
   test(
     "boots TUI in both mode and renders the core panels",
-    {
-      timeout: RUN_TIMEOUT_MS + 5_000,
-    },
     async () => {
       const result = await runTuiTranscript();
       transcriptDir = result.transcriptDir;
@@ -101,5 +98,6 @@ describe("Milestone 0.5 TUI path", () => {
       expect(result.transcript).toContain("session ready:");
       expect(result.transcript).toContain(TUI_INPUT_TEXT);
     },
+    RUN_TIMEOUT_MS + 5_000,
   );
 });

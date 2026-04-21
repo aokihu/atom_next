@@ -3,7 +3,11 @@ import type {
   IntentRequestSafetyContext,
   IntentRequestSafetyResult,
 } from "@/types";
-import { IntentRequestSafetyIssueCode, IntentRequestType } from "@/types";
+import {
+  IntentRequestSafetyIssueCode,
+  IntentRequestSource,
+  IntentRequestType,
+} from "@/types";
 import { checkFollowUpIntentRequestSafety } from "./follow-up";
 import { checkLoadMemoryIntentRequestSafety } from "./load-memory";
 import { checkLoadSkillIntentRequestSafety } from "./load-skill";
@@ -28,6 +32,14 @@ const checkSingleIntentRequestSafety = (
   }
 
   switch (request.request) {
+    case IntentRequestType.PREPARE_CONVERSATION:
+      return request.source === IntentRequestSource.PREDICTION
+        ? undefined
+        : createRejectedIntentRequest(
+            request,
+            IntentRequestSafetyIssueCode.INVALID_REQUEST_SOURCE,
+            "PREPARE_CONVERSATION must come from prediction workflow",
+          );
     case IntentRequestType.SEARCH_MEMORY:
       return checkSearchMemoryIntentRequestSafety(request);
     case IntentRequestType.LOAD_MEMORY:

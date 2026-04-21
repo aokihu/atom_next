@@ -95,17 +95,35 @@ const main = async () => {
 
       return {
         text: FIRST_SEGMENT,
-        requestText: `[FOLLOW_UP, "${FOLLOW_UP_INTENT}", sessionId=session-1;chatId=chat-1]`,
+        intentRequestText: `[FOLLOW_UP, "${FOLLOW_UP_INTENT}", sessionId=session-1;chatId=chat-1]`,
         finishReason: "stop",
         usage: {
           inputTokens: 10,
           outputTokens: 10,
           totalTokens: 20,
+          inputTokenDetails: {
+            noCacheTokens: undefined,
+            cacheReadTokens: undefined,
+            cacheWriteTokens: undefined,
+          },
+          outputTokenDetails: {
+            textTokens: undefined,
+            reasoningTokens: undefined,
+          },
         },
         totalUsage: {
           inputTokens: 10,
           outputTokens: 10,
           totalTokens: 20,
+          inputTokenDetails: {
+            noCacheTokens: undefined,
+            cacheReadTokens: undefined,
+            cacheWriteTokens: undefined,
+          },
+          outputTokenDetails: {
+            textTokens: undefined,
+            reasoningTokens: undefined,
+          },
         },
       };
     }
@@ -114,17 +132,35 @@ const main = async () => {
 
     return {
       text: SECOND_SEGMENT,
-      requestText: "",
+      intentRequestText: "",
       finishReason: "stop",
       usage: {
         inputTokens: 10,
         outputTokens: 10,
         totalTokens: 20,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined,
+        },
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined,
+        },
       },
       totalUsage: {
         inputTokens: 10,
         outputTokens: 10,
         totalTokens: 20,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined,
+        },
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined,
+        },
       },
     };
   };

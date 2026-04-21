@@ -197,6 +197,9 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(2);
     expect(streamCalls[1].system).toContain("<Long>");
@@ -275,6 +278,9 @@ describe("Core memory intent requests", () => {
 
     const core = new Core(serviceManager);
     await core.addTask(task);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
     expect(completedEvents).toHaveLength(0);
@@ -377,6 +383,9 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(3);
     expect(streamCalls[1].system).toContain("<Status>loaded</Status>");
@@ -461,6 +470,9 @@ describe("Core memory intent requests", () => {
 
     const core = new Core(serviceManager);
     await core.addTask(task);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
     expect(completedEvents).toHaveLength(0);
@@ -555,6 +567,9 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(2);
     expect(streamCalls[1].system).toContain("<Status>loaded</Status>");
@@ -620,6 +635,8 @@ describe("Core memory intent requests", () => {
     const core = new Core(serviceManager);
     await core.addTask(task);
     await core.runOnce();
+    expect(streamCalls).toHaveLength(0);
+    await core.runOnce();
 
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(streamCalls).toHaveLength(1);
@@ -679,6 +696,8 @@ describe("Core memory intent requests", () => {
 
     const core = new Core(serviceManager);
     await core.addTask(task);
+    await core.runOnce();
+    expect(streamCalls).toHaveLength(0);
     await core.runOnce();
 
     expect(generateText).toHaveBeenCalledTimes(1);
@@ -779,6 +798,7 @@ describe("Core memory intent requests", () => {
       }),
     );
     await core.runOnce();
+    await core.runOnce();
 
     await core.addTask(
       buildTaskItem({
@@ -789,6 +809,7 @@ describe("Core memory intent requests", () => {
         channel: { domain: "tui" },
       }),
     );
+    await core.runOnce();
     await core.runOnce();
 
     expect(generateText).toHaveBeenCalledTimes(2);
@@ -905,6 +926,7 @@ describe("Core memory intent requests", () => {
 
     await core.runOnce();
     await core.runOnce();
+    await core.runOnce();
 
     await core.addTask(
       buildTaskItem({
@@ -915,6 +937,7 @@ describe("Core memory intent requests", () => {
         channel: { domain: "tui" },
       }),
     );
+    await core.runOnce();
     await core.runOnce();
 
     expect(streamCalls).toHaveLength(3);

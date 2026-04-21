@@ -5,6 +5,7 @@ import type {
   RejectedIntentRequest,
   IntentRequestDispatchResult,
   MemoryScope,
+  PrepareConversationIntentRequest,
   RuntimeMemoryOutput,
 } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
@@ -15,9 +16,9 @@ import intentPromptText from "@/assets/prompts/intent.md" with { type: "text" };
 import systemPromptText from "@/assets/prompts/system.md" with { type: "text" };
 import memoryPromptText from "@/assets/prompts/memory.md" with { type: "text" };
 import followUpPromptText from "@/assets/prompts/follow_up_prompt.md" with { type: "text" };
+import { IntentRequestSource, IntentRequestType, IntentRequestSafetyIssueCode } from "@/types";
 import { TaskSource, type TaskItem } from "@/types/task";
 import type { ChatCompletedEventPayload } from "@/types/event";
-import { IntentRequestSafetyIssueCode } from "@/types";
 import type { ProviderProfileLevel } from "@/types/config";
 import { ChatStatus } from "@/types/chat";
 import { isEmpty, sleep } from "radashi";
@@ -31,6 +32,7 @@ import {
 import { convertRuntimeContextToPrompt } from "./prompt";
 import {
   parseIntentPredictionText,
+  type IntentExecutionPolicy,
   UserIntentPredictionManager,
 } from "./user-intent";
 import type { Transport, TransportModelProfile } from "../transport";
@@ -449,6 +451,26 @@ export class Runtime {
     };
   }
 
+  #createPrepareConversationIntentRequest(
+    task: TaskItem,
+    policy: IntentExecutionPolicy,
+  ): PrepareConversationIntentRequest {
+    return {
+      source: IntentRequestSource.PREDICTION,
+      request: IntentRequestType.PREPARE_CONVERSATION,
+      intent: "根据当前用户输入预测结果准备正式对话。",
+      params: {
+        acceptedIntentType: policy.acceptedIntentType,
+        preloadMemory: policy.preloadMemory,
+        memoryQuery: policy.memoryQuery,
+        allowMemorySave: policy.allowMemorySave,
+        maxFollowUpRounds: policy.maxFollowUpRounds,
+        promptVariant: policy.promptVariant,
+        predictionTrust: policy.predictionTrust,
+      },
+    };
+  }
+
   /**
    * 准备当前 external 任务的执行上下文。
    * @description
@@ -456,9 +478,12 @@ export class Runtime {
    * 预测意图 -> fallback -> 解析 policy -> 按 policy 预加载记忆。
    * internal 任务直接跳过，避免 FOLLOW_UP 续跑时发生策略漂移。
    */
-  public async prepareExecutionContext(task: TaskItem, transport: Transport) {
+  public async prepareExecutionContext(
+    task: TaskItem,
+    transport: Transport,
+  ): Promise<PrepareConversationIntentRequest | null> {
     if (task.source !== TaskSource.EXTERNAL) {
-      return this.#userIntentPredictionManager.getIntentPolicy(task.sessionId);
+      return null;
     }
 
     try {
@@ -500,34 +525,7 @@ export class Runtime {
       },
     );
 
-    if (!policy.preloadMemory || isEmpty(policy.memoryQuery)) {
-      return policy;
-    }
-
-    const scope = "long" as MemoryScope;
-    const memoryContext = this.getMemoryContext(scope);
-
-    if (
-      memoryContext.status !== "idle" &&
-      memoryContext.query === policy.memoryQuery
-    ) {
-      return policy;
-    }
-
-    const output = this.#getMemoryService().retrieveRuntimeContext({
-      words: policy.memoryQuery,
-      scope,
-    });
-
-    this.recordMemorySearchResult(scope, {
-      words: policy.memoryQuery,
-      output,
-      reason: output
-        ? `Loaded ${scope} memory from intent policy query ${policy.memoryQuery}`
-        : `No ${scope} memory matched intent policy query ${policy.memoryQuery}`,
-    });
-
-    return policy;
+    return this.#createPrepareConversationIntentRequest(task, policy);
   }
 
   /**
@@ -689,6 +687,9 @@ export class Runtime {
       },
       unloadMemoryContextByKey: (memoryKey) => {
         return this.unloadMemoryContextByKey(memoryKey);
+      },
+      setIntentPolicy: (sessionId, policy) => {
+        this.#userIntentPredictionManager.setIntentPolicy(sessionId, policy);
       },
     });
   }

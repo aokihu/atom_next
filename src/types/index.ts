@@ -23,6 +23,7 @@ export type {
 export {
   TaskSource,
   TaskState,
+  TaskWorkflow,
 } from "./task";
 
 export type {
@@ -91,6 +92,7 @@ export type {
 export type {
   ChatSubmissionBody,
   IntentRequest,
+  PrepareConversationIntentRequestParams,
   SearchMemoryIntentRequestParams,
   LoadMemoryIntentRequestParams,
   UnloadMemoryIntentRequestParams,
@@ -98,6 +100,7 @@ export type {
   UpdateMemoryIntentRequestParams,
   LoadSkillIntentRequestParams,
   FollowUpIntentRequestParams,
+  PrepareConversationIntentRequest,
   SearchMemoryIntentRequest,
   LoadMemoryIntentRequest,
   UnloadMemoryIntentRequest,
@@ -110,16 +113,24 @@ export type {
   IntentRequestSafetyResult,
   IntentRequestDispatchResult,
   IntentRequestHandleResult,
+  PrepareConversationIntentType,
+  PrepareConversationPromptVariant,
+  PrepareConversationPredictionTrust,
 } from "./intent-request";
 
 export {
   IntentRequestType,
+  IntentRequestSource,
   IntentRequestMemoryScope,
   INTENT_REQUEST_MEMORY_UNLOAD_REASONS,
   IntentRequestSafetyIssueCode,
   IntentRequestDispatchStatus,
   INTENT_REQUEST_TYPES,
+  INTENT_REQUEST_SOURCES,
   INTENT_REQUEST_MEMORY_SCOPES,
+  PREPARE_CONVERSATION_INTENT_TYPES,
+  PREPARE_CONVERSATION_PROMPT_VARIANTS,
+  PREPARE_CONVERSATION_PREDICTION_TRUST,
   isIntentRequestType,
   isIntentRequestMemoryScope,
   isIntentRequestMemoryUnloadReason,
