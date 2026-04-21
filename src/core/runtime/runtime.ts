@@ -11,7 +11,9 @@ import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
 import { isEmpty } from "radashi";
 import {
+  createIntentRequestExecutionContext as runCreateIntentRequestExecutionContext,
   executeIntentRequests as runIntentRequests,
+  handleIntentRequestRuntime as runHandleIntentRequestRuntime,
   type IntentRequestExecutionResult,
 } from "./intent-request";
 import {
@@ -30,10 +32,8 @@ import {
   finalizeChatTurn as runFinalizeChatTurn,
   type RuntimeChatFinalizationResult,
 } from "./finalize";
-import { handleIntentRequestRuntime as runHandleIntentRequestRuntime } from "./intent-request-runtime";
 import { prepareExecutionContext as runPrepareExecutionContext } from "./prepare";
 import {
-  resolveMemoryService,
   resolveRuntimeService,
   resolveTransportModelProfile,
   shouldReportIntentRequestLogs,
@@ -459,30 +459,16 @@ export class Runtime {
     task: TaskItem,
     requests: IntentRequest[],
   ): Promise<IntentRequestExecutionResult> {
-    return runIntentRequests(task, requests, {
-      memory: resolveMemoryService(this.#serviceManager),
-      getMemoryContext: (scope) => {
-        const memoryContext = this.getMemoryContext(scope);
-        return {
-          status: memoryContext.status,
-          query: memoryContext.query,
-        };
-      },
-      recordMemorySearchResult: (scope, options) => {
-        this.recordMemorySearchResult(scope, options);
-      },
-      setMemoryContext: (scope, output, options) => {
-        this.setMemoryContext(scope, output, options);
-      },
-      getLoadedMemoryScopeByKey: (memoryKey) => {
-        return this.getLoadedMemoryScopeByKey(memoryKey);
-      },
-      unloadMemoryContextByKey: (memoryKey) => {
-        return this.unloadMemoryContextByKey(memoryKey);
-      },
-      setIntentPolicy: (sessionId, policy) => {
-        this.setIntentPolicy(sessionId, policy);
-      },
-    });
+    return runIntentRequests(
+      task,
+      requests,
+      runCreateIntentRequestExecutionContext({
+        serviceManager: this.#serviceManager,
+        contextManager: this.#contextManager,
+        setIntentPolicy: (sessionId, policy) => {
+          this.setIntentPolicy(sessionId, policy);
+        },
+      }),
+    );
   }
 }
