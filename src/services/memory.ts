@@ -9,8 +9,6 @@ import type {
   MemoryOutput,
   MergeMemoriesResult,
   RelatedMemoryLink,
-  RetrieveRuntimeContextInput,
-  RuntimeMemoryOutput,
   SaveMemoryInput,
   SaveMemoryLinkInput,
   SaveMemoryResult,
@@ -33,6 +31,14 @@ const DEFAULT_CREATED_BY = "memory_service";
 type SearchMemoryRow = Record<string, unknown> & {
   exact_key_match: number;
   fts_rank: number;
+};
+
+type SearchMemoryCandidate = {
+  output: MemoryOutput;
+  exactKeyMatch: number;
+  matchedTerms: Set<string>;
+  bestRelevance: number;
+  pass: "combined" | "term";
 };
 
 export class MemoryService extends BaseService {
@@ -147,6 +153,111 @@ export class MemoryService extends BaseService {
     return this.#parseSearchTerms(words).join(" ");
   }
 
+  #compareSearchCandidates(
+    left: SearchMemoryCandidate,
+    right: SearchMemoryCandidate,
+  ) {
+    return right.exactKeyMatch - left.exactKeyMatch
+      || right.matchedTerms.size - left.matchedTerms.size
+      || right.bestRelevance - left.bestRelevance
+      || right.output.memory.score - left.output.memory.score
+      || right.output.memory.updated_at - left.output.memory.updated_at;
+  }
+
+  #querySearchCandidates(
+    database: Database,
+    options: {
+      searchWords: string;
+      ftsQuery: string;
+      scope: string;
+      limit: number;
+      pass: "combined" | "term";
+      matchedTerms: string[];
+      reason: string;
+    },
+  ) {
+    if (options.ftsQuery === "") {
+      return [];
+    }
+
+    const rows = database
+      .query(
+        `
+          SELECT
+            memory_nodes.*,
+            CASE WHEN LOWER(memory_nodes.memory_key) = ? THEN 1 ELSE 0 END AS exact_key_match,
+            bm25(memory_nodes_fts, 5.0, 3.0, 1.0) AS fts_rank
+          FROM memory_nodes_fts
+          INNER JOIN memory_nodes
+            ON memory_nodes.id = memory_nodes_fts.memory_id
+          WHERE memory_nodes_fts MATCH ?
+            AND memory_nodes.scope = ?
+            AND memory_nodes.status != 'deleted'
+          ORDER BY exact_key_match DESC, fts_rank ASC, memory_nodes.score DESC, memory_nodes.updated_at DESC
+          LIMIT ?
+        `,
+      )
+      .all(
+        options.searchWords.toLowerCase(),
+        options.ftsQuery,
+        options.scope,
+        options.limit,
+      ) as SearchMemoryRow[];
+
+    return rows.map((row) => {
+      const memory = mapMemoryNode(row);
+      const links = this.#getRelatedMemoriesBySourceId(database, memory.id);
+      const exactKeyMatch = Number(row.exact_key_match);
+      const ftsRank = Number(row.fts_rank);
+      const relevance = this.#calculateSearchRelevance(exactKeyMatch, ftsRank);
+
+      return {
+        output: this.#buildMemoryOutput(
+          memory,
+          {
+            mode: "search",
+            relevance,
+            reason: options.reason,
+          },
+          links,
+        ),
+        exactKeyMatch,
+        matchedTerms: new Set(options.matchedTerms),
+        bestRelevance: relevance,
+        pass: options.pass,
+      } satisfies SearchMemoryCandidate;
+    });
+  }
+
+  #mergeSearchCandidate(
+    current: SearchMemoryCandidate | undefined,
+    incoming: SearchMemoryCandidate,
+  ) {
+    if (!current) {
+      return {
+        ...incoming,
+        matchedTerms: new Set(incoming.matchedTerms),
+      } satisfies SearchMemoryCandidate;
+    }
+
+    const nextMatchedTerms = new Set(current.matchedTerms);
+
+    for (const term of incoming.matchedTerms) {
+      nextMatchedTerms.add(term);
+    }
+
+    const shouldUseIncomingOutput =
+      current.pass === "term" && incoming.pass === "combined";
+
+    return {
+      output: shouldUseIncomingOutput ? incoming.output : current.output,
+      exactKeyMatch: Math.max(current.exactKeyMatch, incoming.exactKeyMatch),
+      matchedTerms: nextMatchedTerms,
+      bestRelevance: Math.max(current.bestRelevance, incoming.bestRelevance),
+      pass: shouldUseIncomingOutput ? incoming.pass : current.pass,
+    } satisfies SearchMemoryCandidate;
+  }
+
   #syncMemorySearchDocument(database: Database, memory: MemoryNode) {
     database.query("DELETE FROM memory_nodes_fts WHERE memory_id = ?").run(memory.id);
     database
@@ -223,33 +334,6 @@ export class MemoryService extends BaseService {
       memory,
       retrieval,
       links,
-    };
-  }
-
-  #buildRuntimeMemoryOutput(output: MemoryOutput): RuntimeMemoryOutput {
-    return {
-      memory: {
-        key: output.memory.memory_key,
-        text: output.memory.text,
-        meta: {
-          created_at: output.memory.created_at,
-          updated_at: output.memory.updated_at,
-          score: output.memory.score,
-          status: output.memory.status,
-          confidence: output.memory.confidence,
-          type: output.memory.type,
-        },
-      },
-      retrieval: output.retrieval,
-      links: output.links.map((link) => {
-        return {
-          target_memory_key: link.target_memory_key,
-          target_summary: link.target_summary,
-          link_type: link.link_type,
-          term: link.term,
-          weight: link.weight,
-        };
-      }),
     };
   }
 
@@ -548,56 +632,68 @@ export class MemoryService extends BaseService {
   public searchMemory(input: SearchMemoryInput) {
     const database = this.#getDatabase();
     const searchWords = input.words.trim();
-    const ftsQuery = this.#buildFtsQuery(searchWords);
+    const searchTerms = this.#parseSearchTerms(searchWords);
+    const limit = input.limit ?? DEFAULT_SEARCH_LIMIT;
+    const scope = input.scope ?? DEFAULT_MEMORY_SCOPE;
 
-    if (searchWords === "" || ftsQuery === "") {
+    if (searchWords === "" || searchTerms.length === 0) {
       return [];
     }
-
-    const rows = database
-      .query(
-        `
-          SELECT
-            memory_nodes.*,
-            CASE WHEN LOWER(memory_nodes.memory_key) = ? THEN 1 ELSE 0 END AS exact_key_match,
-            bm25(memory_nodes_fts, 5.0, 3.0, 1.0) AS fts_rank
-          FROM memory_nodes_fts
-          INNER JOIN memory_nodes
-            ON memory_nodes.id = memory_nodes_fts.memory_id
-          WHERE memory_nodes_fts MATCH ?
-            AND memory_nodes.scope = ?
-            AND memory_nodes.status != 'deleted'
-          ORDER BY exact_key_match DESC, fts_rank ASC, memory_nodes.score DESC, memory_nodes.updated_at DESC
-          LIMIT ?
-        `,
-      )
-      .all(
-        searchWords.toLowerCase(),
-        ftsQuery,
-        input.scope ?? DEFAULT_MEMORY_SCOPE,
-        input.limit ?? DEFAULT_SEARCH_LIMIT,
-      ) as SearchMemoryRow[];
-
-    return rows.map((row) => {
-      const memory = mapMemoryNode(row);
-      const links = this.#getRelatedMemoriesBySourceId(database, memory.id);
-      const exactKeyMatch = Number(row.exact_key_match);
-      const ftsRank = Number(row.fts_rank);
-      const relevance = this.#calculateSearchRelevance(exactKeyMatch, ftsRank);
-      const reason = exactKeyMatch > 0
-        ? `Exact key match for ${searchWords}`
-        : `FTS5 matched ${searchWords} with query ${ftsQuery}`;
-
-      return this.#buildMemoryOutput(
-        memory,
-        {
-          mode: "search",
-          relevance,
-          reason,
-        },
-        links,
-      );
+    const candidateMap = new Map<string, SearchMemoryCandidate>();
+    const combinedFtsQuery = searchTerms.join(" ");
+    const combinedCandidates = this.#querySearchCandidates(database, {
+      searchWords,
+      ftsQuery: combinedFtsQuery,
+      scope,
+      limit,
+      pass: "combined",
+      matchedTerms: searchTerms,
+      reason: `FTS5 matched ${searchWords} with query ${combinedFtsQuery}`,
     });
+
+    for (const candidate of combinedCandidates) {
+      candidateMap.set(candidate.output.memory.id, candidate);
+    }
+
+    if (searchTerms.length > 1 && candidateMap.size < limit) {
+      for (const term of searchTerms) {
+        const termCandidates = this.#querySearchCandidates(database, {
+          searchWords: term,
+          ftsQuery: term,
+          scope,
+          limit,
+          pass: "term",
+          matchedTerms: [term],
+          reason: `FTS5 matched ${searchWords} via term ${term}`,
+        });
+
+        for (const candidate of termCandidates) {
+          const memoryId = candidate.output.memory.id;
+          candidateMap.set(
+            memoryId,
+            this.#mergeSearchCandidate(candidateMap.get(memoryId), candidate),
+          );
+        }
+      }
+    }
+
+    return Array.from(candidateMap.values())
+      .sort((left, right) => this.#compareSearchCandidates(left, right))
+      .slice(0, limit)
+      .map((candidate) => {
+        if (candidate.exactKeyMatch > 0) {
+          return this.#buildMemoryOutput(
+            candidate.output.memory,
+            {
+              ...candidate.output.retrieval,
+              reason: `Exact key match for ${searchWords}`,
+            },
+            candidate.output.links,
+          );
+        }
+
+        return candidate.output;
+      });
   }
 
   public getRelatedMemories(memoryKey: string) {
@@ -944,35 +1040,6 @@ export class MemoryService extends BaseService {
       }
 
       return output;
-    });
-  }
-
-  public retrieveRuntimeContext(input: RetrieveRuntimeContextInput) {
-    let output: MemoryOutput | null = null;
-
-    if (input.memory_key) {
-      output = this.getMemoryByKey(input.memory_key);
-    } else if (input.words) {
-      output = this.searchMemory({
-        words: input.words,
-        scope: input.scope,
-        limit: 1,
-      })[0] ?? null;
-    }
-
-    if (!output) {
-      return null;
-    }
-
-    return this.#buildRuntimeMemoryOutput({
-      ...output,
-      retrieval: {
-        mode: "context",
-        relevance: output.retrieval.relevance,
-        reason: input.memory_key
-          ? `Loaded runtime context from key ${input.memory_key}`
-          : `Loaded runtime context from search ${input.words ?? ""}`.trim(),
-      },
     });
   }
 

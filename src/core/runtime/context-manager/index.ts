@@ -14,12 +14,12 @@
 import type {
   EmptyString,
   MemoryScope,
-  RuntimeMemoryOutput,
   UUID,
 } from "@/types";
 import { MEMORY_SCOPES } from "@/types";
 import { TaskSource, type TaskItem } from "@/types/task";
 import { isEmpty } from "radashi";
+import type { RuntimeMemoryItem } from "../memory-item";
 import {
   createEmptyMemoryScopeContext,
   createLoadedMemoryScopeContext,
@@ -222,14 +222,14 @@ export class ContextManager {
 
   public setMemoryContext(
     scope: MemoryScope,
-    output: RuntimeMemoryOutput,
+    outputs: RuntimeMemoryItem[],
     options: {
       query?: string;
       reason?: string;
     } = {},
   ) {
     this.#getActiveSessionContext().memory[scope] =
-      createLoadedMemoryScopeContext(output, options);
+      createLoadedMemoryScopeContext(outputs, options);
   }
 
   public setMemorySearchMiss(
@@ -247,7 +247,7 @@ export class ContextManager {
     scope: MemoryScope,
     options: {
       words: string;
-      output: RuntimeMemoryOutput | null;
+      outputs: RuntimeMemoryItem[];
       reason?: string;
     },
   ) {
@@ -311,7 +311,7 @@ export class ContextManager {
 
       if (
         memoryContext.status === "loaded" &&
-        memoryContext.output?.memory.key === memoryKey
+        memoryContext.outputs.some((output) => output.memory.key === memoryKey)
       ) {
         return scope;
       }

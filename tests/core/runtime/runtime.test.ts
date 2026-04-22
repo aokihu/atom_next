@@ -227,26 +227,28 @@ describe("Runtime context", () => {
     });
     runtime.recordMemorySearchResult("long", {
       words: "watchman",
-      output: {
-        memory: {
-          key: "long.note.watchman",
-          text: "Watchman 不负责 Memory 持久化。",
-          meta: {
-            created_at: 1,
-            updated_at: 2,
-            score: 80,
-            status: "active",
-            confidence: 0.9,
-            type: "note",
+      outputs: [
+        {
+          memory: {
+            key: "long.note.watchman",
+            text: "Watchman 不负责 Memory 持久化。",
+            meta: {
+              created_at: 1,
+              updated_at: 2,
+              score: 80,
+              status: "active",
+              confidence: 0.9,
+              type: "note",
+            },
           },
+          retrieval: {
+            mode: "context",
+            relevance: 1,
+            reason: "Loaded runtime context from search watchman",
+          },
+          links: [],
         },
-        retrieval: {
-          mode: "context",
-          relevance: 1,
-          reason: "Loaded runtime context from search watchman",
-        },
-        links: [],
-      },
+      ],
     });
     runtime.appendAssistantOutput("existing output");
 
@@ -287,7 +289,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       payload: [{ type: "text", data: "first question" }],
     });
-    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
+    runtime.setIntentPolicy("session-1", {
       sessionId: "session-1",
       acceptedIntentType: "memory_lookup",
       preloadMemory: true,
@@ -300,26 +302,48 @@ describe("Runtime context", () => {
     });
     runtime.recordMemorySearchResult("long", {
       words: "watchman",
-      output: {
-        memory: {
-          key: "long.note.watchman",
-          text: "Watchman 不负责 Memory 持久化。",
-          meta: {
-            created_at: 1,
-            updated_at: 2,
-            score: 80,
-            status: "active",
-            confidence: 0.9,
-            type: "note",
+      outputs: [
+        {
+          memory: {
+            key: "long.note.watchman",
+            text: "Watchman 不负责 Memory 持久化。",
+            meta: {
+              created_at: 1,
+              updated_at: 2,
+              score: 80,
+              status: "active",
+              confidence: 0.9,
+              type: "note",
+            },
           },
+          retrieval: {
+            mode: "context",
+            relevance: 1,
+            reason: "Loaded runtime context from search watchman",
+          },
+          links: [],
         },
-        retrieval: {
-          mode: "context",
-          relevance: 1,
-          reason: "Loaded runtime context from search watchman",
+        {
+          memory: {
+            key: "long.note.agents",
+            text: "AGENTS.md 由 Watchman 负责缓存编译。",
+            meta: {
+              created_at: 3,
+              updated_at: 4,
+              score: 70,
+              status: "active",
+              confidence: 0.8,
+              type: "note",
+            },
+          },
+          retrieval: {
+            mode: "context",
+            relevance: 0.8,
+            reason: "Loaded runtime context from search watchman",
+          },
+          links: [],
         },
-        links: [],
-      },
+      ],
     });
     runtime.appendAssistantOutput("first output");
     runtime.commitSessionTurn("first question", "first answer");
@@ -346,6 +370,7 @@ describe("Runtime context", () => {
     expect(prompt).toContain("<Long>");
     expect(prompt).toContain("<Status>loaded</Status>");
     expect(prompt).toContain("<Query>watchman</Query>");
+    expect(prompt).toContain("<Key>long.note.agents</Key>");
     expect(prompt).toContain("<Conversation>");
     expect(prompt).toContain("LAST_USER_INPUT<<EOF\nfirst question\nEOF");
     expect(prompt).toContain("LAST_ASSISTANT_OUTPUT<<EOF\nfirst answer\nEOF");
@@ -357,7 +382,7 @@ describe("Runtime context", () => {
     runtime.currentTask = buildTask("task-1");
     runtime.recordMemorySearchResult("long", {
       words: "missing memory",
-      output: null,
+      outputs: [],
       reason: 'No long memory matched "missing memory"',
     });
 
@@ -377,7 +402,7 @@ describe("Runtime context", () => {
     runtime.currentTask = buildTask("task-1", {
       payload: [{ type: "text", data: "你有关于 AGENTS.md 的记忆吗" }],
     });
-    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
+    runtime.setIntentPolicy("session-1", {
       sessionId: "session-1",
       acceptedIntentType: "memory_lookup",
       preloadMemory: true,
@@ -435,6 +460,54 @@ describe("Runtime context", () => {
     expect(request?.params.preloadMemory).toBe(true);
     expect(request?.params.memoryQuery).toBe("AGENTS md");
     expect(runtime.getMemoryContext("long").status).toBe("idle");
+  });
+
+  test("prepare conversation preload keeps multiple long memories in one scope", async () => {
+    const { runtime, memoryService } = await buildRuntimeWithServices();
+
+    memoryService.saveMemory({
+      text: "AGENTS.md 记录了 Core 的职责边界。",
+      suggested_key: "agents core boundary",
+      created_by: "runtime-test",
+    });
+    memoryService.saveMemory({
+      text: "AGENTS.md 还记录了 Runtime 和 Queue 的协作链路。",
+      suggested_key: "agents runtime queue flow",
+      created_by: "runtime-test",
+    });
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "你有 AGENTS.md 相关的记忆吗" }],
+    });
+    runtime.currentTask = task;
+
+    const result = await runtime.executeIntentRequests(task, [{
+      source: "prediction",
+      request: "PREPARE_CONVERSATION",
+      intent: "根据当前用户输入预测结果准备正式对话。",
+      params: {
+        acceptedIntentType: "memory_lookup",
+        preloadMemory: true,
+        memoryQuery: "AGENTS md",
+        allowMemorySave: false,
+        maxFollowUpRounds: 2,
+        promptVariant: "recall",
+        predictionTrust: "high",
+      },
+    }]);
+
+    expect(result.status).toBe("stop");
+    expect(runtime.getMemoryContext("long").status).toBe("loaded");
+    expect(runtime.getMemoryContext("long").outputs).toHaveLength(2);
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(prompt).toContain("<Key>long.note.agents_core_boundary</Key>");
+    expect(prompt).toContain("<Key>long.note.agents_runtime_queue_flow</Key>");
   });
 
   test("prepareExecutionContext skips prediction for internal task", async () => {
@@ -503,6 +576,54 @@ describe("Runtime context", () => {
     expect(runtime.getMemoryContext("long").query).toBe("Watchman");
   });
 
+  test("executeIntentRequests respects search limit while storing merged memory outputs", async () => {
+    const { runtime, memoryService } = await buildRuntimeWithServices();
+
+    const code1 = memoryService.saveMemory({
+      text: "Code1 是 9527。",
+      suggested_key: "Code1",
+      created_by: "runtime-test",
+    });
+    const code2 = memoryService.saveMemory({
+      text: "Code2 是 2048。",
+      suggested_key: "Code2",
+      created_by: "runtime-test",
+    });
+
+    const task = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "搜索 Code1 和 Code2" }],
+    });
+    runtime.currentTask = task;
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "SEARCH_MEMORY",
+        intent: "搜索 Code1 和 Code2",
+        params: {
+          words: "Code1 Code2",
+          limit: 1,
+        },
+      },
+      {
+        request: "FOLLOW_UP",
+        intent: "基于记忆继续回答",
+        params: {
+          sessionId: "session-1",
+          chatId: "chat-1",
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("stop");
+    expect(runtime.getMemoryContext("long").status).toBe("loaded");
+    expect(runtime.getMemoryContext("long").outputs).toHaveLength(1);
+    expect([code1.memory_key, code2.memory_key]).toContain(
+      runtime.getMemoryContext("long").outputs[0]?.memory.key,
+    );
+  });
+
   test("executeIntentRequests creates closure follow up when search has no explicit follow up", async () => {
     const { runtime } = await buildRuntimeWithServices();
 
@@ -555,7 +676,7 @@ describe("Runtime context", () => {
     });
     const savedMemoryKey = runtime.getMemoryContext("long").query;
     expect(runtime.getMemoryContext("long").status).toBe("loaded");
-    expect(runtime.getMemoryContext("long").output?.memory.text).toBe(
+    expect(runtime.getMemoryContext("long").outputs[0]?.memory.text).toBe(
       "MemoryService 默认 scope 是 long。",
     );
 
@@ -573,7 +694,7 @@ describe("Runtime context", () => {
     expect(updateResult).toEqual({
       status: "continue",
     });
-    expect(runtime.getMemoryContext("long").output?.memory.text).toBe(
+    expect(runtime.getMemoryContext("long").outputs[0]?.memory.text).toBe(
       "MemoryService 默认 scope 是 long，默认 type 是 note。",
     );
 
@@ -602,7 +723,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       payload: [{ type: "text", data: "first question" }],
     });
-    runtime.getUserIntentPredictionManager().setIntentPolicy("session-1", {
+    runtime.setIntentPolicy("session-1", {
       sessionId: "session-1",
       acceptedIntentType: "memory_lookup",
       preloadMemory: true,
@@ -640,7 +761,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
     });
 
-    const result = runtime.parseLLMRequest(
+    const result = runtime.parseIntentRequest(
       '[FOLLOW_UP, "已完成前半部分，下一轮继续补充实现步骤", sessionId=session-1;chatId=chat-1]',
     );
 
@@ -663,7 +784,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
     });
 
-    const result = runtime.parseLLMRequest(
+    const result = runtime.parseIntentRequest(
       [
         '[SEARCH_MEMORY, "搜索上下文记忆", words=follow up]',
         '[FOLLOW_UP, "继续当前回答", sessionId=session-1;chatId=chat-1]',
@@ -694,7 +815,7 @@ describe("Runtime context", () => {
   test("returns no safe requests when runtime context is missing", () => {
     const runtime = buildRuntime();
 
-    const result = runtime.parseLLMRequest(
+    const result = runtime.parseIntentRequest(
       '[FOLLOW_UP, "继续当前回答", sessionId=session-1;chatId=chat-1]',
     );
 

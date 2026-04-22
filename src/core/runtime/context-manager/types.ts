@@ -11,10 +11,10 @@
 import type {
   EmptyString,
   MemoryScope,
-  RuntimeMemoryOutput,
   UUID,
 } from "@/types";
 import type { TaskSource, TaskItem } from "@/types/task";
+import type { RuntimeMemoryItem } from "../memory-item";
 
 /* ==================== */
 /* Core Context Types   */
@@ -51,7 +51,7 @@ export type RuntimeMemoryScopeContext = {
   status: RuntimeMemoryScopeStatus;
   query: string;
   reason: string;
-  output: RuntimeMemoryOutput | null;
+  outputs: RuntimeMemoryItem[];
   updatedAt: number | null;
 };
 

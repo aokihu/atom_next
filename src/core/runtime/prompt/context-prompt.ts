@@ -79,51 +79,51 @@ export const convertMemoryScopeContextToPrompt = (
     prompt.push(`<Reason>${memoryContext.reason}</Reason>`);
   }
 
-  if (memoryContext.status === "loaded" && memoryContext.output) {
-    const { output } = memoryContext;
+  if (memoryContext.status === "loaded") {
+    for (const output of memoryContext.outputs) {
+      prompt.push(
+        "<MemoryItem>",
+        `<Key>${output.memory.key}</Key>`,
+        "<Text>",
+        output.memory.text,
+        "</Text>",
+        "<Meta>",
+        `<CreatedAt>${output.memory.meta.created_at}</CreatedAt>`,
+        `<UpdatedAt>${output.memory.meta.updated_at}</UpdatedAt>`,
+        `<Score>${output.memory.meta.score}</Score>`,
+        `<Status>${output.memory.meta.status}</Status>`,
+        `<Confidence>${output.memory.meta.confidence}</Confidence>`,
+        `<Type>${output.memory.meta.type}</Type>`,
+        "</Meta>",
+        "<Retrieval>",
+        `<Mode>${output.retrieval.mode}</Mode>`,
+        `<Relevance>${output.retrieval.relevance}</Relevance>`,
+        `<Reason>${output.retrieval.reason}</Reason>`,
+        "</Retrieval>",
+      );
 
-    prompt.push(
-      "<MemoryItem>",
-      `<Key>${output.memory.key}</Key>`,
-      "<Text>",
-      output.memory.text,
-      "</Text>",
-      "<Meta>",
-      `<CreatedAt>${output.memory.meta.created_at}</CreatedAt>`,
-      `<UpdatedAt>${output.memory.meta.updated_at}</UpdatedAt>`,
-      `<Score>${output.memory.meta.score}</Score>`,
-      `<Status>${output.memory.meta.status}</Status>`,
-      `<Confidence>${output.memory.meta.confidence}</Confidence>`,
-      `<Type>${output.memory.meta.type}</Type>`,
-      "</Meta>",
-      "<Retrieval>",
-      `<Mode>${output.retrieval.mode}</Mode>`,
-      `<Relevance>${output.retrieval.relevance}</Relevance>`,
-      `<Reason>${output.retrieval.reason}</Reason>`,
-      "</Retrieval>",
-    );
+      if (output.links.length === 0) {
+        prompt.push("<Links></Links>");
+      } else {
+        prompt.push("<Links>");
 
-    if (output.links.length === 0) {
-      prompt.push("<Links></Links>");
-    } else {
-      prompt.push("<Links>");
+        for (const link of output.links) {
+          prompt.push(
+            "<Link>",
+            `<TargetMemoryKey>${link.target_memory_key}</TargetMemoryKey>`,
+            `<TargetSummary>${link.target_summary}</TargetSummary>`,
+            `<LinkType>${link.link_type}</LinkType>`,
+            `<Term>${link.term}</Term>`,
+            `<Weight>${link.weight}</Weight>`,
+            "</Link>",
+          );
+        }
 
-      for (const link of output.links) {
-        prompt.push(
-          "<Link>",
-          `<TargetMemoryKey>${link.target_memory_key}</TargetMemoryKey>`,
-          `<TargetSummary>${link.target_summary}</TargetSummary>`,
-          `<LinkType>${link.link_type}</LinkType>`,
-          `<Term>${link.term}</Term>`,
-          `<Weight>${link.weight}</Weight>`,
-          "</Link>",
-        );
+        prompt.push("</Links>");
       }
 
-      prompt.push("</Links>");
+      prompt.push("</MemoryItem>");
     }
-
-    prompt.push("</MemoryItem>");
   }
 
   prompt.push(`</${tag}>`);

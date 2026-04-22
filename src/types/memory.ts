@@ -165,12 +165,6 @@ export type MarkMemoryStatusInput = {
   created_by?: string;
 };
 
-export type RetrieveRuntimeContextInput = {
-  memory_key?: string;
-  words?: string;
-  scope?: MemoryScope;
-};
-
 export type MemoryRetrieval = {
   mode: MemoryRetrievalMode;
   relevance: number;
@@ -185,31 +179,6 @@ export type MemoryOutput = {
   memory: MemoryNode;
   retrieval: MemoryRetrieval;
   links: RelatedMemoryLink[];
-};
-
-export type RuntimeMemoryLink = {
-  target_memory_key: string;
-  target_summary: string;
-  link_type: LinkType;
-  term: string;
-  weight: number;
-};
-
-export type RuntimeMemoryOutput = {
-  memory: {
-    key: string;
-    text: string;
-    meta: {
-      created_at: number;
-      updated_at: number;
-      score: number;
-      status: MemoryStatus;
-      confidence: number;
-      type: MemoryType;
-    };
-  };
-  retrieval: MemoryRetrieval;
-  links: RuntimeMemoryLink[];
 };
 
 export type SaveMemoryResult = {

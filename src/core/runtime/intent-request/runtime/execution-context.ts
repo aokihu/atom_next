@@ -50,8 +50,8 @@ export function createIntentRequestExecutionContext(
     recordMemorySearchResult: (scope, options) => {
       input.contextManager.recordMemorySearchResult(scope, options);
     },
-    setMemoryContext: (scope, output, options) => {
-      input.contextManager.setMemoryContext(scope, output, options);
+    setMemoryContext: (scope, outputs, options) => {
+      input.contextManager.setMemoryContext(scope, outputs, options);
     },
     getLoadedMemoryScopeByKey: (memoryKey) => {
       return input.contextManager.getLoadedMemoryScopeByKey(memoryKey);

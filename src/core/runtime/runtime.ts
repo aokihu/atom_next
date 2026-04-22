@@ -4,7 +4,6 @@ import type {
   IntentRequestSafetyContext,
   MemoryScope,
   PrepareConversationIntentRequest,
-  RuntimeMemoryOutput,
 } from "@/types";
 import type { ServiceManager } from "@/libs/service-manage";
 import { type TaskItem } from "@/types/task";
@@ -38,6 +37,7 @@ import {
   resolveTransportModelProfile,
   shouldReportIntentRequestLogs,
 } from "./service-access";
+import type { RuntimeMemoryItem } from "./memory-item";
 import type { Transport, TransportModelProfile } from "../transport";
 import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
 
@@ -248,13 +248,13 @@ export class Runtime {
    */
   public setMemoryContext(
     scope: MemoryScope,
-    output: RuntimeMemoryOutput,
+    outputs: RuntimeMemoryItem[],
     options: {
       query?: string;
       reason?: string;
     } = {},
   ) {
-    this.#contextManager.setMemoryContext(scope, output, options);
+    this.#contextManager.setMemoryContext(scope, outputs, options);
   }
 
   /**
@@ -277,7 +277,7 @@ export class Runtime {
     scope: MemoryScope,
     options: {
       words: string;
-      output: RuntimeMemoryOutput | null;
+      outputs: RuntimeMemoryItem[];
       reason?: string;
     },
   ) {

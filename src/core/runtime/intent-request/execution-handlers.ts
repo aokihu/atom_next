@@ -10,6 +10,7 @@ import type {
   FollowUpIntentRequest,
   IntentRequest,
   LoadMemoryIntentRequest,
+  MemoryOutput,
   MemoryScope,
   PrepareConversationIntentRequest,
   SaveMemoryIntentRequest,
@@ -20,6 +21,7 @@ import type {
 import { IntentRequestType } from "@/types";
 import { TaskState, type TaskItem } from "@/types/task";
 import { isEmpty } from "radashi";
+import { createRuntimeMemoryItem } from "../memory-item";
 import {
   buildFollowUpTask,
   buildFormalConversationTask,
@@ -35,21 +37,55 @@ import type {
 /* Memory Requests      */
 /* ==================== */
 
+const PRELOAD_MEMORY_LIMIT = 3;
+
+const createSearchRuntimeMemoryItems = (
+  requestWords: string,
+  outputs: ReturnType<RuntimeIntentRequestExecutionContext["memory"]["searchMemory"]>,
+) => {
+  return outputs.map((output) => {
+    return createRuntimeMemoryItem(output, {
+      retrieval: {
+        mode: "context",
+        relevance: output.retrieval.relevance,
+        reason: `Loaded runtime context from search ${requestWords}`,
+      },
+    });
+  });
+};
+
+const createKeyRuntimeMemoryItems = (
+  memoryKey: string,
+  outputs: MemoryOutput[],
+) => {
+  return outputs.map((output) => {
+    return createRuntimeMemoryItem(output, {
+      retrieval: {
+        mode: "context",
+        relevance: output.retrieval.relevance,
+        reason: `Loaded runtime context from key ${memoryKey}`,
+      },
+    });
+  });
+};
+
 const processSearchMemoryIntentRequest = (
   request: SearchMemoryIntentRequest,
   context: RuntimeIntentRequestExecutionContext,
 ): IntentRequestExecutionResult => {
   const scope = resolveMemoryScope(request.params.scope);
   const words = request.params.words.trim();
-  const output = context.memory.retrieveRuntimeContext({
+  const outputs = context.memory.searchMemory({
     words,
     scope,
+    limit: request.params.limit,
   });
+  const runtimeOutputs = createSearchRuntimeMemoryItems(words, outputs);
 
   context.recordMemorySearchResult(scope, {
     words,
-    output,
-    reason: output
+    outputs: runtimeOutputs,
+    reason: runtimeOutputs.length > 0
       ? `Loaded ${scope} memory for ${words}`
       : `No ${scope} memory matched ${words}`,
   });
@@ -71,16 +107,14 @@ const processLoadMemoryIntentRequest = (
     };
   }
 
-  const runtimeOutput = context.memory.retrieveRuntimeContext({
-    memory_key: request.params.key,
-  });
-
-  if (runtimeOutput) {
-    context.setMemoryContext(output.memory.scope, runtimeOutput, {
+  context.setMemoryContext(
+    output.memory.scope,
+    createKeyRuntimeMemoryItems(request.params.key, [output]),
+    {
       query: request.params.key,
       reason: `Loaded memory by explicit key ${request.params.key}`,
-    });
-  }
+    },
+  );
 
   return {
     status: "continue",
@@ -101,13 +135,10 @@ const processSaveMemoryIntentRequest = (
     source_ref: task.chatId,
     created_by: "core_intent_request",
   });
-  const output = context.memory.retrieveRuntimeContext({
-    memory_key: saveResult.memory_key,
-    scope,
-  });
+  const output = context.memory.getMemoryByKey(saveResult.memory_key);
 
   if (output) {
-    context.setMemoryContext(scope, output, {
+    context.setMemoryContext(scope, createKeyRuntimeMemoryItems(saveResult.memory_key, [output]), {
       query: saveResult.memory_key,
       reason: `Saved memory as ${saveResult.memory_key}`,
     });
@@ -128,13 +159,11 @@ const processUpdateMemoryIntentRequest = (
     ...(request.params.summary ? { summary: request.params.summary } : {}),
     created_by: "core_intent_request",
   });
-  const runtimeOutput = context.memory.retrieveRuntimeContext({
-    memory_key: request.params.key,
-  });
+  const output = context.memory.getMemoryByKey(request.params.key);
   const loadedScope = context.getLoadedMemoryScopeByKey(request.params.key);
 
-  if (runtimeOutput && loadedScope) {
-    context.setMemoryContext(loadedScope, runtimeOutput, {
+  if (output && loadedScope) {
+    context.setMemoryContext(loadedScope, createKeyRuntimeMemoryItems(request.params.key, [output]), {
       query: request.params.key,
       reason: `Updated memory ${request.params.key}`,
     });
@@ -185,15 +214,20 @@ const processPrepareConversationIntentRequest = (
       memoryContext.status === "idle" ||
       memoryContext.query !== request.params.memoryQuery
     ) {
-      const output = context.memory.retrieveRuntimeContext({
+      const outputs = context.memory.searchMemory({
         words: request.params.memoryQuery,
         scope,
+        limit: PRELOAD_MEMORY_LIMIT,
       });
+      const runtimeOutputs = createSearchRuntimeMemoryItems(
+        request.params.memoryQuery,
+        outputs,
+      );
 
       context.recordMemorySearchResult(scope, {
         words: request.params.memoryQuery,
-        output,
-        reason: output
+        outputs: runtimeOutputs,
+        reason: runtimeOutputs.length > 0
           ? `Loaded ${scope} memory from prepare conversation query ${request.params.memoryQuery}`
           : `No ${scope} memory matched prepare conversation query ${request.params.memoryQuery}`,
       });

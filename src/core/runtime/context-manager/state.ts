@@ -38,7 +38,7 @@ export const createRuntimeMemoryScopeContext = (): RuntimeMemoryScopeContext => 
     status: "idle",
     query: "",
     reason: "",
-    output: null,
+    outputs: [],
     updatedAt: null,
   };
 };

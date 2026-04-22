@@ -1,5 +1,6 @@
 export { Runtime } from "./runtime";
 export { ContextManager } from "./context-manager";
+export { createRuntimeMemoryItem } from "./memory-item";
 export {
   createPredictedIntent,
   parseIntentPredictionText,

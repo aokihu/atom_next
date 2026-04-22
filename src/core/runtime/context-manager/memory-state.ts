@@ -8,7 +8,8 @@
  * 这样 memory 状态长相和状态切换规则可以独立演进，
  * 不必继续堆进 ContextManager 主文件。
  */
-import type { MemoryScope, RuntimeMemoryOutput } from "@/types";
+import type { MemoryScope } from "@/types";
+import type { RuntimeMemoryItem } from "../memory-item";
 import type { RuntimeMemoryScopeContext } from "./types";
 
 /* ==================== */
@@ -16,7 +17,7 @@ import type { RuntimeMemoryScopeContext } from "./types";
 /* ==================== */
 
 export const createLoadedMemoryScopeContext = (
-  output: RuntimeMemoryOutput,
+  outputs: RuntimeMemoryItem[],
   options: {
     query?: string;
     reason?: string;
@@ -26,7 +27,7 @@ export const createLoadedMemoryScopeContext = (
     status: "loaded",
     query: options.query?.trim() ?? "",
     reason: options.reason?.trim() ?? "",
-    output: structuredClone(output),
+    outputs: structuredClone(outputs),
     updatedAt: Date.now(),
   };
 };
@@ -39,7 +40,7 @@ export const createEmptyMemoryScopeContext = (options: {
     status: "empty",
     query: options.query.trim(),
     reason: options.reason.trim(),
-    output: null,
+    outputs: [],
     updatedAt: Date.now(),
   };
 };
@@ -52,12 +53,12 @@ export const createMemorySearchResultContext = (
   scope: MemoryScope,
   options: {
     words: string;
-    output: RuntimeMemoryOutput | null;
+    outputs: RuntimeMemoryItem[];
     reason?: string;
   },
 ): RuntimeMemoryScopeContext => {
-  if (options.output) {
-    return createLoadedMemoryScopeContext(options.output, {
+  if (options.outputs.length > 0) {
+    return createLoadedMemoryScopeContext(options.outputs, {
       query: options.words,
       reason: options.reason,
     });

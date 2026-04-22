@@ -175,7 +175,7 @@ describe("Core memory intent requests", () => {
     const completedEvents = [];
     const chunkEvents = [];
     const eventTarget = new EventEmitter();
-    eventTarget.on(ChatEvents.CHAT_CHUNK_APPENDED, (payload) => {
+    eventTarget.on(ChatEvents.CHAT_OUTPUT_UPDATED, (payload) => {
       chunkEvents.push(payload);
     });
     eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
@@ -208,7 +208,7 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[1].system).toContain("Watchman 服务不负责 Memory 持久化。");
     expect(streamCalls[1].prompt).toBe("基于记忆继续回答");
     expect(chunkEvents).toHaveLength(1);
-    expect(chunkEvents[0].chunk).toBe("Watchman 服务不负责 Memory 持久化。");
+    expect(chunkEvents[0].delta).toBe("Watchman 服务不负责 Memory 持久化。");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
       "Watchman 服务不负责 Memory 持久化。",

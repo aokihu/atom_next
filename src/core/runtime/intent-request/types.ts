@@ -9,9 +9,9 @@
 import type { MemoryService } from "@/services";
 import type {
   MemoryScope,
-  RuntimeMemoryOutput,
 } from "@/types";
 import type { IntentExecutionPolicy } from "../user-intent";
+import type { RuntimeMemoryItem } from "../memory-item";
 
 /* ==================== */
 /* Parse Types          */
@@ -45,13 +45,13 @@ export type RuntimeIntentRequestExecutionContext = {
     scope: MemoryScope,
     options: {
       words: string;
-      output: RuntimeMemoryOutput | null;
+      outputs: RuntimeMemoryItem[];
       reason?: string;
     },
   ) => void;
   setMemoryContext: (
     scope: MemoryScope,
-    output: RuntimeMemoryOutput,
+    outputs: RuntimeMemoryItem[],
     options?: {
       query?: string;
       reason?: string;

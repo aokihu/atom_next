@@ -270,7 +270,7 @@ describe("MemoryService", () => {
     database.close();
   });
 
-  test("supports get search update status and runtime context retrieval", async () => {
+  test("supports get search update and status changes through memory outputs", async () => {
     const workspace = await createWorkspace();
     const { memory } = buildServices(workspace);
 
@@ -308,27 +308,41 @@ describe("MemoryService", () => {
     });
     expect(statusUpdated.memory.status).toBe("deprecated");
 
-    const runtimeContext = memory.retrieveRuntimeContext({
+    const refreshedSearch = memory.searchMemory({
       words: "sqlite database",
     });
 
-    expect(runtimeContext).toEqual({
+    expect(refreshedSearch).toHaveLength(1);
+    expect(refreshedSearch[0]).toEqual({
       memory: {
-        key: saved.memory_key,
+        id: expect.any(String),
+        memory_key: saved.memory_key,
+        scope: "long",
+        type: "design",
+        summary: "Persist design decisions in sqlite database",
         text: "MemoryService persists design decisions in sqlite database",
-        meta: {
-          created_at: expect.any(Number),
-          updated_at: expect.any(Number),
-          score: 50,
-          status: "deprecated",
-          confidence: 0.7,
-          type: "design",
-        },
+        confidence: 0.7,
+        importance: 0.5,
+        score: 50,
+        source: "user",
+        source_ref: null,
+        created_at: expect.any(Number),
+        updated_at: expect.any(Number),
+        last_accessed_at: expect.any(Number),
+        last_linked_at: expect.any(Number),
+        access_count: 0,
+        traverse_count: 0,
+        in_degree: 0,
+        out_degree: 0,
+        status: "deprecated",
+        status_reason: "superseded by v2 design",
+        superseded_by_memory_id: null,
+        expires_at: null,
       },
       retrieval: {
-        mode: "context",
+        mode: "search",
         relevance: expect.any(Number),
-        reason: "Loaded runtime context from search sqlite database",
+        reason: "FTS5 matched sqlite database with query sqlite database",
       },
       links: [],
     });
@@ -373,6 +387,91 @@ describe("MemoryService", () => {
     expect(search[0]?.memory.memory_key).toBe(saved.memory_key);
     expect(search[0]?.retrieval.reason).toContain(
       "FTS5 matched 默认 scope MemoryService 默认 type",
+    );
+  });
+
+  test("supplements multi-entity search results when memories are stored separately", async () => {
+    const workspace = await createWorkspace();
+    const { memory } = buildServices(workspace);
+
+    await memory.start();
+
+    const code1 = memory.saveMemory({
+      text: "Code1 是 9527。",
+      suggested_key: "Code1",
+    });
+    const code2 = memory.saveMemory({
+      text: "Code2 是 2048。",
+      suggested_key: "Code2",
+    });
+
+    const search = memory.searchMemory({
+      words: "Code1 Code2",
+      limit: 5,
+    });
+
+    expect(search).toHaveLength(2);
+    expect(search.map((item) => item.memory.memory_key).sort()).toEqual([
+      code1.memory_key,
+      code2.memory_key,
+    ].sort());
+    expect(search[0]?.retrieval.reason).toContain("Code1 Code2");
+    expect(search[1]?.retrieval.reason).toContain("Code1 Code2");
+  });
+
+  test("keeps exact memory key match ahead of supplemental term matches", async () => {
+    const workspace = await createWorkspace();
+    const { memory } = buildServices(workspace);
+
+    await memory.start();
+
+    const exact = memory.saveMemory({
+      text: "Exact key memory for Code1 Code2.",
+      suggested_key: "Code1 Code2",
+    });
+    memory.saveMemory({
+      text: "Code1 单独记录。",
+      suggested_key: "Code1 only",
+    });
+    memory.saveMemory({
+      text: "Code2 单独记录。",
+      suggested_key: "Code2 only",
+    });
+
+    const search = memory.searchMemory({
+      words: exact.memory_key,
+      limit: 5,
+    });
+
+    expect(search[0]?.memory.memory_key).toBe(exact.memory_key);
+    expect(search[0]?.retrieval.reason).toBe(
+      `Exact key match for ${exact.memory_key}`,
+    );
+  });
+
+  test("applies search limit after merging multi-entity candidates", async () => {
+    const workspace = await createWorkspace();
+    const { memory } = buildServices(workspace);
+
+    await memory.start();
+
+    const code1 = memory.saveMemory({
+      text: "Code1 独立记录。",
+      suggested_key: "Code1",
+    });
+    const code2 = memory.saveMemory({
+      text: "Code2 独立记录。",
+      suggested_key: "Code2",
+    });
+
+    const search = memory.searchMemory({
+      words: "Code1 Code2",
+      limit: 1,
+    });
+
+    expect(search).toHaveLength(1);
+    expect([code1.memory_key, code2.memory_key]).toContain(
+      search[0]?.memory.memory_key,
     );
   });
 });
