@@ -2,7 +2,7 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "private": true,
   "scripts": {
     "build:bin": "bun run ./scripts/build.ts"
@@ -23,6 +23,9 @@
     "@opentui/core": "^0.1.100",
     "@opentui/react": "^0.1.100",
     "dotenv": "^17.4.2",
+    "mitt": "^3.0.1",
+    "pino": "^10.3.1",
+    "pipelogger": "^1.0.0",
     "react": "^19.2.5",
     "react-devtools-core": "^7.0.1",
     "web-tree-sitter": "0.25.10",
