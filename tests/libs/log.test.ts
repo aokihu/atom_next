@@ -7,6 +7,9 @@ import {
 } from "@/libs/log";
 import { resetLogSystem } from "@/libs/log/log-system";
 import { parseLogFilePath } from "@/libs/log/sinks/file-sink";
+import {
+  formatPrettyLogEntry,
+} from "@/libs/log/formatters/pretty-text";
 
 const createMemorySink = () => {
   const entries: LogEntry[] = [];
@@ -163,5 +166,40 @@ describe("createFileSink", () => {
         new Date(2026, 3, 23, 12, 30),
       ),
     ).toBe("/workspace/logs/atom-2026-04-23.log.jsonl");
+  });
+});
+
+describe("log output formatters", () => {
+  const entry: LogEntry = {
+    id: "log-1",
+    time: new Date(2026, 3, 24, 10, 30, 15, 123).getTime(),
+    level: "info",
+    source: "runtime",
+    message: "Intent Request dispatched",
+    data: {
+      request: "SEARCH_MEMORY",
+      status: "accepted",
+    },
+  };
+
+  test("formats pretty text without color for pipe output", () => {
+    const formatted = formatPrettyLogEntry(entry, {
+      color: false,
+    });
+
+    expect(formatted).toContain("[INFO]");
+    expect(formatted).toContain("Intent Request dispatched");
+    expect(formatted).toContain("request=SEARCH_MEMORY");
+    expect(formatted).toContain("status=accepted");
+  });
+
+  test("formats pretty text with color for cli output", () => {
+    const formatted = formatPrettyLogEntry(entry, {
+      color: true,
+    });
+
+    expect(formatted).toContain("[INFO]");
+    expect(formatted).toContain("runtime");
+    expect(formatted).toContain("Intent Request dispatched");
   });
 });

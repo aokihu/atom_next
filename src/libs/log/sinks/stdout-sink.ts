@@ -1,15 +1,11 @@
-import pino from "pino";
-import type { LogLevel, LogSink } from "../types";
-import { formatPinoLog } from "../formatters/pino-format";
+import type { LogSink } from "../types";
+import { formatPrettyLogEntry } from "../formatters/pretty-text";
 
-export const createStdoutSink = (level: LogLevel = "debug"): LogSink => {
-  const logger = pino({ level }, pino.destination(1));
-
+export const createStdoutSink = (): LogSink => {
   return {
     name: "stdout",
     write(entry) {
-      const formatted = formatPinoLog(entry);
-      logger[formatted.level](formatted.payload, formatted.message);
+      process.stdout.write(`${formatPrettyLogEntry(entry, { color: true })}\n`);
     },
   };
 };

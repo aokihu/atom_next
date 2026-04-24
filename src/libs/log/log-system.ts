@@ -65,7 +65,7 @@ const createConfiguredSinks = (
   const sinks = [...(config.sinks ?? [])];
 
   if (config.enableStdout) {
-    sinks.push(createStdoutSink(level));
+    sinks.push(createStdoutSink());
   }
 
   if (config.enableFile) {
@@ -73,7 +73,7 @@ const createConfiguredSinks = (
     if (!logsDir) {
       throw new Error("Log directory is required");
     }
-    sinks.push(createFileSink(logsDir, level));
+    sinks.push(createFileSink(logsDir));
   }
 
   if (config.enablePipe) {

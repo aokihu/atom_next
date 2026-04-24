@@ -1,10 +1,7 @@
-import pino from "pino";
 import { join } from "node:path";
-import type { Logger as PinoLogger } from "pino";
-import type { LogLevel, LogSink } from "../types";
-import { formatPinoLog } from "../formatters/pino-format";
-
-type PinoDestination = ReturnType<typeof pino.destination>;
+import { createWriteStream, mkdirSync } from "node:fs";
+import type { WriteStream } from "node:fs";
+import type { LogSink } from "../types";
 
 const padDatePart = (value: number) => {
   return String(value).padStart(2, "0");
@@ -22,52 +19,41 @@ export const parseLogFilePath = (logsDir: string, date = new Date()) => {
   return join(logsDir, `atom-${parseLogDate(date)}.log.jsonl`);
 };
 
-export const createFileSink = (
-  logsDir: string,
-  level: LogLevel = "debug",
-): LogSink => {
+export const createFileSink = (logsDir: string): LogSink => {
   let currentFilePath = "";
-  let logger: PinoLogger | undefined;
-  let destination: PinoDestination | undefined;
+  let stream: WriteStream | undefined;
 
-  const closeDestination = () => {
+  const closeStream = () => {
     try {
-      destination?.end();
+      stream?.end();
     } catch {
       // Sink cleanup must not affect logging.
     }
   };
 
-  const getLogger = (time: number) => {
+  const getStream = (time: number) => {
     const filePath = parseLogFilePath(logsDir, new Date(time));
 
-    if (logger && currentFilePath === filePath) {
-      return logger;
+    if (stream && currentFilePath === filePath) {
+      return stream;
     }
 
     currentFilePath = filePath;
-    closeDestination();
-    destination = pino.destination({
-      dest: filePath,
-      mkdir: true,
-      sync: false,
+    closeStream();
+    mkdirSync(logsDir, {
+      recursive: true,
     });
-    logger = pino(
-      { level },
-      destination,
-    );
+    stream = createWriteStream(filePath, {
+      flags: "a",
+    });
 
-    return logger;
+    return stream;
   };
 
   return {
     name: "file",
     write(entry) {
-      const formatted = formatPinoLog(entry);
-      getLogger(entry.time)[formatted.level](
-        formatted.payload,
-        formatted.message,
-      );
+      getStream(entry.time).write(`${JSON.stringify(entry)}\n`);
     },
   };
 };

@@ -183,6 +183,22 @@ Logger:
 
 ---
 
+### 7. 日志输出格式策略
+
+LogHub 只分发标准 `LogEntry`，不同输出格式由 sink 负责。
+
+- `file` 模式使用 JSONL，一行一个完整 `LogEntry`，用于机器读取、归档和后续分析。
+- `cli` 模式使用人类可读的 pretty text 格式，可带颜色，但在 `--mode=tui` 下默认禁止直接输出到 stdout，避免破坏 TUI 渲染。
+- `pipe` 模式使用无颜色的 pretty text 单行格式，保证 named pipe 或外部进程读取时不会收到 ANSI 控制字符。
+
+推荐 pretty text 格式：
+
+```text
+[LEVEL] YYYY-MM-DD HH:mm:ss.SSS source       > message key=value
+```
+
+---
+
 ## 模块边界
 
 ### LogSystem 负责
@@ -235,7 +251,7 @@ src/libs/log/
   log-hub.ts
   normalize-error.ts
   formatters/
-    pino-format.ts
+    pretty-text.ts
   sinks/
     stdout-sink.ts
     file-sink.ts
@@ -244,7 +260,7 @@ src/libs/log/
 
 说明：
 
-- `formatters/pino-format.ts` 负责把 `LogEntry` 转换为 pino 输出参数
+- `formatters/pretty-text.ts` 负责把 `LogEntry` 转换为 CLI / pipe 使用的 pretty text
 - `stdout-sink.ts` / `file-sink.ts` / `pipe-sink.ts` 负责各自目标介质的写入策略
 - 第一版不强制实现 `memory-sink`
 - `pipe-sink.ts` 内部基于 `pipelogger` 实现
@@ -505,19 +521,17 @@ logger.info("API server started", {
 
 本计划新增依赖：
 
-- `pino`
 - `mitt`
 - `pipelogger`
 
 安装命令：
 
 ```sh
-bun add pino mitt pipelogger
+bun add mitt pipelogger
 ```
 
 其中：
 
-- `pino` 负责结构化日志输出
 - `mitt` 负责 `LogHub` 内部分发
 - `pipelogger` 负责命名管道写入
 
