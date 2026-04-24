@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { isPlainObject, isString, retry, tryit } from "radashi";
 import { createModelWithProvider } from "@/core/transport/model";
 import type { RuntimeService } from "@/services/runtime";
+import type { Logger } from "@/libs/log";
 import { BaseService } from "../base";
 import {
   AGENTS_FILE,
@@ -32,6 +33,7 @@ type WatchmanServiceOptions = {
   compilePrompt?: (content: string, abortSignal?: AbortSignal) => Promise<string>;
   createWorker?: () => WatchmanWorkerPort;
   maxCompileRetries?: number;
+  logger?: Logger;
 };
 
 /**
@@ -63,6 +65,7 @@ export class WatchmanService extends BaseService {
   #createWorker: () => WatchmanWorkerPort;
   #compileAbortController: AbortController | undefined;
   #compileMaxRetries: number;
+  #logger: Logger | undefined;
 
   /* ===================== */
   /*      Constructor      */
@@ -82,6 +85,7 @@ export class WatchmanService extends BaseService {
     this.#compileAbortController = undefined;
     this.#compileMaxRetries =
       options.maxCompileRetries ?? WATCHMAN_COMPILE_MAX_RETRIES;
+    this.#logger = options.logger;
     this.#compilePrompt =
       options.compilePrompt ??
       ((content, abortSignal) => {
@@ -594,6 +598,9 @@ export class WatchmanService extends BaseService {
           : event.message || "Watchman worker failed";
 
       this.#setStatus(WatchmanPhase.ERROR, this.#status.hash, message);
+      this.#logger?.error("Watchman worker failed", {
+        error: event.error ?? new Error(message),
+      });
       if (!this.#hasActiveRuntimePrompt()) {
         this.#syncRuntimePromptSnapshot("", {
           phase: WatchmanPhase.ERROR,
@@ -625,10 +632,7 @@ export class WatchmanService extends BaseService {
 
     if (message.type === WatchmanWorkerSignal.CHANGED) {
       this.#syncSerially().catch((error) => {
-        console.error(
-          "Watchman sync failed: %s",
-          error instanceof Error ? error.message : "Unknown watchman error",
-        );
+        this.#logger?.error("Watchman sync failed", { error });
       });
       return;
     }

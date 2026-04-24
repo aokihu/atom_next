@@ -6,20 +6,22 @@
  */
 
 import { DefaultConfig } from "@/types/config";
-import { parseArguments } from "./cli";
 import { parseEnvFiles, setProcessEnv } from "./env";
-import { tryParseConfigFile } from "./";
+import { parseConfigFile } from "./config";
 import type { ConfigFileScheme } from "@/types/config";
+import type { BootArguments } from "./cli";
+import type { Logger } from "@/libs/log";
+import { tryit } from "radashi";
+
+const tryParseConfigFile = tryit(parseConfigFile);
 
 /* ---------------- */
 /* 类型定义          */
 /* ---------------- */
 
-type ParsedCliArguments = ReturnType<typeof parseArguments>;
-
 // 启动器返回值，供 main.ts 继续决定启动 server、tui 或两者同时启动。
 export type BootstrapResult = {
-  cliArgs: ParsedCliArguments;
+  cliArgs: BootArguments;
   config: ConfigFileScheme;
 };
 
@@ -31,10 +33,10 @@ export type BootstrapResult = {
  * 解析启动上下文。
  * 只有配置文件缺失时才回退默认配置；文件存在但内容非法时直接抛错。
  */
-export const bootstrap = async (): Promise<BootstrapResult> => {
-  /* --- 命令行解析 --- */
-  const cliArgs = parseArguments(Bun.argv.slice(2));
-
+export const bootstrap = async (
+  cliArgs: BootArguments,
+  logger?: Logger,
+): Promise<BootstrapResult> => {
   /* --- 解析环境文件 --- */
   const envArgs = parseEnvFiles(cliArgs.workspace);
 
@@ -42,6 +44,9 @@ export const bootstrap = async (): Promise<BootstrapResult> => {
   const [configError, configArgs] = await tryParseConfigFile(
     cliArgs.config,
     true,
+    {
+      logger,
+    },
   );
 
   // 配置文件不存在时允许回退默认配置，方便最小启动；

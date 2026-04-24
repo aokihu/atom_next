@@ -50,19 +50,19 @@ export function resolveMemoryService(
 /* ==================== */
 
 /**
- * 判断当前模式是否允许直接输出 Intent Request 调试日志。
+ * 判断当前是否允许记录 Intent Request 调试日志。
  * @description
- * TUI 和 both 模式会占用当前终端渲染界面，
- * 如果继续向 stdout/stderr 打日志，会直接污染界面显示。
- * 当前先按最小策略收口：只有 server 模式才输出这类调试日志。
+ * Runtime 只判断日志是否被显式静默。
+ * 是否写入 stdout / file / pipe 由 LogSystem sink 决定，避免 Runtime
+ * 因 mode 判断错误而阻断 TUI 模式下的 file/pipe 调试数据。
  */
 export function shouldReportIntentRequestLogs(
   serviceManager: ServiceManager,
 ): boolean {
   const runtime = resolveRuntimeService(serviceManager);
-  const mode = runtime.getAllArguments().mode;
+  const { logSilent } = runtime.getAllArguments();
 
-  return mode === "server";
+  return logSilent !== true;
 }
 
 /**

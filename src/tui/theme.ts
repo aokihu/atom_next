@@ -161,7 +161,7 @@ export const resolveTuiTheme = async ({
   workspace,
   theme,
   readThemeFile = readThemeJsonFile,
-  warn = console.warn,
+  warn = () => {},
 }: ResolveTuiThemeOptions): Promise<TuiThemeScheme> => {
   const selectedTheme =
     isString(theme) && !isEmpty(theme.trim()) ? theme : "nord";

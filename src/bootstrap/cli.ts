@@ -7,9 +7,11 @@
 
 import { version } from "@/../package.json" with { type: "json" };
 import { parseArgs, type ParseArgsConfig } from "node:util";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+import { statSync } from "node:fs";
 import { isEmpty, isNullish } from "radashi";
 import { withDefault } from "@/libs";
+import type { LogSystemConfig } from "@/libs/log";
 import { DEFAULT_HOST } from "@constant";
 
 type Mode = "tui" | "server" | "both";
@@ -24,14 +26,22 @@ type ParsedArguments = {
   "server-url": string;
   address: string;
   port: string;
+  "log-pipe": string;
+  "log-file": boolean;
+  "log-silent": boolean;
 };
 
-export type BootArguments = Omit<
-  ParsedArguments,
-  "server-url" | "port" | "help" | "version"
-> & {
+export type BootArguments = {
+  mode: Mode;
+  config: string;
+  workspace: string;
+  sandbox: string;
   serverUrl: string;
+  address: string;
   port?: number;
+  logPipe?: string;
+  logFile: boolean;
+  logSilent: boolean;
 };
 
 /**
@@ -55,6 +65,12 @@ export type BootArguments = Omit<
  *              --address       服务器监听地址,如果不设置默认是127.0.0.1
  *
  *              --port          服务器监听端口,如果不设置默认是8787,如果被占用那么会自动寻找可以使用的端口
+ *
+ *              --log-pipe      指定已有命名管道路径并启用日志输出
+ *
+ *              --log-file      启用文件日志输出
+ *
+ *              --log-silent    禁用所有日志输出
  */
 
 /**
@@ -79,12 +95,17 @@ Atom Next - AI 驱动的开发工具
   --server-url <url>     TUI 模式下指定服务器地址,比如 http://127.0.0.1:8787
   --address <address>    服务器监听地址 (default: "127.0.0.1")
   --port <port>          服务器监听端口 (default: 8787)
+  --log-pipe <path>      启用命名管道日志输出，path 必须是已存在的 FIFO
+  --log-file             启用文件日志输出
+  --log-silent           禁用所有日志输出
 
 示例:
   atom                          # 同时启动 TUI 和 Server
   atom --mode server            # 只启动 Server
   atom --mode tui --server-url http://127.0.0.1:8787  # 只启动 TUI 连接到指定服务器
   atom --port 9000              # 指定 Server 端口
+  atom --mode server --log-file # 启用 Server 文件日志
+  atom --log-pipe /tmp/atom.log.pipe # 启用已有命名管道日志输出
 `;
   console.log(help);
 };
@@ -122,6 +143,15 @@ const cliOpts: ParseArgsConfig["options"] = {
   },
   port: {
     type: "string",
+  },
+  "log-pipe": {
+    type: "string",
+  },
+  "log-file": {
+    type: "boolean",
+  },
+  "log-silent": {
+    type: "boolean",
   },
 };
 
@@ -171,10 +201,10 @@ export const parseArguments = (args: string[]): BootArguments => {
   /* --- 整理解析后的参数值 --- */
 
   // 启动模式
-  const mode = withDefault<string>(() => {
+  const mode = withDefault<Mode>(() => {
     const rawMode = parsed.mode;
     if (!isNullish(rawMode) && ["tui", "server", "both"].includes(rawMode)) {
-      return rawMode;
+      return rawMode as Mode;
     }
   }, "both");
 
@@ -215,6 +245,9 @@ export const parseArguments = (args: string[]): BootArguments => {
   const serverUrl = withDefault<string>(parsed["server-url"], "");
   const address = withDefault<string>(parsed.address, DEFAULT_HOST);
   const port = parsed.port ? Number(parsed.port) : undefined;
+  const logPipe = parsed["log-pipe"];
+  const logFile = parsed["log-file"] ?? false;
+  const logSilent = parsed["log-silent"] ?? false;
 
   /* --- 组装启动参数 --- */
   const bootArgs: BootArguments = {
@@ -225,9 +258,56 @@ export const parseArguments = (args: string[]): BootArguments => {
     serverUrl,
     address,
     port,
+    logPipe,
+    logFile,
+    logSilent,
   };
 
   validateBootArguments(bootArgs);
 
   return bootArgs;
+};
+
+export const parseLogConfig = (args: BootArguments): LogSystemConfig => {
+  const logsDir = join(args.workspace, "logs");
+  const silent = args.logSilent;
+  const pipePath = args.logPipe
+    ? isAbsolute(args.logPipe)
+      ? args.logPipe
+      : resolve(args.workspace, args.logPipe)
+    : undefined;
+
+  const canUseLogPipe = () => {
+    if (silent || !pipePath) {
+      return false;
+    }
+
+    try {
+      if (!statSync(pipePath).isFIFO()) {
+        console.warn(
+          `[log warning] ${pipePath} is not a named pipe, pipe debug output disabled`,
+        );
+        return false;
+      }
+
+      return true;
+    } catch {
+      console.warn(
+        `[log warning] ${pipePath} does not exist, pipe debug output disabled`,
+      );
+      return false;
+    }
+  };
+  const enablePipe = canUseLogPipe();
+
+  return {
+    level: "debug",
+    silent,
+    enableStdout: !silent && args.mode === "server",
+    enableFile: !silent && args.logFile,
+    enablePipe,
+    workspace: args.workspace,
+    logsDir,
+    pipePath,
+  };
 };

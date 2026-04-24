@@ -24,6 +24,7 @@ import { dispatchIntentRequests } from "../dispatch";
 import { parseIntentRequests } from "../parse";
 import { checkIntentRequestSafety } from "../safety";
 import type { HandleIntentRequestRuntime } from "./types";
+import type { Logger } from "@/libs/log";
 
 /* ==================== */
 /* Report Helpers       */
@@ -32,49 +33,56 @@ import type { HandleIntentRequestRuntime } from "./types";
 function reportIntentRequestParseMiss(
   intentRequestText: string,
   shouldReportLogs: boolean,
+  logger?: Logger,
 ) {
-  if (!shouldReportLogs) {
+  if (!shouldReportLogs || !logger) {
     return;
   }
 
-  console.warn(
-    "[Intent Request] parse miss, raw request text was ignored:\n%s",
-    intentRequestText,
-  );
+  logger.warn("Intent Request parse miss", {
+    data: {
+      intentRequestText,
+    },
+  });
 }
 
 function reportRejectedIntentRequests(
   rejectedRequests: RejectedIntentRequest[],
   shouldReportLogs: boolean,
+  logger?: Logger,
 ) {
-  if (!shouldReportLogs) {
+  if (!shouldReportLogs || !logger) {
     return;
   }
 
   for (const rejectedRequest of rejectedRequests) {
-    console.warn(
-      "[Intent Request] rejected %s: %s",
-      rejectedRequest.request.request,
-      rejectedRequest.reason,
-    );
+    logger.warn("Intent Request rejected", {
+      data: {
+        request: rejectedRequest.request.request,
+        reason: rejectedRequest.reason,
+        code: rejectedRequest.code,
+      },
+    });
   }
 }
 
 function reportIntentRequestDispatchResults(
   dispatchResults: IntentRequestDispatchResult[],
   shouldReportLogs: boolean,
+  logger?: Logger,
 ) {
-  if (!shouldReportLogs) {
+  if (!shouldReportLogs || !logger) {
     return;
   }
 
   for (const dispatchResult of dispatchResults) {
-    console.info(
-      "[Intent Request] dispatched %s as %s: %s",
-      dispatchResult.request.request,
-      dispatchResult.status,
-      dispatchResult.message,
-    );
+    logger.info("Intent Request dispatched", {
+      data: {
+        request: dispatchResult.request.request,
+        status: dispatchResult.status,
+        message: dispatchResult.message,
+      },
+    });
   }
 }
 
@@ -113,6 +121,7 @@ export const handleIntentRequestRuntime: HandleIntentRequestRuntime = (
     reportIntentRequestParseMiss(
       input.intentRequestText,
       input.shouldReportLogs,
+      input.logger,
     );
   }
 
@@ -129,8 +138,13 @@ export const handleIntentRequestRuntime: HandleIntentRequestRuntime = (
   reportRejectedIntentRequests(
     safetyResult.rejectedRequests,
     input.shouldReportLogs,
+    input.logger,
   );
-  reportIntentRequestDispatchResults(dispatchResults, input.shouldReportLogs);
+  reportIntentRequestDispatchResults(
+    dispatchResults,
+    input.shouldReportLogs,
+    input.logger,
+  );
 
   return {
     parsedRequests,

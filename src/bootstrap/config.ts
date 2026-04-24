@@ -7,12 +7,21 @@
 
 import type { PathLike } from "bun";
 import { isBoolean, isPlainObject, isString, isUndefined } from "radashi";
+import type { Logger } from "@/libs/log";
 import {
   DefaultConfig,
   SUPPORTED_PROVIDER_MODELS,
   isConfigProviderModelID,
   isProviderID,
 } from "@/types/config";
+
+type ConfigWarningReporter = (path: string, message: string) => void;
+type ParseConfigFileOptions = {
+  logger?: Logger;
+  warn?: ConfigWarningReporter;
+};
+
+let reportConfigWarning: ConfigWarningReporter = () => {};
 import type {
   ConfigFileScheme,
   GatewayChannelScheme,
@@ -39,7 +48,7 @@ const buildConfigError = (path: string, message: string) => {
  * 这类问题不会阻断启动，但会提示用户相关 provider/model 可能写错了。
  */
 const warnConfigIssue = (path: string, message: string) => {
-  console.warn(`[config warning] ${path}: ${message}`);
+  reportConfigWarning(path, message);
 };
 
 /**
@@ -403,17 +412,33 @@ const parseConfig = (raw: unknown): ConfigFileScheme => {
 export const parseConfigFile: (
   path: PathLike,
   strict?: boolean,
-) => Promise<ConfigFileScheme> = async (path, strict = false) => {
+  options?: ParseConfigFileOptions,
+) => Promise<ConfigFileScheme> = async (path, strict = false, options = {}) => {
+  const previousWarningReporter = reportConfigWarning;
+  reportConfigWarning = options.warn ??
+    ((warningPath, message) => {
+      options.logger?.warn("Config warning", {
+        data: {
+          path: warningPath,
+          message,
+        },
+      });
+    });
+
   const file = Bun.file(path as string);
 
-  if (!(await file.exists())) {
-    if (strict) {
-      throw new Error("Config file not found");
+  try {
+    if (!(await file.exists())) {
+      if (strict) {
+        throw new Error("Config file not found");
+      }
+
+      return structuredClone(DefaultConfig);
     }
 
-    return structuredClone(DefaultConfig);
+    const rawConfig = await file.json();
+    return parseConfig(rawConfig);
+  } finally {
+    reportConfigWarning = previousWarningReporter;
   }
-
-  const rawConfig = await file.json();
-  return parseConfig(rawConfig);
 };

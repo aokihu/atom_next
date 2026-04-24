@@ -2,19 +2,24 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { $ } from "bun";
 import { version } from "@/../package.json" with { type: "json" };
-import { parseArguments } from "@/bootstrap/cli";
+import { parseArguments, parseLogConfig } from "@/bootstrap/cli";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 describe("parseArguments - direct function tests", () => {
   // 保存原始的 process.cwd 和 process.exit
   const originalCwd = process.cwd;
   const originalExit = process.exit;
   const originalLog = console.log;
+  const originalWarn = console.warn;
 
   beforeEach(() => {
     // 恢复默认值
     process.cwd = originalCwd;
     process.exit = originalExit;
     console.log = originalLog;
+    console.warn = originalWarn;
   });
 
   test("returns default values when no arguments provided", () => {
@@ -29,6 +34,9 @@ describe("parseArguments - direct function tests", () => {
     expect(result.workspace).toBe("/test/dir");
     expect(result.sandbox).toBe("/test/dir/sandbox");
     expect(result.serverUrl).toBe("");
+    expect(result.logPipe).toBeUndefined();
+    expect(result.logFile).toBe(false);
+    expect(result.logSilent).toBe(false);
   });
 
   test("parses --mode with valid 'tui' value", () => {
@@ -147,6 +155,20 @@ describe("parseArguments - direct function tests", () => {
     expect(result.port).toBe(9090);
   });
 
+  test("parses log flags", () => {
+    process.cwd = () => "/test/dir";
+    const result = parseArguments([
+      "--log-pipe",
+      "/tmp/atom.log.pipe",
+      "--log-file",
+      "--log-silent",
+    ]);
+
+    expect(result.logPipe).toBe("/tmp/atom.log.pipe");
+    expect(result.logFile).toBe(true);
+    expect(result.logSilent).toBe(true);
+  });
+
   test("parses port with string value, converts to number", () => {
     process.cwd = () => "/test/dir";
     const result = parseArguments(["--port", "3000"]);
@@ -237,6 +259,127 @@ describe("parseArguments - direct function tests", () => {
     }).toThrow("exit called");
 
     expect(exitCalled).toBe(true);
+  });
+});
+
+describe("parseLogConfig", () => {
+  const baseArgs = (): ReturnType<typeof parseArguments> => {
+    process.cwd = () => "/test/dir";
+    return parseArguments([]);
+  };
+
+  test("enables stdout only in server mode by default", () => {
+    const result = parseLogConfig({
+      ...baseArgs(),
+      mode: "server",
+    });
+
+    expect(result.level).toBe("debug");
+    expect(result.silent).toBe(false);
+    expect(result.enableStdout).toBe(true);
+    expect(result.enableFile).toBe(false);
+    expect(result.enablePipe).toBe(false);
+    expect(result.logsDir).toBe("/test/dir/logs");
+    expect(result.pipePath).toBeUndefined();
+  });
+
+  test("keeps stdout disabled in both mode", () => {
+    const result = parseLogConfig({
+      ...baseArgs(),
+      mode: "both",
+    });
+
+    expect(result.enableStdout).toBe(false);
+  });
+
+  test("keeps stdout disabled in tui mode", () => {
+    const result = parseLogConfig({
+      ...baseArgs(),
+      mode: "tui",
+      serverUrl: "http://127.0.0.1:8787",
+    });
+
+    expect(result.enableStdout).toBe(false);
+  });
+
+  test("enables file sink from explicit flag and disables missing pipe with warning", () => {
+    const warnings: string[] = [];
+    console.warn = (message?: unknown) => {
+      warnings.push(String(message));
+    };
+
+    const result = parseLogConfig({
+      ...baseArgs(),
+      logFile: true,
+      logPipe: "/tmp/missing-atom-log.pipe",
+    });
+
+    expect(result.enableFile).toBe(true);
+    expect(result.enablePipe).toBe(false);
+    expect(result.pipePath).toBe("/tmp/missing-atom-log.pipe");
+    expect(warnings).toEqual([
+      "[log warning] /tmp/missing-atom-log.pipe does not exist, pipe debug output disabled",
+    ]);
+  });
+
+  test("enables pipe sink only when path is an existing FIFO", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "atom-next-log-pipe-"));
+    const pipePath = join(dir, "atom.log.pipe");
+
+    try {
+      await $`mkfifo ${pipePath}`.quiet();
+
+      const result = parseLogConfig({
+        ...baseArgs(),
+        logPipe: pipePath,
+      });
+
+      expect(result.enablePipe).toBe(true);
+      expect(result.pipePath).toBe(pipePath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("disables pipe sink when path is not a FIFO", () => {
+    const warnings: string[] = [];
+    const dir = mkdtempSync(join(tmpdir(), "atom-next-log-pipe-"));
+    const pipePath = join(dir, "atom.log.pipe");
+    console.warn = (message?: unknown) => {
+      warnings.push(String(message));
+    };
+
+    try {
+      writeFileSync(pipePath, "");
+
+      const result = parseLogConfig({
+        ...baseArgs(),
+        logPipe: pipePath,
+      });
+
+      expect(result.enablePipe).toBe(false);
+      expect(result.pipePath).toBe(pipePath);
+      expect(warnings).toEqual([
+        `[log warning] ${pipePath} is not a named pipe, pipe debug output disabled`,
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lets silent mode override all sinks", () => {
+    const result = parseLogConfig({
+      ...baseArgs(),
+      mode: "server",
+      logFile: true,
+      logPipe: "/tmp/atom.log.pipe",
+      logSilent: true,
+    });
+
+    expect(result.silent).toBe(true);
+    expect(result.enableStdout).toBe(false);
+    expect(result.enableFile).toBe(false);
+    expect(result.enablePipe).toBe(false);
   });
 });
 
@@ -349,6 +492,17 @@ describe("parseArguments - real CLI tests via subprocess", () => {
 
     expect(parsed.success).toBe(true);
     expect(parsed.result.port).toBe(9090);
+  });
+
+  test("runs helper script with log flags", async () => {
+    const result =
+      await $`bun ${helperScript} --log-pipe /tmp/atom.log.pipe --log-file --log-silent`.quiet();
+    const parsed = JSON.parse(result.stdout as string);
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.result.logPipe).toBe("/tmp/atom.log.pipe");
+    expect(parsed.result.logFile).toBe(true);
+    expect(parsed.result.logSilent).toBe(true);
   });
 
   test("runs helper script with custom address", async () => {

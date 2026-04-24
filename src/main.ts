@@ -10,10 +10,20 @@ import type { BootstrapResult } from "@/bootstrap/bootstrap";
 import { Core } from "@/core";
 import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
+import { createLogSystem } from "@/libs/log";
+import type { Logger } from "@/libs/log";
 import { MemoryService, RuntimeService, WatchmanService } from "@/services";
 import { startTui } from "@/tui";
+import { parseArguments, parseLogConfig } from "@/bootstrap/cli";
 
-const startServerApp = async (args: BootstrapResult) => {
+const startServerApp = async (
+  args: BootstrapResult,
+  serviceManagerLogger?: Logger,
+  coreLogger?: Logger,
+  runtimeLogger?: Logger,
+  watchmanLogger?: Logger,
+  apiLogger?: Logger,
+) => {
   const { cliArgs, config } = args;
 
   /* ----- 启动系统运行时环境服务 ----- */
@@ -21,11 +31,15 @@ const startServerApp = async (args: BootstrapResult) => {
   runtime.loadCliArgs(cliArgs).loadConfig(config);
 
   /* ----- 创建Watchman服务 ----- */
-  const watchman = new WatchmanService();
+  const watchman = new WatchmanService({
+    logger: watchmanLogger,
+  });
   const memory = new MemoryService();
 
   /* ----- 启动服务管理器 ----- */
-  const serviceManager = new ServiceManager();
+  const serviceManager = new ServiceManager({
+    logger: serviceManagerLogger,
+  });
   serviceManager.register(runtime, watchman, memory);
   const startResults = await serviceManager.startAllServices();
   const rejectedResult = startResults.find(
@@ -33,30 +47,38 @@ const startServerApp = async (args: BootstrapResult) => {
   );
 
   if (rejectedResult?.status === "rejected") {
-    const reason =
-      rejectedResult.reason instanceof Error
-        ? rejectedResult.reason.message
-        : String(rejectedResult.reason);
-
-    console.error("Service startup failed: %s", reason);
+    serviceManagerLogger?.error("Service startup failed", {
+      error: rejectedResult.reason,
+    });
     process.exit(1);
   }
 
   /* ----- 启动内核 -----  */
-  const core = new Core(serviceManager);
+  const core = new Core(serviceManager, {
+    logger: coreLogger,
+    runtimeLogger,
+  });
 
   /* ----- 启动API服务器 ----- */
-  const apiServer = new APIServer(core, serviceManager);
+  const apiServer = new APIServer(core, serviceManager, {
+    logger: apiLogger,
+  });
   const [errApi, apiResult] = await apiServer.tryStart(cliArgs.port);
 
   if (errApi) {
-    console.error("API server failed: %s", errApi);
+    apiLogger?.error("API server failed", { error: errApi });
     process.exit(1);
   }
 
   const apiUrl = `http://${apiResult.host}:${apiResult.port}`;
 
-  console.log(`API server started at ${apiUrl}`);
+  apiLogger?.info("API server started", {
+    data: {
+      host: apiResult.host,
+      port: apiResult.port,
+      url: apiUrl,
+    },
+  });
 
   // 这里更新环境变量成可以正确使用的API服务器端口号
   runtime.setPort(apiResult.port);
@@ -83,11 +105,19 @@ const startServerApp = async (args: BootstrapResult) => {
  */
 const main = async () => {
   /* ----- 启动器入口 ----- */
-  const [err, args] = await tryBootstrap();
+  const cliArgs = parseArguments(Bun.argv.slice(2));
+  const log = createLogSystem(parseLogConfig(cliArgs));
+  const bootstrapLogger = log.createLogger("bootstrap");
+
+  bootstrapLogger.info("Bootstrap started");
+
+  const [err, args] = await tryBootstrap(cliArgs, bootstrapLogger);
   if (err) {
-    console.error("Bootstrap failed: %s", err);
+    bootstrapLogger.error("Bootstrap failed", { error: err });
     process.exit(1);
   }
+
+  bootstrapLogger.info("Bootstrap completed");
 
   /* ----- 按启动模式分流 ----- */
   const { mode, serverUrl } = args.cliArgs;
@@ -98,17 +128,26 @@ const main = async () => {
       serverUrl,
       workspace: args.cliArgs.workspace,
       theme: args.config.theme,
+      logger: log.createLogger("tui"),
     });
     return;
   }
 
-  const serverStartResult = await startServerApp(args);
+  const serverStartResult = await startServerApp(
+    args,
+    log.createLogger("service-manager"),
+    log.createLogger("core"),
+    log.createLogger("runtime"),
+    log.createLogger("watchman"),
+    log.createLogger("api"),
+  );
 
   if (mode === "both") {
     await startTui({
       serverUrl: serverStartResult.apiUrl,
       workspace: serverStartResult.workspace,
       theme: serverStartResult.theme,
+      logger: log.createLogger("tui"),
     });
   }
 };

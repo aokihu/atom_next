@@ -1,5 +1,6 @@
 import type { TaskItem } from "@/types/task";
 import type { ServiceManager } from "@/libs/service-manage";
+import type { Logger } from "@/libs/log";
 import {
   ChatEvents,
   type ChatFailedEventPayload,
@@ -17,6 +18,11 @@ import {
   runUserIntentPredictionWorkflow,
 } from "./workflows";
 
+type CoreOptions = {
+  logger?: Logger;
+  runtimeLogger?: Logger;
+};
+
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
 
@@ -25,16 +31,21 @@ export class Core {
   #runtime: Runtime;
   #transport: Transport;
   #isRunning: boolean;
+  #logger: Logger | undefined;
 
   #activedTask: TaskItem | undefined = undefined; // 当前激活的任务
   #activeTimer: NodeJS.Timeout | null = null; // 定时检查激活任务计时器
 
-  constructor(serviceManager: ServiceManager) {
+  constructor(serviceManager: ServiceManager, options: CoreOptions = {}) {
     this.#serviceManager = serviceManager;
     this.#taskQueue = new TaskQueue();
-    this.#runtime = new Runtime(this.#serviceManager);
+    this.#runtime = new Runtime(this.#serviceManager, {
+      logger: options.runtimeLogger,
+    });
     this.#transport = new Transport(this.#serviceManager);
     this.#isRunning = false;
+    this.#logger = options.logger;
+    this.#logger?.info("Core initialized");
   }
 
   /* ==================== */
@@ -69,6 +80,14 @@ export class Core {
 
     try {
       const taskWorkflow = this.#parseTaskWorkflow(task);
+      this.#logger?.debug("Task activated", {
+        data: {
+          taskId: task.id,
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          workflow: taskWorkflow,
+        },
+      });
 
       if (taskWorkflow === TaskWorkflow.PREDICT_USER_INTENT) {
         const [workflowError] = await toResult(
@@ -81,6 +100,15 @@ export class Core {
         );
 
         if (workflowError) {
+          this.#logger?.error("Workflow failed", {
+            error: workflowError,
+            data: {
+              taskId: task.id,
+              sessionId: task.sessionId,
+              chatId: task.chatId,
+              workflow: taskWorkflow,
+            },
+          });
           this.#taskQueue.updateTask(
             task.id,
             { state: TaskState.FAILED },
@@ -115,6 +143,15 @@ export class Core {
       );
 
       if (workflowError) {
+        this.#logger?.error("Workflow failed", {
+          error: workflowError,
+          data: {
+            taskId: task.id,
+            sessionId: task.sessionId,
+            chatId: task.chatId,
+            workflow: taskWorkflow,
+          },
+        });
         this.#taskQueue.updateTask(
           task.id,
           { state: TaskState.FAILED },
@@ -155,6 +192,7 @@ export class Core {
     }
 
     this.#isRunning = true;
+    this.#logger?.info("Core runloop started");
 
     try {
       while (true) {

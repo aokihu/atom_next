@@ -1,0 +1,135 @@
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ServiceManager } from "@/libs/service-manage";
+import { buildTaskItem } from "@/libs/task";
+import { TaskWorkflow } from "@/types/task";
+import type { LogEntry, LogSink } from "@/libs/log";
+import { createLogSystem } from "@/libs/log";
+import { resetLogSystem } from "@/libs/log/log-system";
+import { RuntimeService } from "@/services";
+import { DefaultConfig } from "@/types/config";
+
+const runFormalConversationWorkflow = mock();
+const runUserIntentPredictionWorkflow = mock();
+
+mock.module("@/core/workflows", () => ({
+  runFormalConversationWorkflow,
+  runUserIntentPredictionWorkflow,
+}));
+
+const { Core } = await import("@/core/core");
+
+const createMemoryLog = () => {
+  resetLogSystem();
+
+  const entries: LogEntry[] = [];
+  const sink: LogSink = {
+    name: "memory",
+    write(entry) {
+      entries.push(entry);
+    },
+  };
+  const log = createLogSystem({
+    level: "debug",
+    sinks: [sink],
+  });
+
+  return {
+    entries,
+    logger: log.createLogger("core"),
+  };
+};
+
+const createServiceManager = () => {
+  const runtime = new RuntimeService();
+  runtime.loadCliArgs({
+    mode: "server",
+    config: "/tmp/config.json",
+    workspace: "/tmp",
+    sandbox: "/tmp/sandbox",
+    serverUrl: "",
+    address: "127.0.0.1",
+    port: 8787,
+    logPipe: undefined,
+    logFile: false,
+    logSilent: false,
+  });
+  runtime.loadConfig(DefaultConfig);
+
+  const serviceManager = new ServiceManager();
+  serviceManager.register(runtime);
+
+  return serviceManager;
+};
+
+describe("Core logging", () => {
+  beforeEach(() => {
+    runFormalConversationWorkflow.mockReset();
+    runUserIntentPredictionWorkflow.mockReset();
+  });
+
+  test("logs initialization and task activation", async () => {
+    const { entries, logger } = createMemoryLog();
+    const core = new Core(createServiceManager(), { logger });
+    const task = buildTaskItem({
+      sessionId: "session-1",
+      chatId: "chat-1",
+      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+    });
+    runFormalConversationWorkflow.mockResolvedValue({
+      decision: {
+        type: "complete",
+      },
+    });
+
+    await core.addTask(task);
+    await core.runOnce();
+
+    expect(entries.map((entry) => entry.message)).toEqual([
+      "Core initialized",
+      "Task activated",
+    ]);
+    expect(entries[1]).toMatchObject({
+      level: "debug",
+      source: "core",
+      data: {
+        taskId: task.id,
+        sessionId: "session-1",
+        chatId: "chat-1",
+        workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      },
+    });
+  });
+
+  test("logs workflow failures with task context", async () => {
+    const { entries, logger } = createMemoryLog();
+    const core = new Core(createServiceManager(), { logger });
+    const task = buildTaskItem({
+      sessionId: "session-2",
+      chatId: "chat-2",
+      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+    });
+    runFormalConversationWorkflow.mockRejectedValue(new Error("workflow boom"));
+
+    await core.addTask(task);
+    await core.runOnce();
+
+    expect(entries.map((entry) => entry.message)).toEqual([
+      "Core initialized",
+      "Task activated",
+      "Workflow failed",
+    ]);
+    expect(entries[2]).toMatchObject({
+      level: "error",
+      source: "core",
+      data: {
+        taskId: task.id,
+        sessionId: "session-2",
+        chatId: "chat-2",
+        workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      },
+      error: {
+        message: "workflow boom",
+      },
+    });
+  });
+});

@@ -26,6 +26,7 @@ import {
   type IntentExecutionPolicy,
   type PredictedIntent,
 } from "./user-intent";
+import type { Logger } from "@/libs/log";
 import { UserIntentPredictionManager } from "./user-intent/user-intent-prediction-manager";
 import {
   finalizeChatTurn as runFinalizeChatTurn,
@@ -41,18 +42,24 @@ import type { RuntimeMemoryItem } from "./memory-item";
 import type { Transport, TransportModelProfile } from "../transport";
 import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
 
+type RuntimeOptions = {
+  logger?: Logger;
+};
+
 export class Runtime {
   #serviceManager: ServiceManager;
   #currentTask: TaskItem | null = null;
   #contextManager: ContextManager;
   #userIntentPredictionManager: UserIntentPredictionManager;
   #systemRules: string;
+  #logger: Logger | undefined;
 
-  constructor(serviceManager: ServiceManager) {
+  constructor(serviceManager: ServiceManager, options: RuntimeOptions = {}) {
     this.#serviceManager = serviceManager;
     this.#contextManager = new ContextManager();
     this.#userIntentPredictionManager = new UserIntentPredictionManager();
     this.#systemRules = "";
+    this.#logger = options.logger;
   }
 
   /**
@@ -446,6 +453,7 @@ export class Runtime {
       intentRequestText,
       safetyContext: this.#createIntentRequestSafetyContext(),
       shouldReportLogs: shouldReportIntentRequestLogs(this.#serviceManager),
+      logger: this.#logger,
     });
   }
 

@@ -97,7 +97,7 @@ Logger:
 
 新增启动参数：
 
-- `--log-pipe`
+- `--log-pipe <path>`
 - `--log-file`
 - `--log-silent`
 
@@ -105,8 +105,8 @@ Logger:
 
 #### 4.2 规则
 
-- `--log-pipe`
-  启用命名管道输出，供 TUI 或本地调试消费者读取。
+- `--log-pipe <path>`
+  使用用户指定的已有命名管道输出，供 TUI 或本地调试消费者读取。
 - `--log-file`
   启用文件输出，在 `{workspace}/logs` 目录保存日志。
 - `--log-silent`
@@ -138,24 +138,24 @@ Logger:
 - `mode=server` 时默认启用 `stdout sink`
 - `mode=tui` / `mode=both` 时默认不启用 `stdout sink`
 - `file sink` 默认关闭，只有传入 `--log-file` 才开启
-- `pipe sink` 默认关闭，只有传入 `--log-pipe` 才开启
+- `pipe sink` 默认关闭，只有传入 `--log-pipe <path>` 且路径可用才开启
 
 ---
 
 ### 5. 路径约定
 
-为保证计划可执行，第一版路径直接固定：
+为保证计划可执行，第一版文件路径固定，管道路径由用户显式指定：
 
 - 日志目录：`{workspace}/logs`
 - 文件日志路径：`{workspace}/logs/atom-YYYY-MM-DD.log.jsonl`
-- 命名管道路径：`{workspace}/logs/atom.log.pipe`
+- 命名管道路径：由 `--log-pipe <path>` 显式指定
 
 说明：
 
 - `file sink` 使用 JSONL 方便后续逐行读取和调试
 - `file sink` 按日期生成单独日志文件，避免单个日志文件持续膨胀
-- `pipe sink` 使用固定路径，避免 TUI 和服务端自行协商路径
-- 后续如需自定义路径，再放到后续里程碑，不在 `0.11` 扩展
+- `pipe sink` 使用用户显式指定路径，避免应用自行创建系统级 FIFO
+- 后续如需扩展更多日志路径参数，再放到后续里程碑，不在 `0.11` 扩展
 
 ---
 
@@ -163,21 +163,22 @@ Logger:
 
 命名管道是本计划里最容易把启动链路做坏的点，行为需要先写死：
 
-- 如果 `--log-pipe` 开启且 `{workspace}/logs/atom.log.pipe` 不存在，则创建 FIFO
-- 如果该路径已存在但不是 FIFO，bootstrap 直接失败
+- 如果 `--log-pipe <path>` 指定的路径不存在，只通过 `console.warn` 告知用户无法使用管道调试输出，应用继续启动
+- 如果该路径已存在但不是 FIFO，只通过 `console.warn` 告知用户无法使用管道调试输出，应用继续启动
 - `pipe sink` 不能因为没有 reader 而阻塞应用启动
 - `pipe sink` 采用 best-effort 语义，消费者不存在时允许丢弃写入，不影响主流程
 - 命名管道写入实现统一使用 `pipelogger`
 
 这条约束的核心目的是：
 
-- TUI 可以通过固定命名管道读取调试日志
+- TUI 可以通过用户指定命名管道读取调试日志
 - 服务端启动不能因为 FIFO 没有消费者而卡死
 
 补充约束：
 
 - `pipelogger` 只负责向 FIFO 写入，不负责创建 FIFO
-- FIFO 的存在性和类型校验由 bootstrap 阶段处理
+- FIFO 必须由用户手动创建，应用不主动创建命名管道
+- FIFO 的存在性和类型校验由日志配置解析阶段处理
 - `pipe-sink.ts` 只封装 `pipelogger`，不重复实现一套底层 FIFO 写入逻辑
 
 ---
@@ -285,7 +286,7 @@ src/libs/log/
 
 ### Phase 1: 补齐 CLI 与日志配置解析
 
-- [ ] 在 `src/bootstrap/cli.ts` 新增 `--log-pipe`、`--log-file`、`--log-silent`
+- [ ] 在 `src/bootstrap/cli.ts` 新增 `--log-pipe <path>`、`--log-file`、`--log-silent`
 - [ ] 扩展 `BootArguments`，保留原始 CLI 语义，不把 sink 对象放进启动参数
 - [ ] 新增 `parseLogConfig(args)`，把 `BootArguments` 转成 `LogSystemConfig`
 - [ ] 明确 `stdout sink` 由 `mode` 派生，而不是新增 `--log-stdout`
@@ -366,16 +367,16 @@ Phase 4 完成标准：
 ### Phase 5: 文件与管道输出收口
 
 - [ ] 启用 `--log-file` 时自动创建 `{workspace}/logs`
-- [ ] 启用 `--log-pipe` 时自动创建 FIFO
-- [ ] 如果 pipe 路径存在但类型错误，直接中止启动
-- [ ] 在 FIFO 就绪后，再初始化 `pipelogger`
+- [ ] 启用 `--log-pipe <path>` 时检查路径是否存在且为 FIFO
+- [ ] 如果 pipe 路径不存在或不是 FIFO，通过 `console.warn` 告警并关闭 pipe sink，应用继续启动
+- [ ] 在 FIFO 可用后，再初始化 `pipelogger`
 - [ ] 保障 FIFO 不会因为无 reader 阻塞写入
 - [ ] 明确 `mode=server` 才允许 `stdout sink`
 
 Phase 5 完成标准：
 
 - `--log-file` 可在 `{workspace}/logs/atom-YYYY-MM-DD.log.jsonl` 看到日志
-- `--log-pipe` 可被 TUI 或本地消费者读取
+- `--log-pipe <path>` 可被 TUI 或本地消费者读取
 - `mode=both` 不会污染标准输出
 
 ### Phase 6: 补最小验证
@@ -404,7 +405,7 @@ type BootArguments = {
   serverUrl: string;
   address: string;
   port?: number;
-  logPipe: boolean;
+  logPipe?: string;
   logFile: boolean;
   logSilent: boolean;
 };
@@ -423,7 +424,7 @@ type LogSystemConfig = {
   silent: boolean;
   workspace: string;
   logsDir: string;
-  pipePath: string;
+  pipePath?: string;
 };
 ```
 
@@ -478,7 +479,7 @@ logger.info("API server started", {
 - [ ] `--mode=server` 时日志可输出到 CLI `stdout`
 - [ ] `--mode=tui` / `--mode=both` 时日志不会污染 `stdout`
 - [ ] `--log-file` 时日志写入 `{workspace}/logs/atom-YYYY-MM-DD.log.jsonl`
-- [ ] `--log-pipe` 时 TUI 可以通过固定 FIFO 消费日志
+- [ ] `--log-pipe <path>` 时 TUI 可以通过用户指定 FIFO 消费日志
 - [ ] `--log-silent` 时所有 sink 都关闭
 - [ ] 日志系统不依赖 `ServiceManager`
 - [ ] `LogHub` 不向业务模块暴露

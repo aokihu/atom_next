@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,8 +8,6 @@ import { DefaultConfig } from "@/types/config";
 import { parseConfigFile } from "@/bootstrap/config";
 
 const tempDirs: string[] = [];
-const originalWarn = console.warn;
-
 const createTempConfigFile = async (content?: string) => {
   const dir = await mkdtemp(join(tmpdir(), "atom-next-config-"));
   const file = join(dir, "config.json");
@@ -26,10 +24,6 @@ afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
-});
-
-beforeEach(() => {
-  console.warn = originalWarn;
 });
 
 describe("parseConfigFile", () => {
@@ -197,8 +191,8 @@ describe("parseConfigFile", () => {
 
   test("warns but keeps providerProfiles when model names are unfamiliar", async () => {
     const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map((item) => String(item)).join(" "));
+    const warn = (path: string, message: string) => {
+      warnings.push(`${path}: ${message}`);
     };
 
     const file = await createTempConfigFile(
@@ -209,7 +203,7 @@ describe("parseConfigFile", () => {
       }),
     );
 
-    expect(await parseConfigFile(file)).toEqual({
+    expect(await parseConfigFile(file, false, { warn })).toEqual({
       ...DefaultConfig,
       providerProfiles: {
         advanced: "deepseek/invalid-model",
@@ -222,8 +216,8 @@ describe("parseConfigFile", () => {
 
   test("warns but keeps providerProfiles when provider names are unfamiliar", async () => {
     const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map((item) => String(item)).join(" "));
+    const warn = (path: string, message: string) => {
+      warnings.push(`${path}: ${message}`);
     };
 
     const file = await createTempConfigFile(
@@ -234,7 +228,7 @@ describe("parseConfigFile", () => {
       }),
     );
 
-    expect(await parseConfigFile(file)).toEqual({
+    expect(await parseConfigFile(file, false, { warn })).toEqual({
       ...DefaultConfig,
       providerProfiles: {
         advanced: "custom/model-x",
@@ -266,8 +260,8 @@ describe("parseConfigFile", () => {
 
   test("falls back to default when providerProfiles format is invalid", async () => {
     const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map((item) => String(item)).join(" "));
+    const warn = (path: string, message: string) => {
+      warnings.push(`${path}: ${message}`);
     };
 
     const file = await createTempConfigFile(
@@ -278,7 +272,7 @@ describe("parseConfigFile", () => {
       }),
     );
 
-    expect(await parseConfigFile(file)).toEqual({
+    expect(await parseConfigFile(file, false, { warn })).toEqual({
       ...DefaultConfig,
       providerProfiles: {
         advanced: DefaultConfig.providerProfiles.advanced,
@@ -336,8 +330,8 @@ describe("parseConfigFile", () => {
 
   test("warns but keeps provider models when model names are unfamiliar", async () => {
     const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args.map((item) => String(item)).join(" "));
+    const warn = (path: string, message: string) => {
+      warnings.push(`${path}: ${message}`);
     };
 
     const file = await createTempConfigFile(
@@ -351,7 +345,7 @@ describe("parseConfigFile", () => {
       }),
     );
 
-    expect(await parseConfigFile(file)).toEqual({
+    expect(await parseConfigFile(file, false, { warn })).toEqual({
       ...DefaultConfig,
       providers: {
         openai: {

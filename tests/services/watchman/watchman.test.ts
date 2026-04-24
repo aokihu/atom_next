@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { ServiceManager } from "@/libs/service-manage";
+import type { LogEntry, LogSink } from "@/libs/log";
+import { createLogSystem } from "@/libs/log";
+import { resetLogSystem } from "@/libs/log/log-system";
 import { RuntimeService } from "@/services/runtime";
 import { WatchmanService, WatchmanWorkerSignal } from "@/services/watchman";
 
@@ -18,6 +21,27 @@ const createWorkspace = async () => {
   const dir = await mkdtemp(join(tmpdir(), "atom-next-watchman-"));
   tempDirs.push(dir);
   return dir;
+};
+
+const createMemoryLog = () => {
+  resetLogSystem();
+
+  const entries: LogEntry[] = [];
+  const sink: LogSink = {
+    name: "memory",
+    write(entry) {
+      entries.push(entry);
+    },
+  };
+  const log = createLogSystem({
+    level: "debug",
+    sinks: [sink],
+  });
+
+  return {
+    entries,
+    logger: log.createLogger("watchman"),
+  };
 };
 
 const buildRuntime = (
@@ -402,6 +426,7 @@ describe("WatchmanService", () => {
   test("keeps runtime ready snapshot when hot reload compile exhausts retries", async () => {
     const workspace = await createWorkspace();
     const worker = createFakeWorker();
+    const { entries, logger } = createMemoryLog();
     const compilePrompt = mock()
       .mockResolvedValueOnce("# safe rules v1")
       .mockRejectedValue(new Error("compile failed"));
@@ -413,6 +438,7 @@ describe("WatchmanService", () => {
       compilePrompt,
       createWorker: () => worker,
       maxCompileRetries: 1,
+      logger,
     });
     registerServices(runtime, service);
     services.push(service);
@@ -441,6 +467,15 @@ describe("WatchmanService", () => {
       error: "compile failed",
     });
     expect(compilePrompt).toHaveBeenCalledTimes(3);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: "error",
+      source: "watchman",
+      message: "Watchman sync failed",
+      error: {
+        message: "compile failed",
+      },
+    });
   });
 
   test("aborts in-flight compile when stopping service", async () => {

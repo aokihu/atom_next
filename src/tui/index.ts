@@ -13,6 +13,7 @@ import { TuiApp } from "./app";
 import { TUI_EXIT_CONFIRM_TEXT } from "./constants";
 import { createTuiApiClient, createTuiStore } from "./model";
 import { resolveTuiTheme, type TuiThemeScheme } from "./theme";
+import type { Logger } from "@/libs/log";
 
 /* -------------------- */
 /* TUI Startup Types    */
@@ -22,6 +23,7 @@ type StartTuiOptions = {
   serverUrl: string;
   workspace: string;
   theme?: string;
+  logger?: Logger;
 };
 
 const TUI_EXIT_CONFIRM_INTERVAL_MS = 1500;
@@ -55,10 +57,18 @@ export const startTui = async ({
   serverUrl,
   workspace,
   theme,
+  logger,
 }: StartTuiOptions) => {
   const resolvedTheme = await resolveTuiTheme({
     workspace,
     theme,
+    warn: (message) => {
+      logger?.warn("TUI theme warning", {
+        data: {
+          message,
+        },
+      });
+    },
   });
   const renderer = await createCliRenderer(
     buildTuiRendererConfig(resolvedTheme),

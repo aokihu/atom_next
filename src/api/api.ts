@@ -19,9 +19,14 @@ import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
 import { Core } from "@/core";
 import { buildError, buildTaskItem, ErrorCause, hasErrorCause } from "@/libs";
+import type { Logger } from "@/libs/log";
 import { SessionManager } from "./session/session";
 import { startServer } from "./server";
 import { parseSubmitChatBody } from "./request/submit-chat";
+
+type APIServerOptions = {
+  logger?: Logger;
+};
 
 export class APIServer extends EventEmitter {
   /* ==================== 私有属性 ==================== */
@@ -30,15 +35,21 @@ export class APIServer extends EventEmitter {
   #serviceManager: ServiceManager; // 服务管理器
   #sessionManager: SessionManager; // Session管理器
   #server: ReturnType<typeof Bun.serve> | undefined; // API HTTP 服务器
+  #logger: Logger | undefined;
 
   /* ==================== 构造函数 ==================== */
 
-  constructor(core: Core, serviceManager: ServiceManager) {
+  constructor(
+    core: Core,
+    serviceManager: ServiceManager,
+    options: APIServerOptions = {},
+  ) {
     super();
 
     this.#core = core;
     this.#serviceManager = serviceManager;
     this.#sessionManager = new SessionManager(this.#serviceManager);
+    this.#logger = options.logger;
     this.#bindChatEventListeners();
   }
 
@@ -141,10 +152,23 @@ export class APIServer extends EventEmitter {
       // 这里保留显式入队事件监听，主要是为了让生命周期更完整、调试时更容易对照事件流，
       // 但不再重复写入 session，避免把“创建 chat”和“进入队列”混成一次状态同步。
       if (payload.status !== ChatStatus.WAITING) {
-        console.error("Unexpected chat enqueued payload status: %s", payload.status);
+        this.#logger?.warn("Unexpected chat enqueued payload status", {
+          data: {
+            sessionId: payload.sessionId,
+            chatId: payload.chatId,
+            status: payload.status,
+          },
+        });
       }
     } catch (error) {
-      console.error("Failed to sync enqueued chat: %s", error);
+      this.#logger?.error("Failed to sync enqueued chat", {
+        error,
+        data: {
+          sessionId: payload.sessionId,
+          chatId: payload.chatId,
+          status: payload.status,
+        },
+      });
     }
   }
 
@@ -157,7 +181,14 @@ export class APIServer extends EventEmitter {
     } catch (error) {
       // activated 同步失败时，优先排查队列激活链路；
       // 如果是 output delta 追加失败，则会落在 #syncChatOutputUpdated 的日志里。
-      console.error("Failed to sync activated chat: %s", error);
+      this.#logger?.error("Failed to sync activated chat", {
+        error,
+        data: {
+          sessionId: payload.sessionId,
+          chatId: payload.chatId,
+          status: payload.status,
+        },
+      });
     }
   }
 
@@ -171,7 +202,14 @@ export class APIServer extends EventEmitter {
         payload.delta,
       );
     } catch (error) {
-      console.error("Failed to sync chat output delta: %s", error);
+      this.#logger?.error("Failed to sync chat output delta", {
+        error,
+        data: {
+          sessionId: payload.sessionId,
+          chatId: payload.chatId,
+          status: payload.status,
+        },
+      });
     }
   }
 
@@ -187,7 +225,14 @@ export class APIServer extends EventEmitter {
         payload.message,
       );
     } catch (error) {
-      console.error("Failed to sync completed chat: %s", error);
+      this.#logger?.error("Failed to sync completed chat", {
+        error,
+        data: {
+          sessionId: payload.sessionId,
+          chatId: payload.chatId,
+          status: payload.status,
+        },
+      });
     }
   }
 
@@ -203,7 +248,14 @@ export class APIServer extends EventEmitter {
         payload.error,
       );
     } catch (error) {
-      console.error("Failed to sync failed chat: %s", error);
+      this.#logger?.error("Failed to sync failed chat", {
+        error,
+        data: {
+          sessionId: payload.sessionId,
+          chatId: payload.chatId,
+          status: payload.status,
+        },
+      });
     }
   }
 

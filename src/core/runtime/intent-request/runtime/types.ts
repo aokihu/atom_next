@@ -14,6 +14,7 @@ import type {
   IntentRequestHandleResult,
   IntentRequestSafetyContext,
 } from "@/types";
+import type { Logger } from "@/libs/log";
 
 /* ==================== */
 /* Runtime Handle Types */
@@ -23,6 +24,7 @@ export type HandleIntentRequestRuntimeInput = {
   intentRequestText: string;
   safetyContext: IntentRequestSafetyContext | null;
   shouldReportLogs: boolean;
+  logger?: Logger;
 };
 
 export type HandleIntentRequestRuntime = (
