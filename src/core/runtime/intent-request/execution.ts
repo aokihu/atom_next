@@ -33,6 +33,11 @@ import type {
 /* Public Execution API */
 /* ==================== */
 
+const isFollowUpRequest = (request: IntentRequest) => {
+  return request.request === IntentRequestType.FOLLOW_UP
+    || request.request === IntentRequestType.FOLLOW_UP_WITH_TOOLS;
+};
+
 export const executeIntentRequests = async (
   task: TaskItem,
   requests: IntentRequest[],
@@ -52,10 +57,7 @@ export const executeIntentRequests = async (
       continue;
     }
 
-    if (
-      repeatedSearchRequest &&
-      request.request === IntentRequestType.FOLLOW_UP
-    ) {
+    if (repeatedSearchRequest && isFollowUpRequest(request)) {
       hasFollowUpRequest = true;
       return processRepeatedSearchFollowUpIntentRequest(
         task,
@@ -68,7 +70,7 @@ export const executeIntentRequests = async (
       lastSearchRequest = request;
     }
 
-    if (request.request === IntentRequestType.FOLLOW_UP) {
+    if (isFollowUpRequest(request)) {
       hasFollowUpRequest = true;
     }
 

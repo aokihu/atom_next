@@ -8,6 +8,7 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsIntentRequest,
   IntentRequest,
   IntentRequestDispatchResult,
   LoadMemoryIntentRequest,
@@ -127,6 +128,17 @@ const dispatchFollowUpIntentRequest = (
   };
 };
 
+const dispatchFollowUpWithToolsIntentRequest = (
+  request: FollowUpWithToolsIntentRequest,
+) => {
+  return {
+    request,
+    status: IntentRequestDispatchStatus.ACCEPTED,
+    message:
+      "FOLLOW_UP_WITH_TOOLS request accepted and will be scheduled by Core with continuation context when current output finishes",
+  };
+};
+
 /* ==================== */
 /* Public Dispatch API  */
 /* ==================== */
@@ -158,6 +170,8 @@ export const dispatchIntentRequests = (
         return dispatchLoadSkillIntentRequest(request);
       case IntentRequestType.FOLLOW_UP:
         return dispatchFollowUpIntentRequest(request);
+      case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
+        return dispatchFollowUpWithToolsIntentRequest(request);
     }
   });
 };

@@ -2,6 +2,7 @@ import type { MemoryScope } from "@/types";
 import type { TaskSource } from "@/types/task";
 import type {
   RuntimeConversationContext,
+  RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeMemoryScopeContext,
 } from "../context-manager";
@@ -12,6 +13,7 @@ type RuntimeContextPromptInput = {
   round: number;
   source: TaskSource;
   conversation: RuntimeConversationContext;
+  continuation?: RuntimeContinuationContext;
   followUp?: RuntimeFollowUpContext;
   memory: Record<MemoryScope, RuntimeMemoryScopeContext>;
   intentPolicyPrompt: string[];
@@ -56,6 +58,20 @@ export const convertFollowUpContextToPrompt = (
         followUp.accumulatedAssistantOutput,
         "EOF",
         "</FollowUp>",
+      ];
+};
+
+export const convertContinuationContextToPrompt = (
+  continuation?: RuntimeContinuationContext,
+) => {
+  return !continuation || continuation.updatedAt === null
+    ? []
+    : [
+        "<Continuation>",
+        `<Summary>${continuation.summary}</Summary>`,
+        `<NextPrompt>${continuation.nextPrompt}</NextPrompt>`,
+        `<AvoidRepeat>${continuation.avoidRepeat}</AvoidRepeat>`,
+        "</Continuation>",
       ];
 };
 
@@ -162,6 +178,7 @@ export const convertRuntimeContextToPrompt = (
     "</Channel>",
     ...convertConversationContextToPrompt(promptContext.conversation),
     ...promptContext.intentPolicyPrompt,
+    ...convertContinuationContextToPrompt(promptContext.continuation),
     "<Memory>",
     ...convertMemoryScopeContextToPrompt("core", promptContext.memory.core),
     ...convertMemoryScopeContextToPrompt("long", promptContext.memory.long),

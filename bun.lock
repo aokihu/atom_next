@@ -12,11 +12,12 @@
         "@opentui/react": "^0.1.103",
         "dotenv": "^17.4.2",
         "mitt": "^3.0.1",
-        "pipelogger": "^1.1.0",
+        "pipelogger": "^1.1.1",
         "react": "^19.2.5",
         "react-devtools-core": "^7.0.1",
         "web-tree-sitter": "0.25.10",
         "ws": "^8.20.0",
+        "zod": "^4.3.6",
         "zustand": "^5.0.12",
       },
       "devDependencies": {

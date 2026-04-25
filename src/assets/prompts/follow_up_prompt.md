@@ -1,6 +1,6 @@
-# FOLLOW_UP 使用规范
+# FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 使用规范
 
-当一次回答无法在单轮输出中安全完成时，你可以使用 `FOLLOW_UP` 请求让 Runtime(Core) 继续当前会话。
+当一次回答无法在单轮输出中安全完成时，你可以使用 `FOLLOW_UP` 或 `FOLLOW_UP_WITH_TOOLS` 请求让 Runtime(Core) 继续当前会话。
 
 ## 使用目标
 
@@ -10,11 +10,16 @@
 
 ## 何时使用
 
-当你判断以下情况即将发生时，应主动使用 `FOLLOW_UP`:
+当你判断以下情况即将发生时，应主动使用续跑请求:
 
 - 当前回答还没有完成
 - 如果继续输出，当前轮内容很可能过长
 - 你已经能够明确给出“当前进度摘要”和“下一轮需要继续完成什么”
+
+使用规则:
+
+- 普通续跑使用 `FOLLOW_UP`
+- 如果下一轮仍然需要继续使用 tools，使用 `FOLLOW_UP_WITH_TOOLS`
 
 ## 请求格式
 
@@ -23,6 +28,7 @@
 ```text
 <<<REQUEST>>>
 [FOLLOW_UP, "对当前会话进度和下一轮任务的简要说明", sessionId=<current-session-id>;chatId=<current-chat-id>]
+[FOLLOW_UP_WITH_TOOLS, "对当前会话进度和下一轮任务的简要说明", sessionId=<current-session-id>;chatId=<current-chat-id>;summary=<当前已确认信息>;nextPrompt=<下一轮目标>;avoidRepeat=<避免重复内容>]
 ```
 
 要求:
@@ -31,6 +37,7 @@
 - `sessionId` 必须使用当前会话的 `sessionId`
 - `chatId` 必须使用当前对话的 `chatId`
 - 不允许伪造、修改或猜测其他会话的身份信息
+- `summary`、`nextPrompt`、`avoidRepeat` 只属于内部 continuation 信息，不属于用户输入
 
 ## intent 应包含的内容
 
@@ -63,8 +70,9 @@ Runtime(Core) 会维护当前 chat 的上下文，因此在下一轮中:
 - 你可以基于上下文继续当前回答
 - 不需要重复完整的原始用户输入
 - 不应该大段重复上一轮已经输出过的正文
+- `FOLLOW_UP_WITH_TOOLS` 的 `summary / nextPrompt / avoidRepeat` 会进入一次性 continuation context，而不是进入用户输入
 
 ## 工作原则
 
 当本地框架无法独立完成复杂状态压缩、续跑摘要或继续计划时，应优先利用 LLM 自身能力完成这些内容。  
-`FOLLOW_UP` 的 intent 设计目的，就是让你主动总结当前进度，并给下一轮提供足够明确的续跑说明。
+`FOLLOW_UP` / `FOLLOW_UP_WITH_TOOLS` 的 intent 设计目的，就是让你主动总结当前进度，并给下一轮提供足够明确的续跑说明。

@@ -16,7 +16,10 @@ import {
   IntentRequestSource,
   IntentRequestType,
 } from "@/types";
-import { checkFollowUpIntentRequestSafety } from "./follow-up";
+import {
+  checkFollowUpIntentRequestSafety,
+  checkFollowUpWithToolsIntentRequestSafety,
+} from "./follow-up";
 import { checkLoadMemoryIntentRequestSafety } from "./load-memory";
 import { checkLoadSkillIntentRequestSafety } from "./load-skill";
 import { checkSaveMemoryIntentRequestSafety } from "./save-memory";
@@ -66,6 +69,8 @@ const checkSingleIntentRequestSafety = (
       return checkLoadSkillIntentRequestSafety(request);
     case IntentRequestType.FOLLOW_UP:
       return checkFollowUpIntentRequestSafety(request, context);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
+      return checkFollowUpWithToolsIntentRequestSafety(request, context);
   }
 };
 

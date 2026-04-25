@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { Runtime } from "@/core/runtime";
 import { Transport } from "@/core/transport";
 import { ServiceManager } from "@/libs/service-manage";
-import { MemoryService } from "@/services";
+import { MemoryService, ToolService } from "@/services";
 import { RuntimeService } from "@/services/runtime";
 import { WatchmanPhase } from "@/services/watchman/types";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
@@ -59,7 +59,8 @@ const buildRuntimeWithServices = async () => {
   });
 
   const memoryService = new MemoryService();
-  serviceManager.register(runtimeService, memoryService);
+  const toolService = new ToolService();
+  serviceManager.register(runtimeService, memoryService, toolService);
   await memoryService.start();
   memoryServices.push(memoryService);
 
@@ -67,6 +68,46 @@ const buildRuntimeWithServices = async () => {
     runtime: new Runtime(serviceManager),
     memoryService,
     transport: new Transport(serviceManager),
+  };
+};
+
+const buildRuntimeWithToolService = async (options: {
+  includeWorkspace?: boolean;
+} = {}) => {
+  const workspace = await mkdtemp(join(tmpdir(), "atom-next-runtime-tools-"));
+  workspaces.push(workspace);
+
+  const serviceManager = new ServiceManager();
+  const runtimeService = new RuntimeService();
+
+  runtimeService.loadCliArgs({
+    mode: "server",
+    ...(options.includeWorkspace === false ? {} : { workspace }),
+    sandbox: workspace,
+    serverUrl: "http://127.0.0.1:8787",
+    address: "127.0.0.1",
+    port: 8787,
+  });
+  runtimeService.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+  });
+
+  const toolService = new ToolService();
+  serviceManager.register(runtimeService, toolService);
+
+  return {
+    runtime: new Runtime(serviceManager),
+    workspace,
   };
 };
 
@@ -120,7 +161,7 @@ describe("Runtime context", () => {
     expect(prompt).toContain("# System 总纲");
     expect(prompt).toContain("# Intent Request 使用规范");
     expect(prompt).toContain("# Memory 使用提示词");
-    expect(prompt).toContain("# FOLLOW_UP 使用规范");
+    expect(prompt).toContain("# FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 使用规范");
     expect(prompt.indexOf("# System 总纲")).toBeLessThan(
       prompt.indexOf("# Intent Request 使用规范"),
     );
@@ -128,7 +169,7 @@ describe("Runtime context", () => {
       prompt.indexOf("# Memory 使用提示词"),
     );
     expect(prompt.indexOf("# Memory 使用提示词")).toBeLessThan(
-      prompt.indexOf("# FOLLOW_UP 使用规范"),
+      prompt.indexOf("# FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 使用规范"),
     );
     expect(prompt).toContain("<<<REQUEST>>>");
     expect(prompt).toContain("<IntentPolicy>");
@@ -180,6 +221,170 @@ describe("Runtime context", () => {
     });
 
     expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\npart-1\npart-2\nEOF");
+  });
+
+  test("creates tool execution context from current runtime workspace", async () => {
+    const { runtime, workspace } = await buildRuntimeWithToolService();
+
+    runtime.currentTask = buildTask("task-tools-1");
+
+    const context = runtime.createToolExecutionContext();
+    const tools = runtime.createConversationToolRegistry();
+
+    expect(context.workspace).toBe(workspace);
+    expect(Object.keys(tools)).toEqual([
+      "read",
+      "ls",
+      "tree",
+      "ripgrep",
+      "write",
+      "cp",
+      "mv",
+      "bash",
+      "git",
+    ]);
+  });
+
+  test("throws when creating tool execution context without current task", async () => {
+    const { runtime } = await buildRuntimeWithToolService();
+
+    expect(() => {
+      runtime.createToolExecutionContext();
+    }).toThrow("Runtime currentTask is missing");
+  });
+
+  test("throws when runtime workspace is missing for tool execution context", async () => {
+    const { runtime } = await buildRuntimeWithToolService({
+      includeWorkspace: false,
+    });
+
+    runtime.currentTask = buildTask("task-tools-2");
+
+    expect(() => {
+      runtime.createToolExecutionContext();
+    }).toThrow("CLI argument workspace not found");
+  });
+
+  test("executeIntentRequests writes continuation context for follow up with tools", async () => {
+    const { runtime } = await buildRuntimeWithServices();
+
+    const task = buildTask("task-follow-up-tools-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "检查当前实现" }],
+    });
+    runtime.currentTask = task;
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "FOLLOW_UP_WITH_TOOLS",
+        intent: "继续验证剩余实现",
+        params: {
+          sessionId: "session-1",
+          chatId: "chat-1",
+          summary: "已经确认 ToolService 已接入 formal conversation。",
+          nextPrompt: "继续检查 FOLLOW_UP 链路是否仍能继续使用 tools。",
+          avoidRepeat: "不要重复前文的 ToolService 说明。",
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("stop");
+    expect(result.nextState).toBe(TaskState.FOLLOW_UP);
+    expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
+    expect(result.nextTask?.payload).toEqual([]);
+    expect(runtime.getContinuationContext()).toEqual({
+      summary: "已经确认 ToolService 已接入 formal conversation。",
+      nextPrompt: "继续检查 FOLLOW_UP 链路是否仍能继续使用 tools。",
+      avoidRepeat: "不要重复前文的 ToolService 说明。",
+      updatedAt: expect.any(Number),
+    });
+
+    runtime.currentTask = result.nextTask!;
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(runtime.exportUserPrompt()).toBe("");
+    expect(prompt).toContain("<Continuation>");
+    expect(prompt).toContain(
+      "<Summary>已经确认 ToolService 已接入 formal conversation。</Summary>",
+    );
+    expect(prompt).toContain(
+      "<NextPrompt>继续检查 FOLLOW_UP 链路是否仍能继续使用 tools。</NextPrompt>",
+    );
+    expect(prompt).toContain(
+      "<AvoidRepeat>不要重复前文的 ToolService 说明。</AvoidRepeat>",
+    );
+  });
+
+  test("clears continuation context when external task arrives", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-continuation-seed", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      payload: [],
+    });
+    runtime.setContinuationContext({
+      summary: "已确认部分结果",
+      nextPrompt: "继续检查 tools",
+      avoidRepeat: "不要重复",
+    });
+
+    runtime.currentTask = buildTask("task-continuation-external", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.EXTERNAL,
+      payload: [{ type: "text", data: "新的外部问题" }],
+    });
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(runtime.getContinuationContext().updatedAt).toBeNull();
+    expect(prompt).not.toContain("<Continuation>");
+  });
+
+  test("clears continuation context when chat or session changes", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-continuation-base", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      payload: [],
+    });
+    runtime.setContinuationContext({
+      summary: "已确认部分结果",
+      nextPrompt: "继续检查 tools",
+      avoidRepeat: "不要重复",
+    });
+
+    runtime.currentTask = buildTask("task-continuation-chat-change", {
+      sessionId: "session-1",
+      chatId: "chat-2",
+      source: TaskSource.INTERNAL,
+      payload: [],
+    });
+    expect(runtime.getContinuationContext().updatedAt).toBeNull();
+
+    runtime.setContinuationContext({
+      summary: "再次写入",
+      nextPrompt: "继续检查",
+      avoidRepeat: "不要重复",
+    });
+    runtime.currentTask = buildTask("task-continuation-session-change", {
+      sessionId: "session-2",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      payload: [],
+    });
+
+    expect(runtime.getContinuationContext().updatedAt).toBeNull();
   });
 
   test("finalizeChatTurn resolves final message and commits session continuity", async () => {
@@ -772,6 +977,32 @@ describe("Runtime context", () => {
       params: {
         sessionId: "session-1",
         chatId: "chat-1",
+      },
+    }]);
+  });
+
+  test("returns safe follow up with tools request when runtime safety passes", () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+
+    const result = runtime.parseIntentRequest(
+      '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已确认当前结果;nextPrompt=继续检查剩余工具链路;avoidRepeat=不要重复前文]',
+    );
+
+    expect(result.safeRequests).toEqual([{
+      source: "conversation",
+      request: "FOLLOW_UP_WITH_TOOLS",
+      intent: "继续验证",
+      params: {
+        sessionId: "session-1",
+        chatId: "chat-1",
+        summary: "已确认当前结果",
+        nextPrompt: "继续检查剩余工具链路",
+        avoidRepeat: "不要重复前文",
       },
     }]);
   });

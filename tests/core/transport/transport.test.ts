@@ -5,10 +5,15 @@ import { RuntimeService } from "@/services/runtime";
 
 const streamText = mock();
 const generateText = mock();
+const stepCountIs = mock((stepCount) => ({
+  type: "step-count",
+  stepCount,
+}));
 
 mock.module("ai", () => ({
   streamText,
   generateText,
+  stepCountIs,
 }));
 
 const { Transport } = await import("@/core/transport/transport");
@@ -74,6 +79,7 @@ describe("Transport.send", () => {
     currentCallOptions = undefined;
     streamText.mockReset();
     generateText.mockReset();
+    stepCountIs.mockClear();
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
     process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
@@ -120,6 +126,8 @@ describe("Transport.send", () => {
     expect(currentCallOptions.prompt).toBe("user prompt");
     expect(currentCallOptions.abortSignal).toBe(abortController.signal);
     expect(currentCallOptions.maxOutputTokens).toBe(128);
+    expect(currentCallOptions.tools).toBeUndefined();
+    expect(currentCallOptions.stopWhen).toBeUndefined();
     expect(onTextDelta.mock.calls.map(([textDelta]) => textDelta).join("")).toBe(
       "Hello",
     );
@@ -186,6 +194,178 @@ describe("Transport.send", () => {
     });
 
     expect(onError).toHaveBeenCalledWith(streamError);
+  });
+
+  test("passes tools and maxToolSteps to streamText and forwards tool hooks", async () => {
+    const onToolCallStart = mock(async () => {});
+    const onToolCallFinish = mock(async () => {});
+    const tools = {
+      read: {
+        description: "read file",
+        inputSchema: {},
+      },
+    };
+
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return {
+        consumeStream: async () => {
+          await options.experimental_onToolCallStart?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call_1",
+              input: { filepath: "/tmp/readme.md" },
+            },
+          });
+
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "Looked up file. " },
+          });
+
+          await options.experimental_onToolCallFinish?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call_1",
+              input: { filepath: "/tmp/readme.md" },
+            },
+            success: true,
+            output: {
+              filepath: "/tmp/readme.md",
+              size: 12,
+            },
+          });
+
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "Done." },
+          });
+        },
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+        }),
+        totalUsage: Promise.resolve({
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+        }),
+      };
+    });
+
+    const transport = new Transport(buildServiceManager());
+    const result = await transport.send("system prompt", "user prompt", {
+      tools,
+      maxToolSteps: 7,
+      onToolCallStart,
+      onToolCallFinish,
+    });
+
+    expect(stepCountIs).toHaveBeenCalledTimes(1);
+    expect(stepCountIs).toHaveBeenCalledWith(7);
+    expect(currentCallOptions.tools).toBe(tools);
+    expect(currentCallOptions.stopWhen).toEqual({
+      type: "step-count",
+      stepCount: 7,
+    });
+    expect(onToolCallStart).toHaveBeenCalledWith({
+      toolName: "read",
+      toolCallId: "call_1",
+      input: { filepath: "/tmp/readme.md" },
+    });
+    expect(onToolCallFinish).toHaveBeenCalledWith({
+      toolName: "read",
+      toolCallId: "call_1",
+      input: { filepath: "/tmp/readme.md" },
+      result: {
+        filepath: "/tmp/readme.md",
+        size: 12,
+      },
+    });
+    expect(result.text).toBe("Looked up file. Done.");
+    expect(result.intentRequestText).toBe("");
+  });
+
+  test("uses default maxToolSteps when tools are present and keeps text parsing isolated from tool events", async () => {
+    const onTextDelta = mock(async () => {});
+    const onToolCallFinish = mock(async () => {});
+    const tools = {
+      tree: {
+        description: "list tree",
+        inputSchema: {},
+      },
+    };
+
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return {
+        consumeStream: async () => {
+          await options.experimental_onToolCallStart?.({
+            toolCall: {
+              toolName: "tree",
+              toolCallId: "call_2",
+              input: { dirpath: "/tmp/project" },
+            },
+          });
+
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "Summary\n<<<REQ" },
+          });
+
+          await options.experimental_onToolCallFinish?.({
+            toolCall: {
+              toolName: "tree",
+              toolCallId: "call_2",
+              input: { dirpath: "/tmp/project" },
+            },
+            success: false,
+            error: new Error("tree failed"),
+          });
+
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "UEST>>>\nrequest-a" },
+          });
+        },
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+        }),
+        totalUsage: Promise.resolve({
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+        }),
+      };
+    });
+
+    const transport = new Transport(buildServiceManager());
+    const result = await transport.send("system prompt", "user prompt", {
+      tools,
+      onTextDelta,
+      onToolCallFinish,
+    });
+
+    expect(stepCountIs).toHaveBeenCalledTimes(1);
+    expect(stepCountIs).toHaveBeenCalledWith(5);
+    expect(currentCallOptions.stopWhen).toEqual({
+      type: "step-count",
+      stepCount: 5,
+    });
+    expect(onTextDelta.mock.calls.map(([textDelta]) => textDelta).join("")).toBe(
+      "Summary",
+    );
+    expect(onToolCallFinish).toHaveBeenCalledWith({
+      toolName: "tree",
+      toolCallId: "call_2",
+      input: { dirpath: "/tmp/project" },
+      error: expect.any(Error),
+    });
+    expect(result.text).toBe("Summary");
+    expect(result.intentRequestText).toBe("request-a");
   });
 
   test("throws when runtime service is missing", () => {

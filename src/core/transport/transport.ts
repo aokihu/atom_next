@@ -1,9 +1,10 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
-import { generateText as runGenerateText, streamText } from "ai";
+import { generateText as runGenerateText, stepCountIs, streamText } from "ai";
 import { finished } from "node:stream/promises";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
+import type { ToolDefinitionMap } from "@/services/tools";
 import type {
   ParsedProviderModel,
   ProviderDefinition,
@@ -18,11 +19,47 @@ export type TransportModelProfile = {
   providerConfig?: ProviderDefinition;
 };
 
+const DEFAULT_MAX_TOOL_STEPS = 5;
+
+/**
+ * Transport 层对外暴露的最小工具开始事件。
+ * @description
+ * 这里只保留 Runtime 未来真正需要消费的稳定字段，
+ * 避免把 AI SDK 的实验性事件结构直接传到 Core 上层。
+ */
+export type TransportToolCallStartEvent = {
+  toolName: string;
+  toolCallId?: string;
+  input: unknown;
+};
+
+/**
+ * Transport 层对外暴露的最小工具结束事件。
+ * @description
+ * Transport 只转发执行结果，不解释成功/失败语义，
+ * 更高层摘要仍由 ToolService wrapper / Runtime 处理。
+ */
+export type TransportToolCallFinishEvent = {
+  toolName: string;
+  toolCallId?: string;
+  input: unknown;
+  result?: unknown;
+  error?: unknown;
+};
+
 type SendOptions = {
   abortSignal?: AbortSignal;
   maxOutputTokens?: number;
   modelProfile?: TransportModelProfile;
+  tools?: ToolDefinitionMap;
+  maxToolSteps?: number;
   onTextDelta?: (textDelta: string) => void | Promise<void>;
+  onToolCallStart?: (
+    event: TransportToolCallStartEvent,
+  ) => void | Promise<void>;
+  onToolCallFinish?: (
+    event: TransportToolCallFinishEvent,
+  ) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
 };
 
@@ -44,6 +81,31 @@ type TransportModelCache = {
   key: string;
   model: LanguageModelV3;
 };
+
+type RawToolCallPayload = {
+  toolName: string;
+  toolCallId?: string;
+  input: unknown;
+};
+
+type RawToolCallStartEvent = {
+  toolCall: RawToolCallPayload;
+};
+
+type RawToolCallFinishEvent =
+  & {
+      toolCall: RawToolCallPayload;
+    }
+  & (
+    | {
+        success: true;
+        output: unknown;
+      }
+    | {
+        success: false;
+        error: unknown;
+      }
+  );
 
 /**
  * Core Transport
@@ -144,6 +206,20 @@ export class Transport {
     this.#textModelCache = null;
   }
 
+  /**
+   * 只在启用 tools 时显式下发 stopWhen。
+   * @description
+   * 无 tools 场景继续沿用当前单轮文本调用语义，
+   * 避免这一步把既有 send 行为一起改大。
+   */
+  #resolveToolStopCondition(options: SendOptions) {
+    if (!options.tools) {
+      return undefined;
+    }
+
+    return stepCountIs(options.maxToolSteps ?? DEFAULT_MAX_TOOL_STEPS);
+  }
+
   public async send(
     systemPrompt: string,
     userPrompt: string,
@@ -151,6 +227,7 @@ export class Transport {
   ): Promise<SendResult> {
     let text = "";
     const parser = createRequestStreamParser();
+    const stopWhen = this.#resolveToolStopCondition(options);
     let model;
 
     try {
@@ -184,6 +261,33 @@ export class Transport {
       prompt: userPrompt,
       abortSignal: options.abortSignal,
       maxOutputTokens: options.maxOutputTokens,
+      ...(options.tools ? { tools: options.tools } : {}),
+      ...(stopWhen ? { stopWhen } : {}),
+      ...(options.onToolCallStart
+        ? {
+            experimental_onToolCallStart: async (event: RawToolCallStartEvent) => {
+              await options.onToolCallStart?.({
+                toolName: event.toolCall.toolName,
+                toolCallId: event.toolCall.toolCallId,
+                input: event.toolCall.input,
+              });
+            },
+          }
+        : {}),
+      ...(options.onToolCallFinish
+        ? {
+            experimental_onToolCallFinish: async (event: RawToolCallFinishEvent) => {
+              await options.onToolCallFinish?.({
+                toolName: event.toolCall.toolName,
+                toolCallId: event.toolCall.toolCallId,
+                input: event.toolCall.input,
+                ...(event.success
+                  ? { result: event.output }
+                  : { error: event.error }),
+              });
+            },
+          }
+        : {}),
       onChunk: async ({ chunk }) => {
         if (chunk.type !== "text-delta") return;
 

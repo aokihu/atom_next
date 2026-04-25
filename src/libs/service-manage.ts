@@ -1,7 +1,7 @@
 import type { BaseService } from "@/services/base";
 import type { Logger } from "@/libs/log";
 
-type ServiceName = "runtime" | "watchman" | "memory";
+type ServiceName = "runtime" | "watchman" | "memory" | "tools";
 type ServiceManagerOptions = {
   logger?: Logger;
 };

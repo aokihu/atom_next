@@ -13,6 +13,7 @@
  */
 import type { ServiceManager } from "@/libs/service-manage";
 import type { MemoryService } from "@/services";
+import type { ToolService } from "@/services";
 import type { RuntimeService } from "@/services/runtime";
 import type { ProviderProfileLevel } from "@/types/config";
 import type { TransportModelProfile } from "../transport";
@@ -43,6 +44,18 @@ export function resolveMemoryService(
   }
 
   return memory;
+}
+
+export function resolveToolService(
+  serviceManager: ServiceManager,
+): ToolService {
+  const tools = serviceManager.getService<ToolService>("tools");
+
+  if (!tools) {
+    throw new Error("Tool service not found");
+  }
+
+  return tools;
 }
 
 /* ==================== */

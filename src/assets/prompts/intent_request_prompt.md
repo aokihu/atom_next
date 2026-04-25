@@ -67,12 +67,27 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 
 - “已完成前半部分分析，下一轮继续补充实现步骤”
 - “需要继续当前回答，并避免重复已输出章节”
+- “已确认当前工具结果，下一轮继续用 tools 补全剩余验证”
 
 不推荐风格：
 
 - “继续”
 - “处理一下”
 - “more”
+
+## FOLLOW_UP_WITH_TOOLS 额外规则
+
+当下一轮仍然需要继续使用 tools 时，应使用 `FOLLOW_UP_WITH_TOOLS`，并补充：
+
+- `summary`：当前已确认的信息
+- `nextPrompt`：下一轮真正要继续完成的目标
+- `avoidRepeat`：下一轮应避免重复的内容，可选
+
+这些字段属于 Runtime(Core) 的内部 continuation 信息：
+
+- 不属于用户输入
+- 不会进入 user prompt
+- 只会进入下一轮的一次性 system context
 
 ## 输出顺序要求
 

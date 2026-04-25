@@ -26,14 +26,20 @@ import {
   createMemorySearchResultContext,
 } from "./memory-state";
 import {
+  createRuntimeContinuationContext,
   createRuntimeFollowUpContext,
   createRuntimeMemoryContext,
   createRuntimeMemoryScopeContext,
   createRuntimeSessionContext,
 } from "./state";
-import { syncFollowUpContext, syncTaskSessions } from "./task-sync";
+import {
+  syncContinuationContext,
+  syncFollowUpContext,
+  syncTaskSessions,
+} from "./task-sync";
 import type {
   RuntimeContext,
+  RuntimeContinuationContext,
   RuntimePromptContextSnapshot,
   RuntimeSessionContext,
   RuntimeTaskSession,
@@ -42,6 +48,7 @@ import type {
 
 export type {
   RuntimeConversationContext,
+  RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeMemoryContext,
   RuntimeMemoryScopeContext,
@@ -139,9 +146,16 @@ export class ContextManager {
    */
   public syncTask(task: TaskItem) {
     const nextTaskSession = syncTaskSessions(this.#taskSessions, task);
+    const previousChatId = this.#context.followUp?.chatId ?? "";
     const nextFollowUp = syncFollowUpContext({
       previousFollowUp: this.#context.followUp,
       previousSessionId: this.#context.meta.sessionId,
+      task,
+    });
+    const nextContinuation = syncContinuationContext({
+      previousContinuation: this.#context.continuation,
+      previousSessionId: this.#context.meta.sessionId,
+      previousChatId,
       task,
     });
 
@@ -150,6 +164,7 @@ export class ContextManager {
     this.#context.meta.sessionId = task.sessionId;
     this.#context.channel.source = task.source;
     this.#context.followUp = nextFollowUp;
+    this.#context.continuation = nextContinuation;
     this.#getActiveSessionContext();
   }
 
@@ -173,6 +188,9 @@ export class ContextManager {
       followUp: this.#context.followUp
         ? structuredClone(this.#context.followUp)
         : undefined,
+      continuation: this.#context.continuation
+        ? structuredClone(this.#context.continuation)
+        : undefined,
       conversation: structuredClone(sessionContext.conversation),
       memory: structuredClone(sessionContext.memory),
     };
@@ -192,6 +210,30 @@ export class ContextManager {
 
   public setLastAssistantOutput(text: string) {
     this.#getOrCreateFollowUpContext().lastAssistantOutput = text;
+  }
+
+  public setContinuationContext(input: {
+    summary: string;
+    nextPrompt: string;
+    avoidRepeat?: string;
+  }) {
+    this.#context.continuation = {
+      ...createRuntimeContinuationContext(),
+      summary: input.summary.trim(),
+      nextPrompt: input.nextPrompt.trim(),
+      avoidRepeat: input.avoidRepeat?.trim() ?? "",
+      updatedAt: Date.now(),
+    };
+  }
+
+  public clearContinuationContext() {
+    this.#context.continuation = undefined;
+  }
+
+  public getContinuationContext(): RuntimeContinuationContext {
+    return this.#context.continuation
+      ? structuredClone(this.#context.continuation)
+      : createRuntimeContinuationContext();
   }
 
   public commitSessionTurn(userInput: string, assistantOutput: string) {

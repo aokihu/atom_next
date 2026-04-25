@@ -8,6 +8,7 @@
  */
 import type { MemoryService } from "@/services";
 import type {
+  FollowUpWithToolsIntentRequestParams,
   MemoryScope,
 } from "@/types";
 import type { IntentExecutionPolicy } from "../user-intent";
@@ -62,5 +63,8 @@ export type RuntimeIntentRequestExecutionContext = {
   setIntentPolicy: (
     sessionId: string,
     policy: Omit<IntentExecutionPolicy, "updatedAt">,
+  ) => void;
+  setContinuationContext: (
+    input: FollowUpWithToolsIntentRequestParams,
   ) => void;
 };

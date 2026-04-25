@@ -12,7 +12,12 @@ import { APIServer } from "@/api";
 import { ServiceManager } from "@/libs/service-manage";
 import { createLogSystem } from "@/libs/log";
 import type { Logger } from "@/libs/log";
-import { MemoryService, RuntimeService, WatchmanService } from "@/services";
+import {
+  MemoryService,
+  RuntimeService,
+  ToolService,
+  WatchmanService,
+} from "@/services";
 import { startTui } from "@/tui";
 import { parseArguments, parseLogConfig } from "@/bootstrap/cli";
 
@@ -36,11 +41,14 @@ const startServerApp = async (
   });
   const memory = new MemoryService();
 
+  /* ----- 创建工具服务 ----- */
+  const tools = new ToolService();
+
   /* ----- 启动服务管理器 ----- */
   const serviceManager = new ServiceManager({
     logger: serviceManagerLogger,
   });
-  serviceManager.register(runtime, watchman, memory);
+  serviceManager.register(runtime, watchman, memory, tools);
   const startResults = await serviceManager.startAllServices();
   const rejectedResult = startResults.find(
     (result) => result.status === "rejected",

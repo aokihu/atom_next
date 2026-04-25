@@ -13,11 +13,16 @@
  * 所有函数都应保持“输入确定，输出确定”的纯函数形式。
  */
 import { TaskSource, type TaskItem } from "@/types/task";
-import { isNumber } from "radashi";
-import { createRuntimeFollowUpContext } from "./state";
+import { isNumber, isNullish } from "radashi";
+import {
+  createRuntimeContinuationContext,
+  createRuntimeFollowUpContext,
+} from "./state";
 import type {
+  RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeTaskSession,
+  SyncContinuationContextInput,
   SyncFollowUpContextInput,
   SyncTaskSessionResult,
 } from "./types";
@@ -134,4 +139,41 @@ export const syncFollowUpContext = (
   }
 
   return nextFollowUp;
+};
+
+const hasActiveContinuationContext = (
+  continuation?: RuntimeContinuationContext,
+): continuation is RuntimeContinuationContext => {
+  return !isNullish(continuation) && continuation.updatedAt !== null;
+};
+
+/**
+ * 计算下一个 continuation 上下文。
+ * @description
+ * continuation 是一次性的 follow-up 内部说明：
+ * - 只允许在同 session / 同 chat 的 internal task 中继续保留
+ * - external task、跨 session、跨 chat 时立即清空
+ */
+export const syncContinuationContext = (
+  input: SyncContinuationContextInput,
+): RuntimeContinuationContext | undefined => {
+  if (!hasActiveContinuationContext(input.previousContinuation)) {
+    return undefined;
+  }
+
+  const hasSessionChanged = input.previousSessionId !== input.task.sessionId;
+  const hasChatChanged = input.previousChatId !== input.task.chatId;
+
+  if (
+    input.task.source === TaskSource.EXTERNAL ||
+    hasSessionChanged ||
+    hasChatChanged
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...createRuntimeContinuationContext(),
+    ...input.previousContinuation,
+  };
 };

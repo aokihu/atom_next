@@ -44,6 +44,27 @@ describe("parseIntentRequests", () => {
     ]);
   });
 
+  test("parses follow up with tools request", () => {
+    const result = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=已经确认 read 结果;nextPrompt=继续检查相关文件;avoidRepeat=不要重复前文]',
+    );
+
+    expect(result).toEqual([
+      {
+        source: "conversation",
+        request: "FOLLOW_UP_WITH_TOOLS",
+        intent: "继续验证",
+        params: {
+          sessionId: "session-1",
+          chatId: "chat-1",
+          summary: "已经确认 read 结果",
+          nextPrompt: "继续检查相关文件",
+          avoidRepeat: "不要重复前文",
+        },
+      },
+    ]);
+  });
+
   test("parses save memory request with memory scope", () => {
     const result = parseIntentRequests(
       '[SAVE_MEMORY, "保存这段记忆", text=skill cache ready;scope=long]',
@@ -188,6 +209,14 @@ describe("parseIntentRequests", () => {
     expect(result).toEqual([]);
   });
 
+  test("ignores follow up with tools request when required params are missing", () => {
+    const result = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已经确认]',
+    );
+
+    expect(result).toEqual([]);
+  });
+
   test("ignores search memory request when limit is invalid", () => {
     const result = parseIntentRequests(
       '[SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill;limit=abc]',
@@ -275,6 +304,38 @@ describe("parseIntentRequests", () => {
     );
   });
 
+  test("rejects follow up with tools request when runtime context mismatches", () => {
+    const requests = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-2;summary=已确认;nextPrompt=继续检查]',
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests).toHaveLength(1);
+    expect(result.rejectedRequests[0]?.code).toBe(
+      "follow_up_with_tools_chat_mismatch",
+    );
+  });
+
+  test("rejects follow up with tools request when summary is too long", () => {
+    const requests = parseIntentRequests(
+      `[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=${"s".repeat(1001)};nextPrompt=继续检查]`,
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests).toHaveLength(1);
+    expect(result.rejectedRequests[0]?.code).toBe(
+      "follow_up_with_tools_summary_too_long",
+    );
+  });
+
   test("rejects load skill request when skill name is unsafe", () => {
     const requests = parseIntentRequests(
       '[LOAD_SKILL, "需要查看技能说明", skill=../secret]',
@@ -294,8 +355,8 @@ describe("parseIntentRequests", () => {
 [SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
 [LOAD_MEMORY, "加载明确记忆", key=long.note.watchman_memory_boundary]
 [UNLOAD_MEMORY, "卸载记忆", key=long.note.watchman_memory_boundary;reason=answer_completed]
-[UPDATE_MEMORY, "修正记忆正文", key=long.note.watchman_memory_boundary;text=updated]
 [FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
+[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=已确认;nextPrompt=继续检查]
     `);
     const safetyResult = checkIntentRequestSafety(requests, {
       sessionId: "session-1",
@@ -348,20 +409,6 @@ describe("parseIntentRequests", () => {
       {
         request: {
           source: "conversation",
-          request: "UPDATE_MEMORY",
-          intent: "修正记忆正文",
-          params: {
-            key: "long.note.watchman_memory_boundary",
-            text: "updated",
-          },
-        },
-        status: "accepted",
-        message:
-          "UPDATE_MEMORY request accepted and will be executed by Core after current output finishes",
-      },
-      {
-        request: {
-          source: "conversation",
           request: "FOLLOW_UP",
           intent: "",
           params: {
@@ -372,6 +419,22 @@ describe("parseIntentRequests", () => {
         status: "accepted",
         message:
           "FOLLOW_UP request accepted and will be scheduled by Core when current output finishes",
+      },
+      {
+        request: {
+          source: "conversation",
+          request: "FOLLOW_UP_WITH_TOOLS",
+          intent: "继续验证",
+          params: {
+            sessionId: "session-1",
+            chatId: "chat-1",
+            summary: "已确认",
+            nextPrompt: "继续检查",
+          },
+        },
+        status: "accepted",
+        message:
+          "FOLLOW_UP_WITH_TOOLS request accepted and will be scheduled by Core with continuation context when current output finishes",
       },
     ]);
   });

@@ -4,6 +4,7 @@ import { ServiceManager } from "@/libs/service-manage";
 import type { LogEntry, LogSink } from "@/libs/log";
 import { createLogSystem } from "@/libs/log";
 import { resetLogSystem } from "@/libs/log/log-system";
+import { ToolService } from "@/services";
 
 class TestService extends BaseService {
   constructor(name: string, private readonly shouldFail = false) {
@@ -75,5 +76,16 @@ describe("ServiceManager", () => {
       "Service startup failed",
     ]);
     expect(entries[1]?.error?.message).toBe("watchman failed");
+  });
+
+  test("accepts tools service registration", async () => {
+    const { logger } = createMemoryLog();
+    const serviceManager = new ServiceManager({ logger });
+
+    serviceManager.register(new ToolService());
+
+    const results = await serviceManager.startAllServices();
+
+    expect(results[0]?.status).toBe("fulfilled");
   });
 });

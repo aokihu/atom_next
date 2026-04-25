@@ -8,6 +8,7 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsIntentRequest,
   IntentRequest,
   LoadMemoryIntentRequest,
   MemoryOutput,
@@ -24,6 +25,7 @@ import { isEmpty } from "radashi";
 import { createRuntimeMemoryItem } from "../memory-item";
 import {
   buildFollowUpTask,
+  buildFollowUpWithToolsTask,
   buildFormalConversationTask,
   buildRepeatedSearchClosureTask,
   resolveMemoryScope,
@@ -252,6 +254,20 @@ const processFollowUpIntentRequest = (
   };
 };
 
+const processFollowUpWithToolsIntentRequest = (
+  task: TaskItem,
+  request: FollowUpWithToolsIntentRequest,
+  context: RuntimeIntentRequestExecutionContext,
+): IntentRequestExecutionResult => {
+  context.setContinuationContext(request.params);
+
+  return {
+    status: "stop",
+    nextState: TaskState.FOLLOW_UP,
+    nextTask: buildFollowUpWithToolsTask(task, request),
+  };
+};
+
 export const processRepeatedSearchFollowUpIntentRequest = (
   task: TaskItem,
   searchRequest: SearchMemoryIntentRequest,
@@ -320,6 +336,8 @@ export const processIntentRequest = (
       return processUpdateMemoryIntentRequest(request, context);
     case IntentRequestType.FOLLOW_UP:
       return processFollowUpIntentRequest(task, request);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
+      return processFollowUpWithToolsIntentRequest(task, request, context);
     case IntentRequestType.LOAD_SKILL:
       return {
         status: "continue",

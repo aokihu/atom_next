@@ -158,11 +158,13 @@ async function sendConversation(
 ): Promise<FormalConversationTransportOutput> {
   let hasSyncedProcessingState = false;
   let visibleTextBuffer = "";
+  const tools = input.env.runtime.createConversationToolRegistry();
 
   const transportResult = await input.env.transport.send(
     input.systemPrompt,
     input.userPrompt,
     {
+      tools,
       onTextDelta: (textDelta) => {
         if (!hasSyncedProcessingState) {
           input.env.taskQueue.updateTask(
@@ -178,6 +180,8 @@ async function sendConversation(
       },
     },
   );
+
+  input.env.runtime.clearContinuationContext();
 
   return {
     env: input.env,

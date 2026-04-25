@@ -29,6 +29,7 @@ export type RuntimeContext = {
     source: TaskSource;
   };
   followUp?: RuntimeFollowUpContext;
+  continuation?: RuntimeContinuationContext;
 };
 
 export type RuntimeFollowUpContext = {
@@ -42,6 +43,13 @@ export type RuntimeFollowUpContext = {
 export type RuntimeConversationContext = {
   lastUserInput: string;
   lastAssistantOutput: string;
+  updatedAt: number | null;
+};
+
+export type RuntimeContinuationContext = {
+  summary: string;
+  nextPrompt: string;
+  avoidRepeat: string;
   updatedAt: number | null;
 };
 
@@ -93,6 +101,13 @@ export type SyncFollowUpContextInput = {
   task: TaskItem;
 };
 
+export type SyncContinuationContextInput = {
+  previousContinuation?: RuntimeContinuationContext;
+  previousSessionId: UUID | EmptyString;
+  previousChatId: UUID | EmptyString;
+  task: TaskItem;
+};
+
 /* ==================== */
 /* Prompt Snapshot      */
 /* ==================== */
@@ -102,6 +117,7 @@ export type RuntimePromptContextSnapshot = {
   round: number;
   source: TaskSource;
   followUp?: RuntimeFollowUpContext;
+  continuation?: RuntimeContinuationContext;
   conversation: RuntimeConversationContext;
   memory: RuntimeMemoryContext;
 };

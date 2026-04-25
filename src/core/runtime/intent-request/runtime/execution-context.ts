@@ -62,5 +62,8 @@ export function createIntentRequestExecutionContext(
     setIntentPolicy: (sessionId, policy) => {
       input.setIntentPolicy(sessionId, policy);
     },
+    setContinuationContext: (continuation) => {
+      input.contextManager.setContinuationContext(continuation);
+    },
   };
 }

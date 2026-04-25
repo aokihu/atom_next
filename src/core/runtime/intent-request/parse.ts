@@ -8,6 +8,7 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsIntentRequest,
   IntentRequest,
   LoadMemoryIntentRequest,
   LoadSkillIntentRequest,
@@ -373,6 +374,49 @@ const parseFollowUpIntentRequest = (
   };
 };
 
+const parseFollowUpWithToolsIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): FollowUpWithToolsIntentRequest | null => {
+  const sessionId = params.sessionId;
+  const chatId = params.chatId;
+  const summary = params.summary;
+  const nextPrompt = params.nextPrompt;
+  const avoidRepeat = params.avoidRepeat;
+
+  if (
+    !isString(sessionId) ||
+    isEmpty(sessionId) ||
+    !isString(chatId) ||
+    isEmpty(chatId) ||
+    !isString(summary) ||
+    isEmpty(summary) ||
+    !isString(nextPrompt) ||
+    isEmpty(nextPrompt)
+  ) {
+    return null;
+  }
+
+  if (!isEmpty(avoidRepeat) && !isString(avoidRepeat)) {
+    return null;
+  }
+
+  return {
+    source: IntentRequestSource.CONVERSATION,
+    request: IntentRequestType.FOLLOW_UP_WITH_TOOLS,
+    intent,
+    params: {
+      sessionId,
+      chatId,
+      summary,
+      nextPrompt,
+      ...(isString(avoidRepeat) && !isEmpty(avoidRepeat)
+        ? { avoidRepeat }
+        : {}),
+    },
+  };
+};
+
 const parseTypedIntentRequest = (
   request: IntentRequestType,
   intent: string,
@@ -395,6 +439,8 @@ const parseTypedIntentRequest = (
       return parseLoadSkillIntentRequest(intent, params);
     case IntentRequestType.FOLLOW_UP:
       return parseFollowUpIntentRequest(intent, params);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
+      return parseFollowUpWithToolsIntentRequest(intent, params);
   }
 };
 

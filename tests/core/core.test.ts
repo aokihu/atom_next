@@ -8,15 +8,20 @@ import { tmpdir } from "node:os";
 import { buildTaskItem } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import { ChatEvents } from "@/types/event";
-import { RuntimeService, MemoryService } from "@/services";
+import { RuntimeService, MemoryService, ToolService } from "@/services";
 import { WatchmanPhase } from "@/services/watchman/types";
 
 const streamText = mock();
 const generateText = mock();
+const stepCountIs = mock((stepCount) => ({
+  type: "step-count",
+  stepCount,
+}));
 
 mock.module("ai", () => ({
   streamText,
   generateText,
+  stepCountIs,
 }));
 
 const { Core } = await import("@/core/core");
@@ -78,8 +83,9 @@ const buildServiceManager = async (workspace: string) => {
   });
 
   const memory = new MemoryService();
+  const tools = new ToolService();
   const serviceManager = new ServiceManager();
-  serviceManager.register(runtime, memory);
+  serviceManager.register(runtime, memory, tools);
   await memory.start();
 
   return {
@@ -96,6 +102,7 @@ describe("Core memory intent requests", () => {
   beforeEach(() => {
     streamText.mockReset();
     generateText.mockReset();
+    stepCountIs.mockClear();
     generateText.mockResolvedValue({
       text: [
         "TYPE=unknown",
@@ -825,6 +832,124 @@ describe("Core memory intent requests", () => {
     expect(completedEvents[1].message.data).toBe(
       "可以继续展开：这条记忆说明 AGENTS.md 的编译缓存归 Watchman 负责，而 Memory 持久化属于独立的记忆系统职责。",
     );
+  });
+
+  test("injects continuation context into next follow up with tools and clears it after consumption", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-follow-up-tools-"));
+    workspaces.push(workspace);
+
+    const { memory, serviceManager } = await buildServiceManager(workspace);
+    memoryServices.push(memory);
+
+    const streamCalls = [];
+    const responses = [
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text:
+              "先整理当前结果。\n<<<REQUEST>>>\n"
+              + '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已经确认 tools 已接入 formal conversation;nextPrompt=继续检查 follow-up 链路是否还能继续使用 tools;avoidRepeat=不要重复前文]',
+          },
+        ],
+      },
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text: "继续验证后确认 follow-up 轮次仍然可以继续使用 tools。",
+          },
+        ],
+      },
+      {
+        chunks: [
+          {
+            type: "text-delta",
+            text: "这是新的外部会话回答。",
+          },
+        ],
+      },
+    ];
+
+    streamText.mockImplementation((options) => {
+      streamCalls.push(options);
+      const response = responses.shift();
+
+      return buildStreamResult({
+        chunks: response.chunks.map((chunk) => ({
+          ...chunk,
+          options,
+        })),
+      });
+    });
+
+    const completedEvents = [];
+    const eventTarget = new EventEmitter();
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+      completedEvents.push(payload);
+    });
+
+    const core = new Core(serviceManager);
+
+    await core.addTask(
+      buildTaskItem({
+        sessionId: "session-1",
+        chatId: "chat-1",
+        payload: [{ type: "text", data: "继续检查 tools 集成" }],
+        eventTarget,
+        channel: { domain: "tui" },
+      }),
+    );
+
+    await core.runOnce();
+    await core.runOnce();
+    await core.runOnce();
+
+    await core.addTask(
+      buildTaskItem({
+        sessionId: "session-1",
+        chatId: "chat-2",
+        payload: [{ type: "text", data: "新的外部问题" }],
+        eventTarget,
+        channel: { domain: "tui" },
+      }),
+    );
+
+    await core.runOnce();
+    await core.runOnce();
+
+    expect(streamCalls).toHaveLength(3);
+    expect(streamCalls[0].tools).toBeDefined();
+    expect(streamCalls[1].system).toContain("<Continuation>");
+    expect(streamCalls[1].system).toContain(
+      "<Summary>已经确认 tools 已接入 formal conversation</Summary>",
+    );
+    expect(streamCalls[1].system).toContain(
+      "<NextPrompt>继续检查 follow-up 链路是否还能继续使用 tools</NextPrompt>",
+    );
+    expect(streamCalls[1].system).toContain(
+      "<AvoidRepeat>不要重复前文</AvoidRepeat>",
+    );
+    expect(streamCalls[1].prompt).toBe("");
+    expect(streamCalls[1].tools).toBeDefined();
+    expect(Object.keys(streamCalls[1].tools)).toEqual([
+      "read",
+      "ls",
+      "tree",
+      "ripgrep",
+      "write",
+      "cp",
+      "mv",
+      "bash",
+      "git",
+    ]);
+    expect(streamCalls[2].system).not.toContain("<Continuation>");
+    expect(streamCalls[2].prompt).toBe("新的外部问题");
+    expect(completedEvents).toHaveLength(2);
+    expect(completedEvents[0].message.data).toBe(
+      "继续验证后确认 follow-up 轮次仍然可以继续使用 tools。",
+    );
+    expect(completedEvents[1].message.data).toBe("这是新的外部会话回答。");
   });
 
   test("commits final follow up answer into session continuity context", async () => {

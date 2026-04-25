@@ -9,6 +9,10 @@ import type { ServiceManager } from "@/libs/service-manage";
 import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
 import { isEmpty } from "radashi";
+import type {
+  ToolDefinitionMap,
+  ToolExecutionContext,
+} from "@/services/tools";
 import {
   createIntentRequestExecutionContext as runCreateIntentRequestExecutionContext,
   executeIntentRequests as runIntentRequests,
@@ -35,6 +39,7 @@ import {
 import { prepareExecutionContext as runPrepareExecutionContext } from "./prepare";
 import {
   resolveRuntimeService,
+  resolveToolService,
   resolveTransportModelProfile,
   shouldReportIntentRequestLogs,
 } from "./service-access";
@@ -248,6 +253,34 @@ export class Runtime {
   }
 
   /**
+   * 写入一次性的 follow-up continuation 上下文。
+   * @description
+   * 这份上下文只服务下一轮 internal formal conversation，
+   * 不属于用户输入，也不进入长期 conversation continuity。
+   */
+  public setContinuationContext(input: {
+    summary: string;
+    nextPrompt: string;
+    avoidRepeat?: string;
+  }) {
+    this.#contextManager.setContinuationContext(input);
+  }
+
+  /**
+   * 清空当前一次性 continuation 上下文。
+   */
+  public clearContinuationContext() {
+    this.#contextManager.clearContinuationContext();
+  }
+
+  /**
+   * 读取当前 continuation 上下文。
+   */
+  public getContinuationContext() {
+    return this.#contextManager.getContinuationContext();
+  }
+
+  /**
    * 写入指定 scope 的记忆上下文。
    * @description
    * 0.10 里 session 级记忆默认持续驻留，直到显式覆盖或清空。
@@ -343,6 +376,36 @@ export class Runtime {
     level: ProviderProfileLevel = "balanced",
   ): TransportModelProfile {
     return resolveTransportModelProfile(this.#serviceManager, level);
+  }
+
+  /**
+   * 创建当前正式对话轮次的工具执行上下文。
+   * @description
+   * Runtime 只负责把当前运行态转换成 ToolService 可消费的高层输入：
+   * - 当前 task 必须已经绑定
+   * - workspace 来自 RuntimeService
+   *
+   * 本阶段不在这里接入工具结果摘要或用户可见工具事件，
+   * 只为 formal conversation 主链路提供最小 tools 执行上下文。
+   */
+  public createToolExecutionContext(): ToolExecutionContext {
+    this.#getCurrentTaskOrThrow();
+
+    return resolveToolService(this.#serviceManager).createExecutionContext({
+      workspace: resolveRuntimeService(this.#serviceManager).getWorkspace(),
+    });
+  }
+
+  /**
+   * 创建当前正式对话轮次可用的工具 registry。
+   * @description
+   * workflow 只需要拿到当前轮可用 tools，
+   * 不应直接接触 ToolService 本体或工具执行上下文细节。
+   */
+  public createConversationToolRegistry(): ToolDefinitionMap {
+    return resolveToolService(this.#serviceManager).createToolRegistry({
+      context: this.createToolExecutionContext(),
+    });
   }
 
   /**

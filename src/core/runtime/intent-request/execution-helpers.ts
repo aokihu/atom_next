@@ -9,6 +9,7 @@
 import { buildInternalTaskItem } from "@/libs";
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsIntentRequest,
   MemoryScope,
   SearchMemoryIntentRequest,
 } from "@/types";
@@ -62,6 +63,31 @@ export const buildFollowUpTask = (
         data: followUpIntent,
       },
     ],
+  });
+};
+
+/**
+ * 构造一个只依赖 continuation context 的 internal follow-up task。
+ * @description
+ * FOLLOW_UP_WITH_TOOLS 的续跑说明不再写入 payload，
+ * 下一轮 formal conversation 只通过 Runtime Context 读取 continuation。
+ */
+export const buildFollowUpWithToolsTask = (
+  task: TaskItem,
+  request: FollowUpWithToolsIntentRequest,
+) => {
+  const nextChainRound = parseTaskChainRound(task) + 1;
+
+  return buildInternalTaskItem({
+    sessionId: request.params.sessionId,
+    chatId: request.params.chatId,
+    chainId: task.chainId,
+    parentId: task.id,
+    chain_round: nextChainRound,
+    priority: 1,
+    eventTarget: task.eventTarget,
+    channel: task.channel,
+    payload: [],
   });
 };
 

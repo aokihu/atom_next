@@ -9,6 +9,7 @@
  */
 import type {
   RuntimeConversationContext,
+  RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeMemoryContext,
   RuntimeMemoryScopeContext,
@@ -28,6 +29,16 @@ export const createRuntimeFollowUpContext = (): RuntimeFollowUpContext => {
     lastAssistantOutput: "",
   };
 };
+
+export const createRuntimeContinuationContext =
+  (): RuntimeContinuationContext => {
+    return {
+      summary: "",
+      nextPrompt: "",
+      avoidRepeat: "",
+      updatedAt: null,
+    };
+  };
 
 /* ==================== */
 /* Nested State Factory */

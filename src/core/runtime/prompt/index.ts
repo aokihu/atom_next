@@ -27,6 +27,7 @@ export type {
 
 export {
   convertConversationContextToPrompt,
+  convertContinuationContextToPrompt,
   convertFollowUpContextToPrompt,
   convertMemoryScopeContextToPrompt,
   convertIntentPolicyToPrompt,
