@@ -1,12 +1,10 @@
+import { isEmpty } from "radashi";
 import {
   MAX_FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_LENGTH,
   MAX_FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_LENGTH,
   MAX_FOLLOW_UP_WITH_TOOLS_SUMMARY_LENGTH,
 } from "@/core/runtime/intent-request/safety/shared";
-import postFollowUpPromptText from "@/assets/prompts/post_follow_up_prompt.md" with {
-  type: "text",
-};
-import { isEmpty } from "radashi";
+import postFollowUpPromptText from "@/assets/prompts/post_follow_up_prompt.md" with { type: "text" };
 
 export const POST_FOLLOW_UP_MAX_OUTPUT_TOKENS = 160;
 export const POST_FOLLOW_UP_RECENT_OUTPUT_MAX_CHARS = 2000;
@@ -32,7 +30,9 @@ const clampText = (text: string, maxLength: number) => {
 };
 
 const parsePostFollowUpJson = (text: string) => {
-  const match = text.match(/<PostFollowUpResult>\s*([\s\S]*?)\s*<\/PostFollowUpResult>/);
+  const match = text.match(
+    /<PostFollowUpResult>\s*([\s\S]*?)\s*<\/PostFollowUpResult>/,
+  );
 
   if (!match?.[1]) {
     return null;
@@ -127,9 +127,7 @@ export const createFallbackPostFollowUpContinuation = (
   );
 
   return {
-    summary: isEmpty(fallbackSummary)
-      ? "继续当前回答。"
-      : fallbackSummary,
+    summary: isEmpty(fallbackSummary) ? "继续当前回答。" : fallbackSummary,
     nextPrompt: DEFAULT_POST_FOLLOW_UP_NEXT_PROMPT,
     avoidRepeat: DEFAULT_POST_FOLLOW_UP_AVOID_REPEAT,
   };

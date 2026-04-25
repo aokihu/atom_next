@@ -9,10 +9,7 @@ import type { ServiceManager } from "@/libs/service-manage";
 import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
 import { isEmpty } from "radashi";
-import type {
-  ToolDefinitionMap,
-  ToolExecutionContext,
-} from "@/services/tools";
+import type { ToolDefinitionMap, ToolExecutionContext } from "@/services/tools";
 import {
   createIntentRequestExecutionContext as runCreateIntentRequestExecutionContext,
   executeIntentRequests as runIntentRequests,
@@ -54,7 +51,10 @@ import {
 } from "./service-access";
 import type { RuntimeMemoryItem } from "./memory-item";
 import type { Transport, TransportModelProfile } from "../transport";
-import { ContextManager, type SessionMemoryClearPolicy } from "./context-manager";
+import {
+  ContextManager,
+  type SessionMemoryClearPolicy,
+} from "./context-manager";
 
 type RuntimeOptions = {
   logger?: Logger;
@@ -124,7 +124,9 @@ export class Runtime {
    * 导出当前 session 的 Intent Policy 提示词片段。
    */
   public exportIntentPolicyPrompt(sessionId: string) {
-    return this.#userIntentPredictionManager.exportIntentPolicyPrompt(sessionId);
+    return this.#userIntentPredictionManager.exportIntentPolicyPrompt(
+      sessionId,
+    );
   }
 
   /**
@@ -153,7 +155,10 @@ export class Runtime {
     sessionId: string,
     input: Omit<IntentControlInput, "predictedIntent">,
   ) {
-    return this.#userIntentPredictionManager.resolveIntentPolicy(sessionId, input);
+    return this.#userIntentPredictionManager.resolveIntentPolicy(
+      sessionId,
+      input,
+    );
   }
 
   /**
@@ -412,16 +417,18 @@ export class Runtime {
    * 读取 formal conversation 的输出 token 上限。
    */
   public getFormalConversationMaxOutputTokens() {
-    return resolveRuntimeService(this.#serviceManager)
-      .getFormalConversationMaxOutputTokens();
+    return resolveRuntimeService(
+      this.#serviceManager,
+    ).getFormalConversationMaxOutputTokens();
   }
 
   /**
    * 读取 formal conversation 的输出预算。
    */
   public getFormalConversationOutputBudget() {
-    return resolveRuntimeService(this.#serviceManager)
-      .getFormalConversationOutputBudget();
+    return resolveRuntimeService(
+      this.#serviceManager,
+    ).getFormalConversationOutputBudget();
   }
 
   /**
@@ -432,10 +439,7 @@ export class Runtime {
     visibleTextCharLength: number;
     intentRequestText: string;
   }) {
-    if (
-      !this.#logger ||
-      !shouldReportIntentRequestLogs(this.#serviceManager)
-    ) {
+    if (!this.#logger || !shouldReportIntentRequestLogs(this.#serviceManager)) {
       return;
     }
 
@@ -465,10 +469,7 @@ export class Runtime {
     continuationNextPromptLength: number;
     fallbackUsed: boolean;
   }) {
-    if (
-      !this.#logger ||
-      !shouldReportIntentRequestLogs(this.#serviceManager)
-    ) {
+    if (!this.#logger || !shouldReportIntentRequestLogs(this.#serviceManager)) {
       return;
     }
 
@@ -478,9 +479,7 @@ export class Runtime {
   /**
    * 执行 plain FOLLOW_UP 的内部预处理，并写入 continuation。
    */
-  public async preparePostFollowUpContinuation(
-    transport: Transport,
-  ): Promise<{
+  public async preparePostFollowUpContinuation(transport: Transport): Promise<{
     summary: string;
     nextPrompt: string;
     avoidRepeat: string;
@@ -491,18 +490,26 @@ export class Runtime {
       this.getAccumulatedAssistantOutput(),
     );
     let fallbackUsed = false;
-    let continuation = createFallbackPostFollowUpContinuation(rawFollowUpIntent);
+    let continuation =
+      createFallbackPostFollowUpContinuation(rawFollowUpIntent);
+
+    const systemPrompt = this.exportPostFollowUpPrompt();
+    const userPrompt = this.exportPostFollowUpUserPrompt();
 
     if (!isEmpty(rawFollowUpIntent)) {
       try {
-        const text = await transport.generateText(
-          this.exportPostFollowUpPrompt(),
-          this.exportPostFollowUpUserPrompt(),
-          {
-            maxOutputTokens: POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
-            modelProfile: this.getTransportModelProfile("basic"),
+        const text = await transport.generateText(systemPrompt, userPrompt, {
+          modelProfile: this.getTransportModelProfile("balanced"),
+        });
+
+        // 输出压缩的FOLLOW UP内容
+
+        this.#logger?.info("PostFollowUp Result", {
+          data: {
+            text: text ?? "no message",
           },
-        );
+        });
+
         const parsedContinuation = parsePostFollowUpText(text);
 
         if (parsedContinuation) {
@@ -675,7 +682,9 @@ export class Runtime {
    * 解析模型返回的 Intent Request 文本。
    * @param intentRequestText LLM返回的Intent Request请求文本
    */
-  public parseIntentRequest(intentRequestText: string): IntentRequestHandleResult {
+  public parseIntentRequest(
+    intentRequestText: string,
+  ): IntentRequestHandleResult {
     return runHandleIntentRequestRuntime({
       intentRequestText,
       safetyContext: this.#createIntentRequestSafetyContext(),

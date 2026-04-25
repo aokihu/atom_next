@@ -103,10 +103,6 @@ function reportHandledIntentRequests(
 
   logger.debugJson("Intent Request handled", {
     intentRequestText: input.intentRequestText,
-    parsedRequests: input.parsedRequests,
-    safeRequests: input.safeRequests,
-    rejectedRequests: input.rejectedRequests,
-    dispatchResults: input.dispatchResults,
   });
 }
 
