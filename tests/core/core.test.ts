@@ -153,7 +153,7 @@ describe("Core memory intent requests", () => {
               "先搜索。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "搜索 Watchman 相关记忆", words=Watchman]'
               + "\n"
-              + '[FOLLOW_UP, "基于记忆继续回答", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "基于记忆继续回答"]',
           },
         ],
       },
@@ -328,7 +328,7 @@ describe("Core memory intent requests", () => {
               "先搜索。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "搜索默认配置", words=默认 scope]'
               + "\n"
-              + '[FOLLOW_UP, "基于记忆继续回答", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "基于记忆继续回答"]',
           },
         ],
       },
@@ -340,7 +340,7 @@ describe("Core memory intent requests", () => {
               "我先继续搜索。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "重复搜索默认配置", words=默认 scope]'
               + "\n"
-              + '[FOLLOW_UP, "继续基于记忆回答", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "继续基于记忆回答"]',
           },
         ],
       },
@@ -423,7 +423,7 @@ describe("Core memory intent requests", () => {
               "先搜索。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "搜索不存在的记忆", words=missing]'
               + "\n"
-              + '[FOLLOW_UP, "继续判断是否命中", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "继续判断是否命中"]',
           },
         ],
       },
@@ -435,7 +435,7 @@ describe("Core memory intent requests", () => {
               "没有命中任何长期记忆。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "重复搜索不存在的记忆", words=missing]'
               + "\n"
-              + '[FOLLOW_UP, "继续判断是否命中", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "继续判断是否命中"]',
           },
         ],
       },
@@ -527,7 +527,7 @@ describe("Core memory intent requests", () => {
               "<<<REQUEST>>>\n"
               + `[LOAD_MEMORY, "按 key 加载记忆", key=${saveResult.memory_key}]`
               + "\n"
-              + '[FOLLOW_UP, "基于已加载记忆继续回答", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "基于已加载记忆继续回答"]',
           },
         ],
       },
@@ -849,7 +849,7 @@ describe("Core memory intent requests", () => {
             type: "text-delta",
             text:
               "先整理当前结果。\n<<<REQUEST>>>\n"
-              + '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已经确认 tools 已接入 formal conversation;nextPrompt=继续检查 follow-up 链路是否还能继续使用 tools;avoidRepeat=不要重复前文]',
+              + '[FOLLOW_UP_WITH_TOOLS, "继续验证", summary=已经确认 tools 已接入 formal conversation;nextPrompt=继续检查 follow-up 链路是否还能继续使用 tools;avoidRepeat=不要重复前文]',
           },
         ],
       },
@@ -995,7 +995,7 @@ describe("Core memory intent requests", () => {
               "先搜索相关长期记忆。\n<<<REQUEST>>>\n"
               + '[SEARCH_MEMORY, "搜索 AGENTS 记忆", words=AGENTS md]'
               + "\n"
-              + '[FOLLOW_UP, "基于记忆继续回答", sessionId=session-1;chatId=chat-1]',
+              + '[FOLLOW_UP, "基于记忆继续回答"]',
           },
         ],
       },

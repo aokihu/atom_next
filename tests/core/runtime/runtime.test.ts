@@ -280,8 +280,6 @@ describe("Runtime context", () => {
         request: "FOLLOW_UP_WITH_TOOLS",
         intent: "继续验证剩余实现",
         params: {
-          sessionId: "session-1",
-          chatId: "chat-1",
           summary: "已经确认 ToolService 已接入 formal conversation。",
           nextPrompt: "继续检查 FOLLOW_UP 链路是否仍能继续使用 tools。",
           avoidRepeat: "不要重复前文的 ToolService 说明。",
@@ -967,17 +965,14 @@ describe("Runtime context", () => {
     });
 
     const result = runtime.parseIntentRequest(
-      '[FOLLOW_UP, "已完成前半部分，下一轮继续补充实现步骤", sessionId=session-1;chatId=chat-1]',
+      '[FOLLOW_UP, "已完成前半部分，下一轮继续补充实现步骤"]',
     );
 
     expect(result.safeRequests).toEqual([{
       source: "conversation",
       request: "FOLLOW_UP",
       intent: "已完成前半部分，下一轮继续补充实现步骤",
-      params: {
-        sessionId: "session-1",
-        chatId: "chat-1",
-      },
+      params: {},
     }]);
   });
 
@@ -990,7 +985,7 @@ describe("Runtime context", () => {
     });
 
     const result = runtime.parseIntentRequest(
-      '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已确认当前结果;nextPrompt=继续检查剩余工具链路;avoidRepeat=不要重复前文]',
+      '[FOLLOW_UP_WITH_TOOLS, "继续验证", summary=已确认当前结果;nextPrompt=继续检查剩余工具链路;avoidRepeat=不要重复前文]',
     );
 
     expect(result.safeRequests).toEqual([{
@@ -998,8 +993,6 @@ describe("Runtime context", () => {
       request: "FOLLOW_UP_WITH_TOOLS",
       intent: "继续验证",
       params: {
-        sessionId: "session-1",
-        chatId: "chat-1",
         summary: "已确认当前结果",
         nextPrompt: "继续检查剩余工具链路",
         avoidRepeat: "不要重复前文",
@@ -1018,7 +1011,7 @@ describe("Runtime context", () => {
     const result = runtime.parseIntentRequest(
       [
         '[SEARCH_MEMORY, "搜索上下文记忆", words=follow up]',
-        '[FOLLOW_UP, "继续当前回答", sessionId=session-1;chatId=chat-1]',
+        '[FOLLOW_UP, "继续当前回答"]',
       ].join("\n"),
     );
 
@@ -1035,10 +1028,7 @@ describe("Runtime context", () => {
         source: "conversation",
         request: "FOLLOW_UP",
         intent: "继续当前回答",
-        params: {
-          sessionId: "session-1",
-          chatId: "chat-1",
-        },
+        params: {},
       },
     ]);
   });
@@ -1047,7 +1037,7 @@ describe("Runtime context", () => {
     const runtime = buildRuntime();
 
     const result = runtime.parseIntentRequest(
-      '[FOLLOW_UP, "继续当前回答", sessionId=session-1;chatId=chat-1]',
+      '[FOLLOW_UP, "继续当前回答"]',
     );
 
     expect(result.safeRequests).toEqual([]);

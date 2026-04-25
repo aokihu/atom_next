@@ -86,6 +86,32 @@ function reportIntentRequestDispatchResults(
   }
 }
 
+function reportHandledIntentRequests(
+  input: {
+    intentRequestText: string;
+    parsedRequests: IntentRequest[];
+    safeRequests: IntentRequest[];
+    rejectedRequests: RejectedIntentRequest[];
+    dispatchResults: IntentRequestDispatchResult[];
+  },
+  shouldReportLogs: boolean,
+  logger?: Logger,
+) {
+  if (!shouldReportLogs || !logger || input.intentRequestText.trim() === "") {
+    return;
+  }
+
+  logger.debug("Intent Request handled", {
+    data: {
+      intentRequestText: input.intentRequestText,
+      parsedRequests: input.parsedRequests,
+      safeRequests: input.safeRequests,
+      rejectedRequests: input.rejectedRequests,
+      dispatchResults: input.dispatchResults,
+    },
+  });
+}
+
 /* ==================== */
 /* Result Helpers       */
 /* ==================== */
@@ -126,7 +152,21 @@ export const handleIntentRequestRuntime: HandleIntentRequestRuntime = (
   }
 
   if (!input.safetyContext) {
-    return createMissingRuntimeContextResult(parsedRequests);
+    const result = createMissingRuntimeContextResult(parsedRequests);
+
+    reportHandledIntentRequests(
+      {
+        intentRequestText: input.intentRequestText,
+        parsedRequests: result.parsedRequests,
+        safeRequests: result.safeRequests,
+        rejectedRequests: result.rejectedRequests,
+        dispatchResults: result.dispatchResults,
+      },
+      input.shouldReportLogs,
+      input.logger,
+    );
+
+    return result;
   }
 
   const safetyResult = checkIntentRequestSafety(
@@ -142,6 +182,18 @@ export const handleIntentRequestRuntime: HandleIntentRequestRuntime = (
   );
   reportIntentRequestDispatchResults(
     dispatchResults,
+    input.shouldReportLogs,
+    input.logger,
+  );
+
+  reportHandledIntentRequests(
+    {
+      intentRequestText: input.intentRequestText,
+      parsedRequests,
+      safeRequests: safetyResult.safeRequests,
+      rejectedRequests: safetyResult.rejectedRequests,
+      dispatchResults,
+    },
     input.shouldReportLogs,
     input.logger,
   );

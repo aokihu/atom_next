@@ -27,26 +27,21 @@ describe("parseIntentRequests", () => {
   });
 
   test("parses follow up request with empty intent", () => {
-    const result = parseIntentRequests(
-      '[FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]',
-    );
+    const result = parseIntentRequests('[FOLLOW_UP,""]');
 
     expect(result).toEqual([
       {
         source: "conversation",
         request: "FOLLOW_UP",
         intent: "",
-        params: {
-          sessionId: "session-1",
-          chatId: "chat-1",
-        },
+        params: {},
       },
     ]);
   });
 
   test("parses follow up with tools request", () => {
     const result = parseIntentRequests(
-      '[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=已经确认 read 结果;nextPrompt=继续检查相关文件;avoidRepeat=不要重复前文]',
+      '[FOLLOW_UP_WITH_TOOLS,"继续验证",summary=已经确认 read 结果;nextPrompt=继续检查相关文件;avoidRepeat=不要重复前文]',
     );
 
     expect(result).toEqual([
@@ -55,8 +50,6 @@ describe("parseIntentRequests", () => {
         request: "FOLLOW_UP_WITH_TOOLS",
         intent: "继续验证",
         params: {
-          sessionId: "session-1",
-          chatId: "chat-1",
           summary: "已经确认 read 结果",
           nextPrompt: "继续检查相关文件",
           avoidRepeat: "不要重复前文",
@@ -203,15 +196,22 @@ describe("parseIntentRequests", () => {
     expect(result).toEqual([]);
   });
 
-  test("ignores follow up request when required params are missing", () => {
+  test("parses follow up request without explicit runtime params", () => {
     const result = parseIntentRequests('[FOLLOW_UP, ""]');
 
-    expect(result).toEqual([]);
+    expect(result).toEqual([
+      {
+        source: "conversation",
+        request: "FOLLOW_UP",
+        intent: "",
+        params: {},
+      },
+    ]);
   });
 
   test("ignores follow up with tools request when required params are missing", () => {
     const result = parseIntentRequests(
-      '[FOLLOW_UP_WITH_TOOLS, "继续验证", sessionId=session-1;chatId=chat-1;summary=已经确认]',
+      '[FOLLOW_UP_WITH_TOOLS, "继续验证", summary=已经确认]',
     );
 
     expect(result).toEqual([]);
@@ -244,7 +244,7 @@ describe("parseIntentRequests", () => {
   test("keeps valid requests and skips invalid requests in mixed lines", () => {
     const result = parseIntentRequests(`
 [SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
-[FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
+[FOLLOW_UP,""]
 [INVALID_REQUEST,"",foo=bar]
 [SEARCH_MEMORY, "missing bracket"
     `);
@@ -263,10 +263,7 @@ describe("parseIntentRequests", () => {
         source: "conversation",
         request: "FOLLOW_UP",
         intent: "",
-        params: {
-          sessionId: "session-1",
-          chatId: "chat-1",
-        },
+        params: {},
       },
     ]);
   });
@@ -288,41 +285,9 @@ describe("parseIntentRequests", () => {
     ]);
   });
 
-  test("rejects follow up request when runtime context mismatches", () => {
-    const requests = parseIntentRequests(
-      '[FOLLOW_UP,"",sessionId=session-2;chatId=chat-1]',
-    );
-    const result = checkIntentRequestSafety(requests, {
-      sessionId: "session-1",
-      chatId: "chat-1",
-    });
-
-    expect(result.safeRequests).toEqual([]);
-    expect(result.rejectedRequests).toHaveLength(1);
-    expect(result.rejectedRequests[0]?.code).toBe(
-      "follow_up_session_mismatch",
-    );
-  });
-
-  test("rejects follow up with tools request when runtime context mismatches", () => {
-    const requests = parseIntentRequests(
-      '[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-2;summary=已确认;nextPrompt=继续检查]',
-    );
-    const result = checkIntentRequestSafety(requests, {
-      sessionId: "session-1",
-      chatId: "chat-1",
-    });
-
-    expect(result.safeRequests).toEqual([]);
-    expect(result.rejectedRequests).toHaveLength(1);
-    expect(result.rejectedRequests[0]?.code).toBe(
-      "follow_up_with_tools_chat_mismatch",
-    );
-  });
-
   test("rejects follow up with tools request when summary is too long", () => {
     const requests = parseIntentRequests(
-      `[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=${"s".repeat(1001)};nextPrompt=继续检查]`,
+      `[FOLLOW_UP_WITH_TOOLS,"继续验证",summary=${"s".repeat(1001)};nextPrompt=继续检查]`,
     );
     const result = checkIntentRequestSafety(requests, {
       sessionId: "session-1",
@@ -355,8 +320,8 @@ describe("parseIntentRequests", () => {
 [SEARCH_MEMORY, "搜索与Skill相关的记忆", words=skill,memory;limit=10]
 [LOAD_MEMORY, "加载明确记忆", key=long.note.watchman_memory_boundary]
 [UNLOAD_MEMORY, "卸载记忆", key=long.note.watchman_memory_boundary;reason=answer_completed]
-[FOLLOW_UP,"",sessionId=session-1;chatId=chat-1]
-[FOLLOW_UP_WITH_TOOLS,"继续验证",sessionId=session-1;chatId=chat-1;summary=已确认;nextPrompt=继续检查]
+[FOLLOW_UP,""]
+[FOLLOW_UP_WITH_TOOLS,"继续验证",summary=已确认;nextPrompt=继续检查]
     `);
     const safetyResult = checkIntentRequestSafety(requests, {
       sessionId: "session-1",
@@ -411,10 +376,7 @@ describe("parseIntentRequests", () => {
           source: "conversation",
           request: "FOLLOW_UP",
           intent: "",
-          params: {
-            sessionId: "session-1",
-            chatId: "chat-1",
-          },
+          params: {},
         },
         status: "accepted",
         message:
@@ -426,8 +388,6 @@ describe("parseIntentRequests", () => {
           request: "FOLLOW_UP_WITH_TOOLS",
           intent: "继续验证",
           params: {
-            sessionId: "session-1",
-            chatId: "chat-1",
             summary: "已确认",
             nextPrompt: "继续检查",
           },

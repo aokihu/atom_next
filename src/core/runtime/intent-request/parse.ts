@@ -349,28 +349,13 @@ const parseLoadSkillIntentRequest = (
 
 const parseFollowUpIntentRequest = (
   intent: string,
-  params: RawIntentRequestParams,
+  _params: RawIntentRequestParams,
 ): FollowUpIntentRequest | null => {
-  const sessionId = params.sessionId;
-  const chatId = params.chatId;
-
-  if (
-    !isString(sessionId) ||
-    isEmpty(sessionId) ||
-    !isString(chatId) ||
-    isEmpty(chatId)
-  ) {
-    return null;
-  }
-
   return {
     source: IntentRequestSource.CONVERSATION,
     request: IntentRequestType.FOLLOW_UP,
     intent,
-    params: {
-      sessionId,
-      chatId,
-    },
+    params: {},
   };
 };
 
@@ -378,17 +363,11 @@ const parseFollowUpWithToolsIntentRequest = (
   intent: string,
   params: RawIntentRequestParams,
 ): FollowUpWithToolsIntentRequest | null => {
-  const sessionId = params.sessionId;
-  const chatId = params.chatId;
   const summary = params.summary;
   const nextPrompt = params.nextPrompt;
   const avoidRepeat = params.avoidRepeat;
 
   if (
-    !isString(sessionId) ||
-    isEmpty(sessionId) ||
-    !isString(chatId) ||
-    isEmpty(chatId) ||
     !isString(summary) ||
     isEmpty(summary) ||
     !isString(nextPrompt) ||
@@ -406,8 +385,6 @@ const parseFollowUpWithToolsIntentRequest = (
     request: IntentRequestType.FOLLOW_UP_WITH_TOOLS,
     intent,
     params: {
-      sessionId,
-      chatId,
       summary,
       nextPrompt,
       ...(isString(avoidRepeat) && !isEmpty(avoidRepeat)

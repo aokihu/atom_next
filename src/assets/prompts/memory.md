@@ -31,7 +31,7 @@
 ```text
 <<<REQUEST>>>
 [SEARCH_MEMORY, "搜索与当前问题相关的长期记忆", words=<keywords>;scope=long]
-[FOLLOW_UP, "基于记忆结果继续回答", sessionId=<session-id>;chatId=<chat-id>]
+[FOLLOW_UP, "基于记忆结果继续回答"]
 ```
 
 当前默认使用：
@@ -287,7 +287,7 @@ SAVE_MEMORY 与 MemoryService 对齐
 ```text
 <<<REQUEST>>>
 [SEARCH_MEMORY, "搜索 MemoryService 与 SAVE_MEMORY key 设计相关的长期记忆", words=MemoryService SAVE_MEMORY suggested_key memory_key key design;scope=long]
-[FOLLOW_UP, "基于记忆结果继续回答", sessionId=<session-id>;chatId=<chat-id>]
+[FOLLOW_UP, "基于记忆结果继续回答"]
 ```
 
 用户可见正文应为空，或最多：

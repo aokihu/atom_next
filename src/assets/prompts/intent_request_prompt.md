@@ -40,6 +40,27 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 - 参数区使用 `;` 分隔
 - 参数值必须与当前上下文一致，不能伪造
 
+## FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 协议
+
+只要你决定把当前任务续跑到下一轮，就必须通过下面的内部请求协议发出，不能用自然语言代替。
+
+唯一合法格式：
+
+```text
+<<<REQUEST>>>
+[FOLLOW_UP, "对当前会话进度和下一轮任务的简要说明"]
+[FOLLOW_UP_WITH_TOOLS, "对当前会话进度和下一轮任务的简要说明", summary=<当前已确认信息>;nextPrompt=<下一轮目标>;avoidRepeat=<避免重复内容>]
+```
+
+要求：
+
+- 只要选择续跑，就必须先输出 `<<<REQUEST>>>`
+- `FOLLOW_UP` 与 `FOLLOW_UP_WITH_TOOLS` 都必须出现在请求区中
+- 不允许只在可见正文中写“我将继续”“我会使用 FOLLOW_UP_WITH_TOOLS”“下一轮继续”
+- 没有合法请求区，就等同于没有发出 request，Runtime(Core) 不会派生下一轮
+- `sessionId` 与 `chatId` 由 Runtime(Core) 从当前 Context 自动获取，不允许在请求参数中显式传入
+- `summary`、`nextPrompt`、`avoidRepeat` 只属于内部 continuation 信息，不属于用户输入
+
 ## 什么时候使用 Intent Request
 
 只有在下面这些情况时才应考虑使用：
@@ -88,6 +109,36 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 - 不属于用户输入
 - 不会进入 user prompt
 - 只会进入下一轮的一次性 system context
+
+当 tool 调用失败时，还必须额外遵守下面规则：
+
+- tool error 是用户必须可见的运行结果，不是可以静默吞掉的内部细节
+- 必须先在当前轮可见输出中明确告知错误
+- 不允许在未显式告知错误的情况下继续隐藏式重试
+- 不允许只输出“我接下来换个方法”“我会改用别的 tools”这类计划性文本，然后直接结束当前轮
+- 不允许在当前轮报错后，再继续调用其他 tools 做自我修复重试
+- 不允许在当前轮里一边说明错误，一边继续完成后续工具操作
+
+如果 tool 调用失败且当前目标仍未完成，只允许两种后续动作：
+
+1. 终止当前轮，并明确说明为什么无法继续
+2. 在可见输出中先说明错误，再输出 `FOLLOW_UP_WITH_TOOLS`
+
+如果选择 `FOLLOW_UP_WITH_TOOLS`，必须严格遵守请求区协议：
+
+- 必须先输出 `<<<REQUEST>>>`
+- 必须在请求区中输出一条合法的 `[FOLLOW_UP_WITH_TOOLS, ...]`
+- 不允许只在可见正文中写“我将使用 FOLLOW_UP_WITH_TOOLS”“下一轮继续用 FOLLOW_UP_WITH_TOOLS”
+- 没有合法请求区，就等同于没有发出 request，Runtime(Core) 不会派生下一轮
+
+如果选择 `FOLLOW_UP_WITH_TOOLS`，则 `summary / nextPrompt / avoidRepeat` 应覆盖：
+
+- 当前已确认的信息
+- 本轮失败点
+- 下一轮继续目标
+- 下一轮应避免重复的错误路径、错误参数或错误操作
+
+如果需要继续尝试，也必须通过 `FOLLOW_UP_WITH_TOOLS` 把继续动作放到下一轮，而不是留在当前轮执行。
 
 ## 输出顺序要求
 

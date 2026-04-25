@@ -20,24 +20,41 @@
 
 - 普通续跑使用 `FOLLOW_UP`
 - 如果下一轮仍然需要继续使用 tools，使用 `FOLLOW_UP_WITH_TOOLS`
+- 所有续跑请求的具体协议格式，一律遵循 `intent_request_prompt.md`
 
-## 请求格式
+## tool error 处理规则
 
-必须在 `<<<REQUEST>>>` 之后使用如下格式:
+当 tool 调用失败时，错误属于用户必须可见的运行结果，不能被隐藏。
 
-```text
-<<<REQUEST>>>
-[FOLLOW_UP, "对当前会话进度和下一轮任务的简要说明", sessionId=<current-session-id>;chatId=<current-chat-id>]
-[FOLLOW_UP_WITH_TOOLS, "对当前会话进度和下一轮任务的简要说明", sessionId=<current-session-id>;chatId=<current-chat-id>;summary=<当前已确认信息>;nextPrompt=<下一轮目标>;avoidRepeat=<避免重复内容>]
-```
+必须遵守下面规则：
 
-要求:
+- 必须先在当前轮可见输出中明确告知错误
+- 不允许在未显式告知错误的情况下继续隐藏式重试
+- 不允许只输出“我接下来换个方法”“我继续尝试”这类计划性文本，然后直接结束当前轮
+- 不允许在当前轮报错后，再继续调用其他 tools 做自我修复重试
+- 不允许在当前轮里一边说明错误，一边继续完成后续工具操作
 
-- `intent` 必须是简洁、明确、可执行的续跑说明
-- `sessionId` 必须使用当前会话的 `sessionId`
-- `chatId` 必须使用当前对话的 `chatId`
-- 不允许伪造、修改或猜测其他会话的身份信息
-- `summary`、`nextPrompt`、`avoidRepeat` 只属于内部 continuation 信息，不属于用户输入
+当 tool 调用失败且当前目标仍未完成时，只允许两种收束方式：
+
+1. 终止当前轮，并明确说明无法继续的原因
+2. 在可见输出中先明确告知错误，再输出 `FOLLOW_UP_WITH_TOOLS`
+
+如果选择 `FOLLOW_UP_WITH_TOOLS`，必须严格按内部请求协议输出：
+
+- 必须先输出 `<<<REQUEST>>>`
+- 必须在请求区中输出一条合法的 `[FOLLOW_UP_WITH_TOOLS, ...]`
+- 不允许只在可见正文里提到“我会使用 FOLLOW_UP_WITH_TOOLS”“下一轮用 FOLLOW_UP_WITH_TOOLS 继续”
+- 只要没有输出合法请求区，就等同于没有发出续跑请求，当前轮会直接结束
+- `sessionId` 与 `chatId` 由 Runtime(Core) 从当前 Context 自动获取，不允许在请求参数中显式传入
+
+如果使用 `FOLLOW_UP_WITH_TOOLS`，应在 continuation 信息中补充：
+
+- 当前已确认的信息
+- 本轮失败点
+- 下一轮仍需继续完成的目标
+- 下一轮应避免重复的错误路径、错误参数或错误操作
+
+如果当前轮已经出现 tool error，后续继续尝试必须发生在下一轮，而不是当前轮。
 
 ## intent 应包含的内容
 
@@ -61,9 +78,9 @@
 
 ## 输出要求
 
-在触发 `FOLLOW_UP` 之前，应先尽可能自然地结束当前轮可见输出。  
-不要把请求内容混进用户可见正文中。
-`[FOLLOW_UP, ...]` 只能出现在 `<<<REQUEST>>>` 之后的请求区。
+在触发 `FOLLOW_UP` 或 `FOLLOW_UP_WITH_TOOLS` 之前，应先尽可能自然地结束当前轮可见输出。  
+不要把请求内容混进用户可见正文中。  
+具体请求区语法、`<<<REQUEST>>>` 标记和参数格式，统一遵循 `intent_request_prompt.md`。
 
 Runtime(Core) 会维护当前 chat 的上下文，因此在下一轮中:
 
@@ -71,6 +88,7 @@ Runtime(Core) 会维护当前 chat 的上下文，因此在下一轮中:
 - 不需要重复完整的原始用户输入
 - 不应该大段重复上一轮已经输出过的正文
 - `FOLLOW_UP_WITH_TOOLS` 的 `summary / nextPrompt / avoidRepeat` 会进入一次性 continuation context，而不是进入用户输入
+- 工具失败信息应先在当前轮向用户说明，再由 `FOLLOW_UP_WITH_TOOLS` 承接后续继续
 
 ## 工作原则
 

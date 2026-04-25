@@ -163,14 +163,9 @@ export type LoadSkillIntentRequestParams = {
   skill: string;
 };
 
-export type FollowUpIntentRequestParams = {
-  sessionId: UUID;
-  chatId: UUID;
-};
+export type FollowUpIntentRequestParams = {};
 
 export type FollowUpWithToolsIntentRequestParams = {
-  sessionId: UUID;
-  chatId: UUID;
   summary: string;
   nextPrompt: string;
   avoidRepeat?: string;
@@ -261,10 +256,6 @@ export enum IntentRequestSafetyIssueCode {
   SEARCH_LIMIT_TOO_LARGE = "search_limit_too_large",
   MEMORY_CONTENT_TOO_LONG = "memory_content_too_long",
   SKILL_NAME_INVALID = "skill_name_invalid",
-  FOLLOW_UP_SESSION_MISMATCH = "follow_up_session_mismatch",
-  FOLLOW_UP_CHAT_MISMATCH = "follow_up_chat_mismatch",
-  FOLLOW_UP_WITH_TOOLS_SESSION_MISMATCH = "follow_up_with_tools_session_mismatch",
-  FOLLOW_UP_WITH_TOOLS_CHAT_MISMATCH = "follow_up_with_tools_chat_mismatch",
   FOLLOW_UP_WITH_TOOLS_SUMMARY_TOO_LONG = "follow_up_with_tools_summary_too_long",
   FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_TOO_LONG = "follow_up_with_tools_next_prompt_too_long",
   FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_TOO_LONG = "follow_up_with_tools_avoid_repeat_too_long",

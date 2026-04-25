@@ -49,8 +49,8 @@ export const buildFollowUpTask = (
     : request.intent;
 
   return buildInternalTaskItem({
-    sessionId: request.params.sessionId,
-    chatId: request.params.chatId,
+    sessionId: task.sessionId,
+    chatId: task.chatId,
     chainId: task.chainId,
     parentId: task.id,
     chain_round: nextChainRound,
@@ -79,8 +79,8 @@ export const buildFollowUpWithToolsTask = (
   const nextChainRound = parseTaskChainRound(task) + 1;
 
   return buildInternalTaskItem({
-    sessionId: request.params.sessionId,
-    chatId: request.params.chatId,
+    sessionId: task.sessionId,
+    chatId: task.chatId,
     chainId: task.chainId,
     parentId: task.id,
     chain_round: nextChainRound,

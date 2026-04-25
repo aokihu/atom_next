@@ -58,13 +58,25 @@ describe("Runtime logging", () => {
 
     runtime.parseIntentRequest("not an intent request");
 
-    expect(entries).toHaveLength(1);
+    expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
       level: "warn",
       source: "runtime",
       message: "Intent Request parse miss",
       data: {
         intentRequestText: "not an intent request",
+      },
+    });
+    expect(entries[1]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      message: "Intent Request handled",
+      data: {
+        intentRequestText: "not an intent request",
+        parsedRequests: [],
+        safeRequests: [],
+        rejectedRequests: [],
+        dispatchResults: [],
       },
     });
   });
@@ -79,7 +91,7 @@ describe("Runtime logging", () => {
 
     runtime.parseIntentRequest(
       [
-        '[FOLLOW_UP, "wrong chat", sessionId=session-1;chatId=chat-2]',
+        `[FOLLOW_UP_WITH_TOOLS, "continue", summary=${"x".repeat(1001)};nextPrompt=retry]`,
         '[SEARCH_MEMORY, "search context", words=runtime]',
       ].join("\n"),
     );
@@ -87,12 +99,13 @@ describe("Runtime logging", () => {
     expect(entries.map((entry) => entry.message)).toEqual([
       "Intent Request rejected",
       "Intent Request dispatched",
+      "Intent Request handled",
     ]);
     expect(entries[0]).toMatchObject({
       level: "warn",
       source: "runtime",
       data: {
-        request: "FOLLOW_UP",
+        request: "FOLLOW_UP_WITH_TOOLS",
       },
     });
     expect(entries[1]).toMatchObject({
@@ -101,6 +114,75 @@ describe("Runtime logging", () => {
       data: {
         request: "SEARCH_MEMORY",
       },
+    });
+    expect(entries[2]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      data: {
+        intentRequestText: [
+          `[FOLLOW_UP_WITH_TOOLS, "continue", summary=${"x".repeat(1001)};nextPrompt=retry]`,
+          '[SEARCH_MEMORY, "search context", words=runtime]',
+        ].join("\n"),
+      },
+    });
+    expect(entries[2]?.data).toMatchObject({
+      parsedRequests: [
+        {
+          request: "FOLLOW_UP_WITH_TOOLS",
+        },
+        {
+          request: "SEARCH_MEMORY",
+        },
+      ],
+      safeRequests: [
+        {
+          request: "SEARCH_MEMORY",
+        },
+      ],
+      rejectedRequests: [
+        {
+          code: "follow_up_with_tools_summary_too_long",
+        },
+      ],
+      dispatchResults: [
+        {
+          request: {
+            request: "SEARCH_MEMORY",
+          },
+          status: "accepted",
+        },
+      ],
+    });
+  });
+
+  test("logs handled intent requests when runtime context is missing", () => {
+    const { entries, logger } = createMemoryLog();
+    const runtime = new Runtime(createServiceManager(), { logger });
+
+    runtime.parseIntentRequest('[FOLLOW_UP, "继续当前回答"]');
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      message: "Intent Request handled",
+      data: {
+        intentRequestText: '[FOLLOW_UP, "继续当前回答"]',
+        parsedRequests: [
+          {
+            request: "FOLLOW_UP",
+          },
+        ],
+        safeRequests: [],
+        dispatchResults: [],
+      },
+    });
+    expect(entries[0]?.data).toMatchObject({
+      rejectedRequests: [
+        {
+          code: "missing_runtime_context",
+        },
+      ],
     });
   });
 
