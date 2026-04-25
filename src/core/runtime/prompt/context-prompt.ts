@@ -1,5 +1,6 @@
 import type { MemoryScope } from "@/types";
-import type { TaskSource } from "@/types/task";
+import { TaskSource } from "@/types/task";
+import type { RuntimeOutputBudget } from "@/services/runtime";
 import type {
   RuntimeConversationContext,
   RuntimeContinuationContext,
@@ -7,6 +8,7 @@ import type {
   RuntimeMemoryScopeContext,
 } from "../context-manager";
 import type { IntentExecutionPolicy } from "../user-intent/intent-policy";
+import { sliceRecentAssistantOutput } from "../post-follow-up";
 
 type RuntimeContextPromptInput = {
   sessionId: string;
@@ -16,6 +18,7 @@ type RuntimeContextPromptInput = {
   continuation?: RuntimeContinuationContext;
   followUp?: RuntimeFollowUpContext;
   memory: Record<MemoryScope, RuntimeMemoryScopeContext>;
+  outputBudget?: RuntimeOutputBudget | null;
   intentPolicyPrompt: string[];
 };
 
@@ -44,21 +47,52 @@ export const convertConversationContextToPrompt = (
 
 export const convertFollowUpContextToPrompt = (
   followUp?: RuntimeFollowUpContext,
+  options: {
+    continuation?: RuntimeContinuationContext;
+    source: TaskSource;
+  } = {
+    source: TaskSource.EXTERNAL,
+  },
 ) => {
   return !followUp
     ? []
-    : [
-        "<FollowUp>",
-        `CHAT_ID=${followUp.chatId}`,
-        `CHAIN_ROUND=${followUp.chainRound ?? ""}`,
-        "ORIGINAL_USER_INPUT<<EOF",
-        followUp.originalUserInput,
-        "EOF",
-        "ACCUMULATED_ASSISTANT_OUTPUT<<EOF",
-        followUp.accumulatedAssistantOutput,
-        "EOF",
-        "</FollowUp>",
-      ];
+    : (() => {
+        const shouldCompressAccumulatedOutput =
+          options.source === "internal" &&
+          !!options.continuation &&
+          options.continuation.updatedAt !== null &&
+          followUp.chainRound !== null &&
+          followUp.chainRound >= 1;
+
+        const prompt = [
+          "<FollowUp>",
+          `CHAT_ID=${followUp.chatId}`,
+          `CHAIN_ROUND=${followUp.chainRound ?? ""}`,
+          "ORIGINAL_USER_INPUT<<EOF",
+          followUp.originalUserInput,
+          "EOF",
+        ];
+
+        if (shouldCompressAccumulatedOutput) {
+          prompt.push(
+            "ACCUMULATED_ASSISTANT_SUMMARY<<EOF",
+            options.continuation?.summary ?? "",
+            "EOF",
+            "RECENT_ASSISTANT_OUTPUT<<EOF",
+            sliceRecentAssistantOutput(followUp.accumulatedAssistantOutput),
+            "EOF",
+          );
+        } else {
+          prompt.push(
+            "ACCUMULATED_ASSISTANT_OUTPUT<<EOF",
+            followUp.accumulatedAssistantOutput,
+            "EOF",
+          );
+        }
+
+        prompt.push("</FollowUp>");
+        return prompt;
+      })();
 };
 
 export const convertContinuationContextToPrompt = (
@@ -147,20 +181,49 @@ export const convertMemoryScopeContextToPrompt = (
 };
 
 export const convertIntentPolicyToPrompt = (policy: IntentExecutionPolicy) => {
-  return policy.updatedAt === null
-    ? ["<IntentPolicy>", "</IntentPolicy>"]
-    : [
-        "<IntentPolicy>",
-        `SESSION_ID=${policy.sessionId}`,
-        `ACCEPTED_INTENT_TYPE=${policy.acceptedIntentType}`,
-        `PRELOAD_MEMORY=${policy.preloadMemory}`,
-        `MEMORY_QUERY=${policy.memoryQuery}`,
-        `ALLOW_MEMORY_SAVE=${policy.allowMemorySave}`,
-        `MAX_FOLLOW_UP_ROUNDS=${policy.maxFollowUpRounds}`,
-        `PROMPT_VARIANT=${policy.promptVariant}`,
-        `PREDICTION_TRUST=${policy.predictionTrust}`,
-        "</IntentPolicy>",
-      ];
+  if (policy.updatedAt === null) {
+    return ["<IntentPolicy>", "</IntentPolicy>"];
+  }
+
+  const prompt = [
+    "<IntentPolicy>",
+    `SESSION_ID=${policy.sessionId}`,
+    `ACCEPTED_INTENT_TYPE=${policy.acceptedIntentType}`,
+    `PRELOAD_MEMORY=${policy.preloadMemory}`,
+    `MEMORY_QUERY=${policy.memoryQuery}`,
+    `ALLOW_MEMORY_SAVE=${policy.allowMemorySave}`,
+    `MAX_FOLLOW_UP_ROUNDS=${policy.maxFollowUpRounds}`,
+    `PROMPT_VARIANT=${policy.promptVariant}`,
+    `PREDICTION_TRUST=${policy.predictionTrust}`,
+    `MAX_OUTPUT_TOKENS=${policy.maxOutputTokens ?? ""}`,
+    `REQUEST_TOKEN_RESERVE=${policy.requestTokenReserve ?? ""}`,
+    `VISIBLE_OUTPUT_BUDGET=${policy.visibleOutputBudget ?? ""}`,
+    `PREFER_EARLY_FOLLOW_UP=${policy.preferEarlyFollowUp}`,
+    `IS_NEW_CHAT_IN_SESSION=${policy.isNewChatInSession}`,
+  ];
+
+  if (policy.responseStrategyText !== "") {
+    prompt.push("RESPONSE_STRATEGY<<EOF", policy.responseStrategyText, "EOF");
+  }
+
+  prompt.push("</IntentPolicy>");
+  return prompt;
+};
+
+export const convertOutputBudgetToPrompt = (
+  outputBudget?: RuntimeOutputBudget | null,
+) => {
+  if (!outputBudget) {
+    return [];
+  }
+
+  return [
+    "<OutputBudget>",
+    `MAX_OUTPUT_TOKENS=${outputBudget.maxOutputTokens}`,
+    `REQUEST_TOKEN_RESERVE=${outputBudget.requestTokenReserve}`,
+    `VISIBLE_OUTPUT_BUDGET=${outputBudget.visibleOutputBudget}`,
+    "</OutputBudget>",
+  ];
 };
 
 export const convertRuntimeContextToPrompt = (
@@ -176,6 +239,7 @@ export const convertRuntimeContextToPrompt = (
     "<Channel>",
     `Source = ${promptContext.source}`,
     "</Channel>",
+    ...convertOutputBudgetToPrompt(promptContext.outputBudget),
     ...convertConversationContextToPrompt(promptContext.conversation),
     ...promptContext.intentPolicyPrompt,
     ...convertContinuationContextToPrompt(promptContext.continuation),
@@ -184,7 +248,10 @@ export const convertRuntimeContextToPrompt = (
     ...convertMemoryScopeContextToPrompt("long", promptContext.memory.long),
     ...convertMemoryScopeContextToPrompt("short", promptContext.memory.short),
     "</Memory>",
-    ...convertFollowUpContextToPrompt(promptContext.followUp),
+    ...convertFollowUpContextToPrompt(promptContext.followUp, {
+      continuation: promptContext.continuation,
+      source: promptContext.source,
+    }),
     "</Context>",
   ].join("\n");
 };

@@ -29,7 +29,10 @@ const createMemoryLog = () => {
   };
 };
 
-const createServiceManager = (logSilent = false) => {
+const createServiceManager = (
+  logSilent = false,
+  formalConversationMaxOutputTokens?: number,
+) => {
   const runtime = new RuntimeService();
   runtime.loadCliArgs({
     mode: "tui",
@@ -43,7 +46,12 @@ const createServiceManager = (logSilent = false) => {
     logFile: true,
     logSilent,
   });
-  runtime.loadConfig(DefaultConfig);
+  runtime.loadConfig({
+    ...DefaultConfig,
+    transport: {
+      formalConversationMaxOutputTokens,
+    },
+  });
 
   const serviceManager = new ServiceManager();
   serviceManager.register(runtime);
@@ -196,5 +204,62 @@ describe("Runtime logging", () => {
     runtime.parseIntentRequest("not an intent request");
 
     expect(entries).toEqual([]);
+  });
+
+  test("logs conversation output analysis for token-limited output without request", () => {
+    const { entries, logger } = createMemoryLog();
+    const runtime = new Runtime(createServiceManager(false, 2000), { logger });
+
+    runtime.reportConversationOutputAnalysis({
+      finishReason: "length",
+      visibleTextCharLength: 1800,
+      intentRequestText: "",
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      message: "Conversation output analyzed",
+      format: "json",
+      data: {
+        finishReason: "length",
+        maxOutputTokens: 2000,
+        requestTokenReserve: 256,
+        visibleOutputBudget: 1744,
+        visibleTextCharLength: 1800,
+        intentRequestTextLength: 0,
+        hasIntentRequest: false,
+        tokenLimitedWithoutIntentRequest: true,
+      },
+    });
+  });
+
+  test("logs post follow up processing analysis", () => {
+    const { entries, logger } = createMemoryLog();
+    const runtime = new Runtime(createServiceManager(false, 2000), { logger });
+
+    runtime.reportPostFollowUpAnalysis({
+      rawFollowUpIntentLength: 120,
+      recentAssistantOutputLength: 800,
+      continuationSummaryLength: 30,
+      continuationNextPromptLength: 40,
+      fallbackUsed: true,
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      message: "Post Follow Up processed",
+      format: "json",
+      data: {
+        rawFollowUpIntentLength: 120,
+        recentAssistantOutputLength: 800,
+        continuationSummaryLength: 30,
+        continuationNextPromptLength: 40,
+        fallbackUsed: true,
+      },
+    });
   });
 });

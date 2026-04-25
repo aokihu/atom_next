@@ -19,12 +19,21 @@ import {
   handleIntentRequestRuntime as runHandleIntentRequestRuntime,
   type IntentRequestExecutionResult,
 } from "./intent-request";
+import { buildContinuationFormalConversationTask as runBuildContinuationFormalConversationTask } from "./intent-request/execution-helpers";
 import {
   exportPredictionPrompt as runExportPredictionPrompt,
   exportRuntimeSystemPrompt as runExportRuntimeSystemPrompt,
   exportUserPrompt as runExportUserPrompt,
   loadSystemRules as runLoadSystemRules,
 } from "./prompt";
+import {
+  createFallbackPostFollowUpContinuation,
+  exportPostFollowUpPrompt as runExportPostFollowUpPrompt,
+  exportPostFollowUpUserPrompt as runExportPostFollowUpUserPrompt,
+  parsePostFollowUpText,
+  POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
+  sliceRecentAssistantOutput,
+} from "./post-follow-up";
 import {
   type IntentControlInput,
   type IntentExecutionPolicy,
@@ -102,6 +111,13 @@ export class Runtime {
    */
   public exportIntentPrompt() {
     return runExportPredictionPrompt();
+  }
+
+  /**
+   * 获取独立的 FOLLOW_UP 预处理提示词。
+   */
+  public exportPostFollowUpPrompt() {
+    return runExportPostFollowUpPrompt();
   }
 
   /**
@@ -199,6 +215,20 @@ export class Runtime {
    */
   public exportUserPrompt(): string {
     return runExportUserPrompt(this.#getCurrentTaskOrThrow());
+  }
+
+  /**
+   * 输出当前 FOLLOW_UP 预处理任务的用户输入提示词。
+   */
+  public exportPostFollowUpUserPrompt() {
+    return runExportPostFollowUpUserPrompt({
+      originalUserInput: this.getCurrentChatOriginalUserInput(),
+      rawFollowUpIntent: this.exportUserPrompt(),
+      chainRound: this.getCurrentChainRound(),
+      recentAssistantOutput: sliceRecentAssistantOutput(
+        this.getAccumulatedAssistantOutput(),
+      ),
+    });
   }
 
   /**
@@ -379,6 +409,137 @@ export class Runtime {
   }
 
   /**
+   * 读取 formal conversation 的输出 token 上限。
+   */
+  public getFormalConversationMaxOutputTokens() {
+    return resolveRuntimeService(this.#serviceManager)
+      .getFormalConversationMaxOutputTokens();
+  }
+
+  /**
+   * 读取 formal conversation 的输出预算。
+   */
+  public getFormalConversationOutputBudget() {
+    return resolveRuntimeService(this.#serviceManager)
+      .getFormalConversationOutputBudget();
+  }
+
+  /**
+   * 输出 formal conversation 结果分析日志。
+   */
+  public reportConversationOutputAnalysis(input: {
+    finishReason: string;
+    visibleTextCharLength: number;
+    intentRequestText: string;
+  }) {
+    if (
+      !this.#logger ||
+      !shouldReportIntentRequestLogs(this.#serviceManager)
+    ) {
+      return;
+    }
+
+    const outputBudget = this.getFormalConversationOutputBudget();
+    const hasIntentRequest = input.intentRequestText.trim() !== "";
+
+    this.#logger.debugJson("Conversation output analyzed", {
+      finishReason: input.finishReason,
+      maxOutputTokens: outputBudget?.maxOutputTokens ?? null,
+      requestTokenReserve: outputBudget?.requestTokenReserve ?? null,
+      visibleOutputBudget: outputBudget?.visibleOutputBudget ?? null,
+      visibleTextCharLength: input.visibleTextCharLength,
+      intentRequestTextLength: input.intentRequestText.length,
+      hasIntentRequest,
+      tokenLimitedWithoutIntentRequest:
+        input.finishReason === "length" && !hasIntentRequest,
+    });
+  }
+
+  /**
+   * 输出 POST_FOLLOW_UP 预处理结果分析日志。
+   */
+  public reportPostFollowUpAnalysis(input: {
+    rawFollowUpIntentLength: number;
+    recentAssistantOutputLength: number;
+    continuationSummaryLength: number;
+    continuationNextPromptLength: number;
+    fallbackUsed: boolean;
+  }) {
+    if (
+      !this.#logger ||
+      !shouldReportIntentRequestLogs(this.#serviceManager)
+    ) {
+      return;
+    }
+
+    this.#logger.debugJson("Post Follow Up processed", input);
+  }
+
+  /**
+   * 执行 plain FOLLOW_UP 的内部预处理，并写入 continuation。
+   */
+  public async preparePostFollowUpContinuation(
+    transport: Transport,
+  ): Promise<{
+    summary: string;
+    nextPrompt: string;
+    avoidRepeat: string;
+    fallbackUsed: boolean;
+  }> {
+    const rawFollowUpIntent = this.exportUserPrompt();
+    const recentAssistantOutput = sliceRecentAssistantOutput(
+      this.getAccumulatedAssistantOutput(),
+    );
+    let fallbackUsed = false;
+    let continuation = createFallbackPostFollowUpContinuation(rawFollowUpIntent);
+
+    if (!isEmpty(rawFollowUpIntent)) {
+      try {
+        const text = await transport.generateText(
+          this.exportPostFollowUpPrompt(),
+          this.exportPostFollowUpUserPrompt(),
+          {
+            maxOutputTokens: POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
+            modelProfile: this.getTransportModelProfile("basic"),
+          },
+        );
+        const parsedContinuation = parsePostFollowUpText(text);
+
+        if (parsedContinuation) {
+          continuation = parsedContinuation;
+        } else {
+          fallbackUsed = true;
+        }
+      } catch {
+        fallbackUsed = true;
+      }
+    } else {
+      fallbackUsed = true;
+    }
+
+    this.setContinuationContext(continuation);
+    this.reportPostFollowUpAnalysis({
+      rawFollowUpIntentLength: rawFollowUpIntent.length,
+      recentAssistantOutputLength: recentAssistantOutput.length,
+      continuationSummaryLength: continuation.summary.length,
+      continuationNextPromptLength: continuation.nextPrompt.length,
+      fallbackUsed,
+    });
+
+    return {
+      ...continuation,
+      fallbackUsed,
+    };
+  }
+
+  /**
+   * 构造一个只依赖 continuation 的 internal formal conversation 任务。
+   */
+  public buildContinuationFormalConversationTask(task: TaskItem) {
+    return runBuildContinuationFormalConversationTask(task);
+  }
+
+  /**
    * 创建当前正式对话轮次的工具执行上下文。
    * @description
    * Runtime 只负责把当前运行态转换成 ToolService 可消费的高层输入：
@@ -444,6 +605,9 @@ export class Runtime {
         };
       },
       hasSessionHistory: () => this.hasSessionHistory(),
+      getFormalConversationOutputBudget: () => {
+        return this.getFormalConversationOutputBudget();
+      },
     });
   }
 

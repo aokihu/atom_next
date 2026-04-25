@@ -207,13 +207,17 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(2);
     expect(streamCalls[1].system).toContain("<Long>");
     expect(streamCalls[1].system).toContain("<Status>loaded</Status>");
     expect(streamCalls[1].system).toContain("<Query>Watchman</Query>");
     expect(streamCalls[1].system).toContain("Watchman 服务不负责 Memory 持久化。");
-    expect(streamCalls[1].prompt).toBe("基于记忆继续回答");
+    expect(streamCalls[1].system).toContain("<Continuation>");
+    expect(streamCalls[1].prompt).toBe("");
     expect(chunkEvents.length).toBeGreaterThanOrEqual(2);
     expect(chunkEvents.map((event) => String(event.delta)).join("")).toContain(
       "先搜索。Watchman 服务不负责 Memory 持久化。",
@@ -395,6 +399,9 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(3);
     expect(streamCalls[1].system).toContain("<Status>loaded</Status>");
@@ -479,6 +486,9 @@ describe("Core memory intent requests", () => {
 
     const core = new Core(serviceManager);
     await core.addTask(task);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
     expect(completedEvents).toHaveLength(0);
@@ -579,10 +589,15 @@ describe("Core memory intent requests", () => {
     expect(completedEvents).toHaveLength(0);
 
     await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
 
     expect(streamCalls).toHaveLength(2);
     expect(streamCalls[1].system).toContain("<Status>loaded</Status>");
     expect(streamCalls[1].system).toContain(`<Key>${saveResult.memory_key}</Key>`);
+    expect(streamCalls[1].system).toContain("<Continuation>");
+    expect(streamCalls[1].prompt).toBe("");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
       "有一条相关长期记忆：Watchman 服务负责 AGENTS.md 编译缓存，不负责 Memory 持久化。",

@@ -15,6 +15,22 @@ import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 const buildRuntime = () => {
   const serviceManager = new ServiceManager();
   const runtimeService = new RuntimeService();
+  runtimeService.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    transport: {
+      formalConversationMaxOutputTokens: 2000,
+    },
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+  });
 
   serviceManager.register(runtimeService);
 
@@ -46,6 +62,9 @@ const buildRuntimeWithServices = async () => {
       basic: "deepseek/deepseek-chat",
     },
     providers: {},
+    transport: {
+      formalConversationMaxOutputTokens: 2000,
+    },
     gateway: {
       enable: false,
       channels: [],
@@ -96,6 +115,9 @@ const buildRuntimeWithToolService = async (options: {
       basic: "deepseek/deepseek-chat",
     },
     providers: {},
+    transport: {
+      formalConversationMaxOutputTokens: 2000,
+    },
     gateway: {
       enable: false,
       channels: [],
@@ -170,6 +192,11 @@ describe("Runtime context", () => {
     expect(prompt).toContain("不要跳过记忆流程直接回答“没有找到相关记忆”或“我不记得”");
     expect(prompt).toContain("只有在必须依赖 Runtime 协助时才允许使用");
     expect(prompt).toContain("不要只输出“我先看看”“我先了解一下”“让我检查一下”这类计划性过渡句然后结束当前轮");
+    expect(prompt).toContain("<OutputBudget>");
+    expect(prompt).toContain("MAX_OUTPUT_TOKENS=2000");
+    expect(prompt).toContain("REQUEST_TOKEN_RESERVE=256");
+    expect(prompt).toContain("VISIBLE_OUTPUT_BUDGET=1744");
+    expect(prompt).toContain("如果存在 `<FollowUp>` 且 `CHAIN_ROUND` 不为空");
     expect(prompt).not.toContain("<FollowUp>\nCHAT_ID=");
     expect(prompt).toContain("Round = 1");
   });
@@ -306,6 +333,82 @@ describe("Runtime context", () => {
     expect(prompt).toContain(
       "<AvoidRepeat>不要重复前文的 ToolService 说明。</AvoidRepeat>",
     );
+  });
+
+  test("preparePostFollowUpContinuation writes continuation from compressed follow up intent", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-1", {
+      payload: [{ type: "text", data: "original question" }],
+    });
+    runtime.appendAssistantOutput("第一段。");
+    runtime.appendAssistantOutput("第二段。");
+
+    runtime.currentTask = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      workflow: "post_follow_up",
+      chain_round: 1,
+      payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
+    });
+
+    const generateText = async () => {
+      return [
+        "<PostFollowUpResult>",
+        JSON.stringify({
+          summary: "已完成前半部分。",
+          nextPrompt: "继续补充剩余分析，不要重复前文。",
+          avoidRepeat: "不要重复第一段和第二段。",
+        }),
+        "</PostFollowUpResult>",
+      ].join("\n");
+    };
+
+    const result = await runtime.preparePostFollowUpContinuation({
+      generateText,
+    } as any);
+
+    expect(result).toEqual({
+      summary: "已完成前半部分。",
+      nextPrompt: "继续补充剩余分析，不要重复前文。",
+      avoidRepeat: "不要重复第一段和第二段。",
+      fallbackUsed: false,
+    });
+    expect(runtime.getContinuationContext()).toMatchObject({
+      summary: "已完成前半部分。",
+      nextPrompt: "继续补充剩余分析，不要重复前文。",
+      avoidRepeat: "不要重复第一段和第二段。",
+    });
+  });
+
+  test("preparePostFollowUpContinuation falls back when post follow up output is invalid", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-1", {
+      payload: [{ type: "text", data: "original question" }],
+    });
+    runtime.appendAssistantOutput("existing output");
+
+    runtime.currentTask = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      workflow: "post_follow_up",
+      chain_round: 1,
+      payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
+    });
+
+    const result = await runtime.preparePostFollowUpContinuation({
+      generateText: async () => "invalid output",
+    } as any);
+
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.summary).toContain("已完成前半部分");
+    expect(result.nextPrompt).toBe(
+      "基于当前 FollowUp 上下文继续当前回答，不要重复前文。",
+    );
+    expect(result.avoidRepeat).toBe("不要重复已经输出的内容。");
   });
 
   test("clears continuation context when external task arrives", async () => {
@@ -507,6 +610,43 @@ describe("Runtime context", () => {
     expect(prompt).toContain("Watchman 不负责 Memory 持久化。");
   });
 
+  test("compresses follow up prompt with continuation summary and recent tail for internal follow up", async () => {
+    const runtime = buildRuntime();
+
+    runtime.currentTask = buildTask("task-1", {
+      payload: [{ type: "text", data: "original question" }],
+    });
+    runtime.appendAssistantOutput(`${"A".repeat(1200)}${"B".repeat(1200)}`);
+    runtime.setContinuationContext({
+      summary: "已完成前半部分。",
+      nextPrompt: "继续补充剩余内容。",
+      avoidRepeat: "不要重复前文。",
+    });
+
+    runtime.currentTask = buildTask("task-2", {
+      chainId: "task-1",
+      parentId: "task-1",
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      priority: 1,
+      payload: [],
+      chain_round: 1,
+    });
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(prompt).toContain(
+      "ACCUMULATED_ASSISTANT_SUMMARY<<EOF\n已完成前半部分。\nEOF",
+    );
+    expect(prompt).toContain("RECENT_ASSISTANT_OUTPUT<<EOF");
+    expect(prompt).not.toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF");
+    expect(prompt).toContain("B".repeat(1200));
+    expect(prompt).not.toContain("A".repeat(1000));
+  });
+
   test("preserves session intent and memory while resetting chat follow up state", async () => {
     const runtime = buildRuntime();
 
@@ -637,6 +777,20 @@ describe("Runtime context", () => {
       maxFollowUpRounds: 2,
       promptVariant: "recall",
       predictionTrust: "high",
+      maxOutputTokens: 2000,
+      requestTokenReserve: 256,
+      visibleOutputBudget: 1744,
+      preferEarlyFollowUp: true,
+      isNewChatInSession: true,
+      responseStrategyText: [
+        "当前轮输出预算：",
+        "- MAX_OUTPUT_TOKENS=2000",
+        "- REQUEST_TOKEN_RESERVE=256",
+        "- VISIBLE_OUTPUT_BUDGET=1744",
+        "",
+        "会话规则：",
+        "- 这是同一 session 下的新 chat，不是上一个 chat 的自然尾声",
+      ].join("\n"),
       reasons: ["resolver accepted high-confidence recall"],
     });
 
@@ -650,6 +804,14 @@ describe("Runtime context", () => {
     expect(prompt).toContain("PRELOAD_MEMORY=true");
     expect(prompt).toContain("MEMORY_QUERY=AGENTS md");
     expect(prompt).toContain("PROMPT_VARIANT=recall");
+    expect(prompt).toContain("MAX_OUTPUT_TOKENS=2000");
+    expect(prompt).toContain("REQUEST_TOKEN_RESERVE=256");
+    expect(prompt).toContain("VISIBLE_OUTPUT_BUDGET=1744");
+    expect(prompt).toContain("PREFER_EARLY_FOLLOW_UP=true");
+    expect(prompt).toContain("IS_NEW_CHAT_IN_SESSION=true");
+    expect(prompt).toContain("RESPONSE_STRATEGY<<EOF");
+    expect(prompt).toContain("- MAX_OUTPUT_TOKENS=2000");
+    expect(prompt).toContain("这是同一 session 下的新 chat");
   });
 
   test("prepareExecutionContext predicts intent and preloads long memory for external task", async () => {
@@ -685,6 +847,12 @@ describe("Runtime context", () => {
     expect(request?.params.acceptedIntentType).toBe("memory_lookup");
     expect(request?.params.preloadMemory).toBe(true);
     expect(request?.params.memoryQuery).toBe("AGENTS md");
+    expect(request?.params.maxOutputTokens).toBe(2000);
+    expect(request?.params.requestTokenReserve).toBe(256);
+    expect(request?.params.visibleOutputBudget).toBe(1744);
+    expect(request?.params.preferEarlyFollowUp).toBe(true);
+    expect(request?.params.isNewChatInSession).toBe(false);
+    expect(request?.params.responseStrategyText).toContain("MAX_OUTPUT_TOKENS=2000");
     expect(runtime.getMemoryContext("long").status).toBe("idle");
   });
 
@@ -721,6 +889,12 @@ describe("Runtime context", () => {
         maxFollowUpRounds: 2,
         promptVariant: "recall",
         predictionTrust: "high",
+        maxOutputTokens: 2000,
+        requestTokenReserve: 256,
+        visibleOutputBudget: 1744,
+        preferEarlyFollowUp: true,
+        isNewChatInSession: false,
+        responseStrategyText: "预算策略：MAX_OUTPUT_TOKENS=2000",
       },
     }]);
 
@@ -734,6 +908,7 @@ describe("Runtime context", () => {
 
     expect(prompt).toContain("<Key>long.note.agents_core_boundary</Key>");
     expect(prompt).toContain("<Key>long.note.agents_runtime_queue_flow</Key>");
+    expect(prompt).toContain("预算策略：MAX_OUTPUT_TOKENS=2000");
   });
 
   test("prepareExecutionContext skips prediction for internal task", async () => {
@@ -798,6 +973,10 @@ describe("Runtime context", () => {
     expect(result.status).toBe("stop");
     expect(result.nextState).toBe(TaskState.FOLLOW_UP);
     expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
+    expect(result.nextTask?.workflow).toBe("post_follow_up");
+    expect(result.nextTask?.payload).toEqual([
+      { type: "text", data: "基于记忆继续回答" },
+    ]);
     expect(runtime.getMemoryContext("long").status).toBe("loaded");
     expect(runtime.getMemoryContext("long").query).toBe("Watchman");
   });
@@ -843,6 +1022,7 @@ describe("Runtime context", () => {
     ]);
 
     expect(result.status).toBe("stop");
+    expect(result.nextTask?.workflow).toBe("post_follow_up");
     expect(runtime.getMemoryContext("long").status).toBe("loaded");
     expect(runtime.getMemoryContext("long").outputs).toHaveLength(1);
     expect([code1.memory_key, code2.memory_key]).toContain(

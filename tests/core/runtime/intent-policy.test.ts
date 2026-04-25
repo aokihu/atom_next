@@ -44,6 +44,11 @@ describe("Intent policy resolver", () => {
       needsMemory: true,
       memoryQuery: "AGENTS md",
       confidence: 0.96,
+      outputBudget: {
+        maxOutputTokens: 2000,
+        requestTokenReserve: 256,
+        visibleOutputBudget: 1744,
+      },
     };
 
     const policy = resolveIntentPolicy({
@@ -64,6 +69,14 @@ describe("Intent policy resolver", () => {
     expect(policy.promptVariant).toBe("recall");
     expect(policy.maxFollowUpRounds).toBe(2);
     expect(policy.predictionTrust).toBe("high");
+    expect(policy.maxOutputTokens).toBe(2000);
+    expect(policy.requestTokenReserve).toBe(256);
+    expect(policy.visibleOutputBudget).toBe(1744);
+    expect(policy.preferEarlyFollowUp).toBe(true);
+    expect(policy.isNewChatInSession).toBe(true);
+    expect(policy.responseStrategyText).toContain("MAX_OUTPUT_TOKENS=2000");
+    expect(policy.responseStrategyText).toContain("REQUEST_TOKEN_RESERVE=256");
+    expect(policy.responseStrategyText).toContain("这是同一 session 下的新 chat");
   });
 
   test("blocks repeated preload when long memory is already loaded", () => {

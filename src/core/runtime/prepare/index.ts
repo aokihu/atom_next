@@ -50,6 +50,12 @@ export function buildPrepareConversationIntentRequest(
       maxFollowUpRounds: policy.maxFollowUpRounds,
       promptVariant: policy.promptVariant,
       predictionTrust: policy.predictionTrust,
+      maxOutputTokens: policy.maxOutputTokens,
+      requestTokenReserve: policy.requestTokenReserve,
+      visibleOutputBudget: policy.visibleOutputBudget,
+      preferEarlyFollowUp: policy.preferEarlyFollowUp,
+      isNewChatInSession: policy.isNewChatInSession,
+      responseStrategyText: policy.responseStrategyText,
     },
   };
 }
@@ -72,6 +78,7 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
   }
 
   try {
+    const outputBudget = deps.getFormalConversationOutputBudget();
     const predictionText = await deps.transport.generateText(
       deps.exportIntentPrompt(),
       deps.exportUserPrompt(),
@@ -89,6 +96,11 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
       needsMemorySave: parsedIntent.needsMemorySave,
       memoryQuery: parsedIntent.memoryQuery,
       confidence: parsedIntent.confidence,
+      outputBudget: {
+        maxOutputTokens: outputBudget?.maxOutputTokens ?? null,
+        requestTokenReserve: outputBudget?.requestTokenReserve ?? null,
+        visibleOutputBudget: outputBudget?.visibleOutputBudget ?? null,
+      },
     });
   } catch {
     deps.setFallbackPredictedIntent(task.sessionId);

@@ -15,6 +15,7 @@
 import type {
   PrepareConversationIntentRequest,
 } from "@/types";
+import type { RuntimeOutputBudget } from "@/services/runtime";
 import type { TaskItem } from "@/types/task";
 import type { Transport, TransportModelProfile } from "../../transport";
 import type {
@@ -56,6 +57,7 @@ export type PrepareExecutionContextDeps = {
   getCurrentChainRound: () => number | null;
   getCurrentMemoryState: () => PrepareMemoryState;
   hasSessionHistory: () => boolean;
+  getFormalConversationOutputBudget: () => RuntimeOutputBudget | null;
 };
 
 /* ==================== */

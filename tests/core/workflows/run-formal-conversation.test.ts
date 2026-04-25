@@ -61,6 +61,7 @@ describe("runFormalConversationWorkflow", () => {
     const parseIntentRequest = mock(() => ({
       safeRequests: [],
     }));
+    const reportConversationOutputAnalysis = mock(() => {});
     const executeIntentRequests = mock(async () => ({
       status: "continue",
     }));
@@ -87,9 +88,11 @@ describe("runFormalConversationWorkflow", () => {
         return currentTask;
       },
       exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 256,
       createConversationToolRegistry,
       appendAssistantOutput,
       clearContinuationContext,
+      reportConversationOutputAnalysis,
       parseIntentRequest,
       executeIntentRequests,
       finalizeChatTurn,
@@ -127,7 +130,13 @@ describe("runFormalConversationWorkflow", () => {
     });
     expect(createConversationToolRegistry).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]?.[2]?.maxOutputTokens).toBe(256);
     expect(send.mock.calls[0]?.[2]?.tools).toBe(tools);
+    expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
+      finishReason: "stop",
+      visibleTextCharLength: "visible answer".length,
+      intentRequestText: "",
+    });
     expect(appendAssistantOutput).toHaveBeenCalledWith("visible answer");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(updateTask.mock.calls).toEqual([
@@ -152,6 +161,7 @@ describe("runFormalConversationWorkflow", () => {
     const parseIntentRequest = mock(() => ({
       safeRequests: [],
     }));
+    const reportConversationOutputAnalysis = mock(() => {});
     const clearContinuationContext = mock(() => {});
     const finalizeChatTurn = mock(() => ({
       finalMessage: "final answer",
@@ -176,9 +186,11 @@ describe("runFormalConversationWorkflow", () => {
         return currentTask;
       },
       exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
       createConversationToolRegistry: mock(() => tools),
       appendAssistantOutput: mock(() => {}),
       clearContinuationContext,
+      reportConversationOutputAnalysis,
       parseIntentRequest,
       executeIntentRequests: mock(async () => ({
         status: "continue",
@@ -213,6 +225,12 @@ describe("runFormalConversationWorkflow", () => {
       transport as any,
     );
 
+    expect(transport.send.mock.calls[0]?.[2]?.maxOutputTokens).toBe(128);
+    expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
+      finishReason: "stop",
+      visibleTextCharLength: "visible-1visible-2".length,
+      intentRequestText: "request-a",
+    });
     expect(parseIntentRequest).toHaveBeenCalledWith("request-a");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(finalizeChatTurn).toHaveBeenCalledWith(task, {

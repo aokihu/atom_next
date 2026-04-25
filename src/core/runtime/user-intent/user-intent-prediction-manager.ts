@@ -76,6 +76,7 @@ export class UserIntentPredictionManager {
       needsMemorySave: fallbackIntent.needsMemorySave,
       memoryQuery: fallbackIntent.memoryQuery,
       confidence: fallbackIntent.confidence,
+      outputBudget: fallbackIntent.outputBudget,
     });
   }
 
@@ -83,8 +84,15 @@ export class UserIntentPredictionManager {
     sessionId: UserIntentSessionId,
     input: Omit<PredictedIntent, "updatedAt">,
   ) {
+    const baseIntent = createPredictedIntent();
+
     this.#readSessionContext(sessionId).predictedIntent = {
+      ...baseIntent,
       ...input,
+      outputBudget: {
+        ...baseIntent.outputBudget,
+        ...input.outputBudget,
+      },
       updatedAt: Date.now(),
     };
   }
@@ -119,6 +127,12 @@ export class UserIntentPredictionManager {
       maxFollowUpRounds: resolvedPolicy.maxFollowUpRounds,
       promptVariant: resolvedPolicy.promptVariant,
       predictionTrust: resolvedPolicy.predictionTrust,
+      maxOutputTokens: resolvedPolicy.maxOutputTokens,
+      requestTokenReserve: resolvedPolicy.requestTokenReserve,
+      visibleOutputBudget: resolvedPolicy.visibleOutputBudget,
+      preferEarlyFollowUp: resolvedPolicy.preferEarlyFollowUp,
+      isNewChatInSession: resolvedPolicy.isNewChatInSession,
+      responseStrategyText: resolvedPolicy.responseStrategyText,
       reasons: resolvedPolicy.reasons,
     });
 
@@ -129,7 +143,10 @@ export class UserIntentPredictionManager {
     sessionId: UserIntentSessionId,
     input: Omit<IntentExecutionPolicy, "updatedAt">,
   ) {
+    const basePolicy = createIntentExecutionPolicy();
+
     this.#readSessionContext(sessionId).intentPolicy = {
+      ...basePolicy,
       ...input,
       updatedAt: Date.now(),
     };

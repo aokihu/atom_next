@@ -130,6 +130,12 @@ export type PrepareConversationIntentRequestParams = {
   maxFollowUpRounds: number;
   promptVariant: PrepareConversationPromptVariant;
   predictionTrust: PrepareConversationPredictionTrust;
+  maxOutputTokens: number | null;
+  requestTokenReserve: number | null;
+  visibleOutputBudget: number | null;
+  preferEarlyFollowUp: boolean;
+  isNewChatInSession: boolean;
+  responseStrategyText: string;
 };
 
 export type SearchMemoryIntentRequestParams = {

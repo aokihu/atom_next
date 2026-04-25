@@ -18,6 +18,7 @@ export enum TaskSource {
 
 export enum TaskWorkflow {
   PREDICT_USER_INTENT = "predict_user_intent",
+  POST_FOLLOW_UP = "post_follow_up",
   FORMAL_CONVERSATION = "formal_conversation",
 }
 

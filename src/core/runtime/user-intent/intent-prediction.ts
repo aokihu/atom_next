@@ -27,6 +27,12 @@ export const PREDICTED_INTENT_TYPES = [
 
 export type PredictedIntentType = (typeof PREDICTED_INTENT_TYPES)[number];
 
+export type PredictedIntentOutputBudget = {
+  maxOutputTokens: number | null;
+  requestTokenReserve: number | null;
+  visibleOutputBudget: number | null;
+};
+
 export type PredictedIntent = {
   sessionId: string;
   type: PredictedIntentType;
@@ -34,6 +40,7 @@ export type PredictedIntent = {
   needsMemorySave: boolean;
   memoryQuery: string;
   confidence: number | null;
+  outputBudget: PredictedIntentOutputBudget;
   updatedAt: number | null;
 };
 
@@ -49,6 +56,11 @@ export const createPredictedIntent = (): PredictedIntent => {
     needsMemorySave: false,
     memoryQuery: "",
     confidence: null,
+    outputBudget: {
+      maxOutputTokens: null,
+      requestTokenReserve: null,
+      visibleOutputBudget: null,
+    },
     updatedAt: null,
   };
 };

@@ -169,6 +169,7 @@ async function sendConversation(
     input.systemPrompt,
     input.userPrompt,
     {
+      maxOutputTokens: input.env.runtime.getFormalConversationMaxOutputTokens(),
       tools,
       onTextDelta: (textDelta) => {
         if (!hasSyncedProcessingState) {
@@ -207,6 +208,12 @@ async function sendConversation(
 async function parseIntentRequests(
   input: FormalConversationTransportOutput,
 ): Promise<ParsedIntentRequests> {
+  input.env.runtime.reportConversationOutputAnalysis({
+    finishReason: String(input.transportResult.finishReason),
+    visibleTextCharLength: input.visibleTextBuffer.length,
+    intentRequestText: input.transportResult.intentRequestText,
+  });
+
   return {
     env: input.env,
     transportResult: input.transportResult,

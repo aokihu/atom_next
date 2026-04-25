@@ -14,7 +14,7 @@ import type {
   SearchMemoryIntentRequest,
 } from "@/types";
 import { TaskSource, TaskWorkflow, type TaskItem } from "@/types/task";
-import { isEmpty, isNumber } from "radashi";
+import { isNumber } from "radashi";
 import type { RuntimeIntentRequestExecutionContext } from "./types";
 
 /* ==================== */
@@ -44,9 +44,6 @@ export const buildFollowUpTask = (
   request: FollowUpIntentRequest,
 ) => {
   const nextChainRound = parseTaskChainRound(task) + 1;
-  const followUpIntent = isEmpty(request.intent)
-    ? "请基于当前 FollowUp 上下文继续当前回答，不要重复已经输出的内容。"
-    : request.intent;
 
   return buildInternalTaskItem({
     sessionId: task.sessionId,
@@ -57,10 +54,11 @@ export const buildFollowUpTask = (
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
+    workflow: TaskWorkflow.POST_FOLLOW_UP,
     payload: [
       {
         type: "text",
-        data: followUpIntent,
+        data: request.intent,
       },
     ],
   });
@@ -134,10 +132,26 @@ export const buildFormalConversationTask = (task: TaskItem) => {
     chatId: task.chatId,
     chainId: task.chainId,
     parentId: task.id,
+    chain_round: task.chain_round,
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
     payload: task.payload,
+    workflow: TaskWorkflow.FORMAL_CONVERSATION,
+  });
+};
+
+export const buildContinuationFormalConversationTask = (task: TaskItem) => {
+  return buildInternalTaskItem({
+    sessionId: task.sessionId,
+    chatId: task.chatId,
+    chainId: task.chainId,
+    parentId: task.id,
+    chain_round: task.chain_round,
+    priority: 1,
+    eventTarget: task.eventTarget,
+    channel: task.channel,
+    payload: [],
     workflow: TaskWorkflow.FORMAL_CONVERSATION,
   });
 };

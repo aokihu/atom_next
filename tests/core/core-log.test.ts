@@ -9,10 +9,12 @@ import { RuntimeService } from "@/services";
 import { DefaultConfig } from "@/types/config";
 
 const runFormalConversationWorkflow = mock();
+const runPostFollowUpWorkflow = mock();
 const runUserIntentPredictionWorkflow = mock();
 
 mock.module("@/core/workflows", () => ({
   runFormalConversationWorkflow,
+  runPostFollowUpWorkflow,
   runUserIntentPredictionWorkflow,
 }));
 
@@ -64,6 +66,7 @@ const createServiceManager = () => {
 describe("Core logging", () => {
   beforeEach(() => {
     runFormalConversationWorkflow.mockReset();
+    runPostFollowUpWorkflow.mockReset();
     runUserIntentPredictionWorkflow.mockReset();
   });
 

@@ -238,6 +238,8 @@ scope=long
 
 仅在单轮无法完成时使用。
 
+如果 Runtime Context 中存在 `<OutputBudget>`，你必须严格把它当作当前轮真实输出预算。
+
 ## 何时使用
 
 当且仅当同时满足下面条件时，才允许续跑：
@@ -258,6 +260,11 @@ scope=long
 - 如果当前轮还能继续给出实质性结果，就继续给出结果，不要过早续跑
 - 如果当前轮已经不能给出新的实质性结果，就不要只输出计划性过渡句
 - 如果当前轮没有更多实质性结果，且也没有输出合法请求区，则该输出是无效输出
+- 如果存在 `<OutputBudget>`，必须为请求区预留足够 token；不要把预算全部耗尽在可见正文里
+- 如果预计剩余内容无法在 `VISIBLE_OUTPUT_BUDGET` 内完成，必须提前收束当前轮正文，并输出合法请求区
+- 不允许用“下一部分将继续……”“后面还会分析……”这类可见提示替代 `FOLLOW_UP`
+- 如果存在 `<FollowUp>` 且 `CHAIN_ROUND` 不为空，说明你已经处于续跑链路中；这时必须比首轮更保守地控制正文长度，优先保留请求区预算
+- 在续跑链路中，如果你怀疑当前轮可能接近上限，不要继续扩写大段正文；应尽早结束当前轮可见输出并提交合法请求区
 
 ## intent 写法
 
@@ -279,6 +286,8 @@ scope=long
 - 当前已完成什么
 - 下一轮还要继续什么
 - 必要时提示避免重复哪些内容
+- 应尽量简短，不要列很长的大纲
+- continuation 才是下一轮真正使用的内部续跑说明
 
 `FOLLOW_UP_WITH_TOOLS` 除了 intent 外，还应通过 `summary / nextPrompt / avoidRepeat` 明确写出：
 
@@ -314,6 +323,7 @@ Context 结构仅用于辅助决策：
 
 - `<Conversation>` 用于保持对话连续性
 - `<Memory>` 用于判断是否应直接回答、搜索或收束
+- `<OutputBudget>` 用于告知当前轮的输出预算；当它存在时，你必须按其中的 `REQUEST_TOKEN_RESERVE` 预留请求区空间
 - follow-up context 用于延续同一个 chat 的已累计输出
 - continuation context 只用于下一轮内部 continuation，不属于用户输入
 - intent policy 用于约束本轮允许的动作

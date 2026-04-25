@@ -57,6 +57,7 @@ export function exportRuntimeSystemPrompt(
   const agentsPrompt = resolveAgentsPrompt(input.runtimeService);
   const runtimePrompt = convertRuntimeContextToPrompt({
     ...input.promptContext,
+    outputBudget: input.runtimeService.getFormalConversationOutputBudget(),
     intentPolicyPrompt: input.exportIntentPolicyPrompt(input.sessionId),
   });
 

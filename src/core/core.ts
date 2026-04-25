@@ -15,6 +15,7 @@ import { Runtime } from "./runtime";
 import { Transport } from "./transport";
 import {
   runFormalConversationWorkflow,
+  runPostFollowUpWorkflow,
   runUserIntentPredictionWorkflow,
 } from "./workflows";
 
@@ -92,6 +93,50 @@ export class Core {
       if (taskWorkflow === TaskWorkflow.PREDICT_USER_INTENT) {
         const [workflowError] = await toResult(
           runUserIntentPredictionWorkflow(
+            task,
+            this.#taskQueue,
+            this.#runtime,
+            this.#transport,
+          ),
+        );
+
+        if (workflowError) {
+          this.#logger?.error("Workflow failed", {
+            error: workflowError,
+            data: {
+              taskId: task.id,
+              sessionId: task.sessionId,
+              chatId: task.chatId,
+              workflow: taskWorkflow,
+            },
+          });
+          this.#taskQueue.updateTask(
+            task.id,
+            { state: TaskState.FAILED },
+            { shouldSyncEvent: false },
+          );
+
+          const payload: ChatFailedEventPayload = {
+            sessionId: task.sessionId,
+            chatId: task.chatId,
+            status: ChatStatus.FAILED,
+            error: {
+              message:
+                workflowError instanceof Error
+                  ? workflowError.message
+                  : "Unknown error",
+            },
+          };
+
+          task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
+        }
+
+        return;
+      }
+
+      if (taskWorkflow === TaskWorkflow.POST_FOLLOW_UP) {
+        const [workflowError] = await toResult(
+          runPostFollowUpWorkflow(
             task,
             this.#taskQueue,
             this.#runtime,

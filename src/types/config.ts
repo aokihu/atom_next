@@ -177,6 +177,15 @@ export type GatewayConfigScheme = {
 };
 
 /**
+ * Transport 运行参数配置。
+ * 当前先收口 formal conversation 的输出上限，
+ * 方便在测试 FOLLOW_UP 时压缩单轮输出预算。
+ */
+export type TransportConfigScheme = {
+  formalConversationMaxOutputTokens?: number;
+};
+
+/**
  * config.json 的完整结构。
  */
 export type ConfigFileScheme = {
@@ -187,6 +196,8 @@ export type ConfigFileScheme = {
   providerProfiles: ProviderProfiles;
   // LLM 供应商配置
   providers: ProvidersConfigScheme;
+  // Transport 运行配置
+  transport: TransportConfigScheme;
   // Message Gateway 配置
   gateway: GatewayConfigScheme;
 };
@@ -204,6 +215,9 @@ export const DefaultConfig: ConfigFileScheme = {
     basic: "deepseek/deepseek-chat",
   },
   providers: {},
+  transport: {
+    formalConversationMaxOutputTokens: undefined,
+  },
   gateway: {
     enable: false,
     channels: [],

@@ -26,6 +26,24 @@ type SelectedProviderModelConfig = {
   providerConfig?: ProviderDefinition;
 };
 
+export type RuntimeOutputBudget = {
+  maxOutputTokens: number;
+  requestTokenReserve: number;
+  visibleOutputBudget: number;
+};
+
+const resolveRequestTokenReserve = (maxOutputTokens: number) => {
+  if (maxOutputTokens <= 512) {
+    return 96;
+  }
+
+  if (maxOutputTokens <= 1024) {
+    return 160;
+  }
+
+  return 256;
+};
+
 export class RuntimeService extends BaseService {
   /* ------------------- */
   /* Properties          */
@@ -179,6 +197,33 @@ export class RuntimeService extends BaseService {
    */
   public getThemeName(): string {
     return this.#config.theme;
+  }
+
+  /**
+   * 获取 formal conversation 的输出 token 上限。
+   */
+  public getFormalConversationMaxOutputTokens() {
+    return this.#config.transport?.formalConversationMaxOutputTokens
+      ?? DefaultConfig.transport.formalConversationMaxOutputTokens;
+  }
+
+  /**
+   * 获取 formal conversation 的输出预算快照。
+   */
+  public getFormalConversationOutputBudget(): RuntimeOutputBudget | null {
+    const maxOutputTokens = this.getFormalConversationMaxOutputTokens();
+
+    if (isUndefined(maxOutputTokens)) {
+      return null;
+    }
+
+    const requestTokenReserve = resolveRequestTokenReserve(maxOutputTokens);
+
+    return {
+      maxOutputTokens,
+      requestTokenReserve,
+      visibleOutputBudget: Math.max(0, maxOutputTokens - requestTokenReserve),
+    };
   }
 
   /**

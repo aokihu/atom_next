@@ -46,6 +46,12 @@ export type IntentExecutionPolicy = {
   maxFollowUpRounds: number;
   promptVariant: IntentPolicyPromptVariant;
   predictionTrust: IntentPolicyPredictionTrust;
+  maxOutputTokens: number | null;
+  requestTokenReserve: number | null;
+  visibleOutputBudget: number | null;
+  preferEarlyFollowUp: boolean;
+  isNewChatInSession: boolean;
+  responseStrategyText: string;
   reasons: string[];
   updatedAt: number | null;
 };
@@ -76,14 +82,77 @@ export const createIntentExecutionPolicy = (): IntentExecutionPolicy => {
     maxFollowUpRounds: 1,
     promptVariant: "default",
     predictionTrust: "low",
+    maxOutputTokens: null,
+    requestTokenReserve: null,
+    visibleOutputBudget: null,
+    preferEarlyFollowUp: false,
+    isNewChatInSession: false,
+    responseStrategyText: "",
     reasons: [],
     updatedAt: null,
   };
 };
 
+const createResponseStrategyText = (input: {
+  maxOutputTokens: number;
+  requestTokenReserve: number;
+  visibleOutputBudget: number;
+  isNewChatInSession: boolean;
+}) => {
+  const lines = [
+    "当前轮输出预算：",
+    `- MAX_OUTPUT_TOKENS=${input.maxOutputTokens}`,
+    `- REQUEST_TOKEN_RESERVE=${input.requestTokenReserve}`,
+    `- VISIBLE_OUTPUT_BUDGET=${input.visibleOutputBudget}`,
+    "",
+  ];
+
+  if (input.isNewChatInSession) {
+    lines.push(
+      "会话规则：",
+      "- 这是同一 session 下的新 chat，不是上一个 chat 的自然尾声",
+      "- <Conversation> 只用于参考历史，不代表当前问题已经接近完成",
+      "- 是否发起 FOLLOW_UP，必须只根据当前 chat 的任务规模和当前轮预算判断",
+      "",
+    );
+  }
+
+  lines.push(
+    "回答建议：",
+    `- 正文内容应优先控制在约 ${input.visibleOutputBudget} token 内，不要尝试一次覆盖全部剩余内容`,
+    `- 必须始终为 Intent Request 预留至少 ${input.requestTokenReserve} token`,
+    "- 当你判断剩余内容无法在当前预算内完成时，应在一个自然段落后立即输出合法的 FOLLOW_UP",
+    "- 如果后续进入 follow-up 链路，应比首轮更早收束正文",
+    "- 不允许用“下一部分将继续”之类的可见文本代替 FOLLOW_UP",
+  );
+
+  return lines.join("\n");
+};
+
 export const resolveIntentPolicy = (input: IntentControlInput) => {
   const policy = createIntentExecutionPolicy();
   const { predictedIntent } = input;
+  const outputBudget = predictedIntent.outputBudget;
+
+  policy.maxOutputTokens = outputBudget.maxOutputTokens;
+  policy.requestTokenReserve = outputBudget.requestTokenReserve;
+  policy.visibleOutputBudget = outputBudget.visibleOutputBudget;
+  policy.preferEarlyFollowUp = outputBudget.visibleOutputBudget !== null;
+  policy.isNewChatInSession =
+    input.taskSource === "external" && input.sessionHistoryAvailable;
+
+  if (
+    outputBudget.maxOutputTokens !== null &&
+    outputBudget.requestTokenReserve !== null &&
+    outputBudget.visibleOutputBudget !== null
+  ) {
+    policy.responseStrategyText = createResponseStrategyText({
+      maxOutputTokens: outputBudget.maxOutputTokens,
+      requestTokenReserve: outputBudget.requestTokenReserve,
+      visibleOutputBudget: outputBudget.visibleOutputBudget,
+      isNewChatInSession: policy.isNewChatInSession,
+    });
+  }
 
   if (input.taskSource === "internal") {
     policy.reasons.push(

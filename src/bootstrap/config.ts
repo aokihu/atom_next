@@ -6,7 +6,7 @@
  */
 
 import type { PathLike } from "bun";
-import { isBoolean, isPlainObject, isString, isUndefined } from "radashi";
+import { isBoolean, isNumber, isPlainObject, isString, isUndefined } from "radashi";
 import type { Logger } from "@/libs/log";
 import {
   DefaultConfig,
@@ -30,6 +30,7 @@ import type {
   ProviderID,
   ProviderProfiles,
   ProvidersConfigScheme,
+  TransportConfigScheme,
 } from "@/types/config";
 
 /* -------------------- */
@@ -380,6 +381,40 @@ const parseGatewayConfig = (raw: unknown): GatewayConfigScheme => {
 };
 
 /**
+ * 解析 transport 配置。
+ * 缺省时回退到默认配置，当前只暴露 formal conversation 的输出上限。
+ */
+const parseTransportConfig = (raw: unknown): TransportConfigScheme => {
+  const defaultTransport = DefaultConfig.transport;
+
+  if (isUndefined(raw)) {
+    return structuredClone(defaultTransport);
+  }
+
+  if (!isPlainObject(raw)) {
+    throw buildConfigError("config.transport", "expected an object");
+  }
+
+  const transportConfig = raw as Record<string, unknown>;
+  const maxOutputTokens = transportConfig.formalConversationMaxOutputTokens;
+
+  if (isUndefined(maxOutputTokens)) {
+    return structuredClone(defaultTransport);
+  }
+
+  if (!isNumber(maxOutputTokens) || !Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0) {
+    throw buildConfigError(
+      "config.transport.formalConversationMaxOutputTokens",
+      "expected a positive integer",
+    );
+  }
+
+  return {
+    formalConversationMaxOutputTokens: maxOutputTokens,
+  };
+};
+
+/**
  * 解析整个配置对象。
  * 这里只处理结构化校验和默认值补全，不负责文件读写。
  */
@@ -399,6 +434,7 @@ const parseConfig = (raw: unknown): ConfigFileScheme => {
     theme: parseThemeConfig(config),
     providerProfiles: parseProviderProfiles(config.providerProfiles),
     providers: parseProviders(config.providers),
+    transport: parseTransportConfig(config.transport),
     gateway: parseGatewayConfig(config.gateway),
   };
 };

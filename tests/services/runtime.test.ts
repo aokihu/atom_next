@@ -20,6 +20,9 @@ const buildConfig = (): ConfigFileScheme => {
         models: ["gpt-5"],
       },
     },
+    transport: {
+      formalConversationMaxOutputTokens: undefined,
+    },
     gateway: {
       enable: false,
       channels: [],
@@ -86,6 +89,36 @@ describe("RuntimeService", () => {
     runtime.loadConfig(buildConfig());
 
     expect(runtime.getThemeName()).toBe("ocean");
+  });
+
+  test("returns formal conversation max output tokens after loading config", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      transport: {
+        formalConversationMaxOutputTokens: 256,
+      },
+    });
+
+    expect(runtime.getFormalConversationMaxOutputTokens()).toBe(256);
+  });
+
+  test("returns formal conversation output budget after loading config", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      transport: {
+        formalConversationMaxOutputTokens: 2000,
+      },
+    });
+
+    expect(runtime.getFormalConversationOutputBudget()).toEqual({
+      maxOutputTokens: 2000,
+      requestTokenReserve: 256,
+      visibleOutputBudget: 1744,
+    });
   });
 
   test("returns selected deepseek model by level", () => {

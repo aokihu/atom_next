@@ -101,6 +101,9 @@ describe("parseConfigFile", () => {
           options: undefined,
         },
       },
+      transport: {
+        formalConversationMaxOutputTokens: undefined,
+      },
       gateway: {
         enable: true,
         channels: [
@@ -357,6 +360,37 @@ describe("parseConfigFile", () => {
       },
     });
     expect(warnings[0]).toContain("config.providers.openai.models[0]");
+  });
+
+  test("parses transport formal conversation max output tokens", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        transport: {
+          formalConversationMaxOutputTokens: 256,
+        },
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      transport: {
+        formalConversationMaxOutputTokens: 256,
+      },
+    });
+  });
+
+  test("throws when transport formal conversation max output tokens is invalid", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        transport: {
+          formalConversationMaxOutputTokens: 0,
+        },
+      }),
+    );
+
+    await expect(parseConfigFile(file)).rejects.toThrow(
+      "Invalid config.transport.formalConversationMaxOutputTokens",
+    );
   });
 
   test("throws when provider baseUrl is invalid", async () => {

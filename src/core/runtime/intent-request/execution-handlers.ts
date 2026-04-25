@@ -205,6 +205,12 @@ const processPrepareConversationIntentRequest = (
     maxFollowUpRounds: request.params.maxFollowUpRounds,
     promptVariant: request.params.promptVariant,
     predictionTrust: request.params.predictionTrust,
+    maxOutputTokens: request.params.maxOutputTokens,
+    requestTokenReserve: request.params.requestTokenReserve,
+    visibleOutputBudget: request.params.visibleOutputBudget,
+    preferEarlyFollowUp: request.params.preferEarlyFollowUp,
+    isNewChatInSession: request.params.isNewChatInSession,
+    responseStrategyText: request.params.responseStrategyText,
     reasons: [],
   });
 
