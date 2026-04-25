@@ -214,11 +214,13 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[1].system).toContain("<Query>Watchman</Query>");
     expect(streamCalls[1].system).toContain("Watchman 服务不负责 Memory 持久化。");
     expect(streamCalls[1].prompt).toBe("基于记忆继续回答");
-    expect(chunkEvents).toHaveLength(1);
-    expect(chunkEvents[0].delta).toBe("Watchman 服务不负责 Memory 持久化。");
+    expect(chunkEvents.length).toBeGreaterThanOrEqual(2);
+    expect(chunkEvents.map((event) => String(event.delta)).join("")).toContain(
+      "先搜索。Watchman 服务不负责 Memory 持久化。",
+    );
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
-      "Watchman 服务不负责 Memory 持久化。",
+      "先搜索。Watchman 服务不负责 Memory 持久化。",
     );
   });
 
@@ -301,7 +303,7 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[1].prompt).toContain("不要再次发起 SEARCH_MEMORY 或 FOLLOW_UP");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
-      "MemoryService 默认 scope 是 long，默认 type 是 note。",
+      "我将先搜索相关长期记忆，然后基于结果回答。MemoryService 默认 scope 是 long，默认 type 是 note。",
     );
   });
 
@@ -402,7 +404,7 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[2].prompt).toContain("不要再次发起 SEARCH_MEMORY 或 FOLLOW_UP");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
-      "MemoryService 默认 scope 是 long，默认 type 是 note。",
+      "先搜索。我先继续搜索。MemoryService 默认 scope 是 long，默认 type 是 note。",
     );
   });
 
@@ -500,7 +502,7 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[2].prompt).toContain("不要再次发起 SEARCH_MEMORY 或 FOLLOW_UP");
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe(
-      "没有找到相关长期记忆记录。",
+      "先搜索。没有命中任何长期记忆。没有找到相关长期记忆记录。",
     );
   });
 
@@ -947,7 +949,7 @@ describe("Core memory intent requests", () => {
     expect(streamCalls[2].prompt).toBe("新的外部问题");
     expect(completedEvents).toHaveLength(2);
     expect(completedEvents[0].message.data).toBe(
-      "继续验证后确认 follow-up 轮次仍然可以继续使用 tools。",
+      "先整理当前结果。继续验证后确认 follow-up 轮次仍然可以继续使用 tools。",
     );
     expect(completedEvents[1].message.data).toBe("这是新的外部会话回答。");
   });
@@ -1073,7 +1075,7 @@ describe("Core memory intent requests", () => {
     );
     expect(completedEvents).toHaveLength(2);
     expect(completedEvents[0].message.data).toBe(
-      "有一条相关长期记忆：Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。你希望了解更多信息吗？",
+      "先搜索相关长期记忆。有一条相关长期记忆：Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。你希望了解更多信息吗？",
     );
     expect(completedEvents[1].message.data).toBe(
       "可以继续展开：这条记忆说明 AGENTS.md 的编译缓存归 Watchman 负责，而 Memory 持久化属于独立的记忆系统职责。",

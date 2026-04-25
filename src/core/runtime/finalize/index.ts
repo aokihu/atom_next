@@ -31,12 +31,11 @@ export function finalizeChatTurn(
   task: TaskItem,
   options: FinalizeChatTurnOptions,
 ): RuntimeChatFinalizationResult {
-  contextManager.setLastAssistantOutput(options.resultText);
-
-  const completedMessage = contextManager.getLastAssistantOutput();
-  const finalMessage = isEmpty(completedMessage)
-    ? contextManager.getAccumulatedAssistantOutput() || options.resultText
-    : completedMessage;
+  const accumulatedOutput = contextManager.getAccumulatedAssistantOutput();
+  const finalMessage = isEmpty(accumulatedOutput)
+    ? options.resultText
+    : accumulatedOutput;
+  contextManager.setLastAssistantOutput(finalMessage);
   const originalUserInput = contextManager.getCurrentChatOriginalUserInput();
 
   if (!isEmpty(originalUserInput) && !isEmpty(finalMessage)) {

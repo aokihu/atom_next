@@ -32,12 +32,14 @@ type FormalConversationTransportOutput = {
   env: FormalConversationWorkflowEnv;
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
+  hasStreamedVisibleOutput: boolean;
 };
 
 type ParsedIntentRequests = {
   env: FormalConversationWorkflowEnv;
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
+  hasStreamedVisibleOutput: boolean;
   intentRequestResult: ReturnType<Runtime["parseIntentRequest"]>;
 };
 
@@ -45,6 +47,7 @@ type ExecutedIntentRequests = {
   env: FormalConversationWorkflowEnv;
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
+  hasStreamedVisibleOutput: boolean;
   requestExecutionResult: Awaited<
     ReturnType<Runtime["executeIntentRequests"]>
   >;
@@ -54,6 +57,7 @@ type AppliedIntentRequests = {
   env: FormalConversationWorkflowEnv;
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
+  hasStreamedVisibleOutput: boolean;
   decision: FormalConversationWorkflowDecision;
 };
 
@@ -157,6 +161,7 @@ async function sendConversation(
   input: FormalConversationPrompts,
 ): Promise<FormalConversationTransportOutput> {
   let hasSyncedProcessingState = false;
+  let hasStreamedVisibleOutput = false;
   let visibleTextBuffer = "";
   const tools = input.env.runtime.createConversationToolRegistry();
 
@@ -176,6 +181,8 @@ async function sendConversation(
         }
 
         input.env.runtime.appendAssistantOutput(textDelta);
+        emitChatOutputUpdatedEvent(input.env.task, textDelta);
+        hasStreamedVisibleOutput = true;
         visibleTextBuffer += textDelta;
       },
     },
@@ -187,6 +194,7 @@ async function sendConversation(
     env: input.env,
     transportResult,
     visibleTextBuffer,
+    hasStreamedVisibleOutput,
   };
 }
 
@@ -203,6 +211,7 @@ async function parseIntentRequests(
     env: input.env,
     transportResult: input.transportResult,
     visibleTextBuffer: input.visibleTextBuffer,
+    hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
     intentRequestResult: input.env.runtime.parseIntentRequest(
       input.transportResult.intentRequestText,
     ),
@@ -222,6 +231,7 @@ async function executeIntentRequests(
     env: input.env,
     transportResult: input.transportResult,
     visibleTextBuffer: input.visibleTextBuffer,
+    hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
     requestExecutionResult: await input.env.runtime.executeIntentRequests(
       input.env.task,
       input.intentRequestResult.safeRequests,
@@ -247,6 +257,7 @@ async function applyIntentRequestExecution(
       env: input.env,
       transportResult: input.transportResult,
       visibleTextBuffer: input.visibleTextBuffer,
+      hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
       decision: { type: "finalize_chat" },
     };
   }
@@ -267,6 +278,7 @@ async function applyIntentRequestExecution(
     env: input.env,
     transportResult: input.transportResult,
     visibleTextBuffer: input.visibleTextBuffer,
+    hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
     decision: { type: "defer_completion" },
   };
 }
@@ -295,7 +307,7 @@ async function finalizeConversation(
     visibleTextBuffer: input.visibleTextBuffer,
   });
 
-  if (finalizationResult.visibleChunk) {
+  if (!input.hasStreamedVisibleOutput && finalizationResult.visibleChunk) {
     emitChatOutputUpdatedEvent(input.env.task, finalizationResult.visibleChunk);
   }
 

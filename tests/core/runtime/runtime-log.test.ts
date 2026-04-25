@@ -71,6 +71,7 @@ describe("Runtime logging", () => {
       level: "debug",
       source: "runtime",
       message: "Intent Request handled",
+      format: "json",
       data: {
         intentRequestText: "not an intent request",
         parsedRequests: [],
@@ -125,6 +126,7 @@ describe("Runtime logging", () => {
         ].join("\n"),
       },
     });
+    expect(entries[2]?.format).toBe("json");
     expect(entries[2]?.data).toMatchObject({
       parsedRequests: [
         {
@@ -166,6 +168,7 @@ describe("Runtime logging", () => {
       level: "debug",
       source: "runtime",
       message: "Intent Request handled",
+      format: "json",
       data: {
         intentRequestText: '[FOLLOW_UP, "继续当前回答"]',
         parsedRequests: [

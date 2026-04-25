@@ -158,27 +158,18 @@ describe("Runtime context", () => {
       ignoreWatchman: true,
     });
 
-    expect(prompt).toContain("# System 总纲");
-    expect(prompt).toContain("# Intent Request 使用规范");
-    expect(prompt).toContain("# Memory 使用提示词");
-    expect(prompt).toContain("# FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 使用规范");
-    expect(prompt.indexOf("# System 总纲")).toBeLessThan(
-      prompt.indexOf("# Intent Request 使用规范"),
-    );
-    expect(prompt.indexOf("# Intent Request 使用规范")).toBeLessThan(
-      prompt.indexOf("# Memory 使用提示词"),
-    );
-    expect(prompt.indexOf("# Memory 使用提示词")).toBeLessThan(
-      prompt.indexOf("# FOLLOW_UP / FOLLOW_UP_WITH_TOOLS 使用规范"),
-    );
+    expect(prompt).toContain("# Runtime System Prompt");
+    expect(prompt).toContain("# 3. Intent Request（内部请求协议）");
+    expect(prompt).toContain("# 4. Memory 子协议（按需激活）");
+    expect(prompt).toContain("# 5. Follow-up 子协议（按需激活）");
     expect(prompt).toContain("<<<REQUEST>>>");
     expect(prompt).toContain("<IntentPolicy>");
     expect(prompt).not.toContain("ACCEPTED_INTENT_TYPE=");
     expect(prompt).toContain("<Conversation>\nSTATE=empty\n</Conversation>");
-    expect(prompt).toContain("如果问题明显属于第 2 类，必须优先按记忆规则执行");
-    expect(prompt).toContain("不要跳过记忆流程，直接回答“没有找到相关记忆”或“我不记得”");
-    expect(prompt).toContain("当当前轮必须依赖 Runtime(Core) 协助时");
-    expect(prompt).toContain("不要先输出“我将搜索”“我已请求”这类中间态正文");
+    expect(prompt).toContain("如果问题明显属于 2，必须优先按记忆规则执行");
+    expect(prompt).toContain("不要跳过记忆流程直接回答“没有找到相关记忆”或“我不记得”");
+    expect(prompt).toContain("只有在必须依赖 Runtime 协助时才允许使用");
+    expect(prompt).toContain("不要只输出“我先看看”“我先了解一下”“让我检查一下”这类计划性过渡句然后结束当前轮");
     expect(prompt).not.toContain("<FollowUp>\nCHAT_ID=");
     expect(prompt).toContain("Round = 1");
   });
@@ -394,15 +385,15 @@ describe("Runtime context", () => {
       payload: [{ type: "text", data: "first question" }],
     });
     runtime.currentTask = task;
-    runtime.appendAssistantOutput("streamed answer");
+    runtime.appendAssistantOutput("final answer");
 
     const finalizationResult = runtime.finalizeChatTurn(task, {
       resultText: "final answer",
-      visibleTextBuffer: "streamed answer",
+      visibleTextBuffer: "final answer",
     });
 
     expect(finalizationResult.finalMessage).toBe("final answer");
-    expect(finalizationResult.visibleChunk).toBe("streamed answer");
+    expect(finalizationResult.visibleChunk).toBe("final answer");
     expect(finalizationResult.completedPayload.message.data).toBe(
       "final answer",
     );
@@ -420,6 +411,38 @@ describe("Runtime context", () => {
     expect(prompt).toContain("<Conversation>");
     expect(prompt).toContain("LAST_USER_INPUT<<EOF\nfirst question\nEOF");
     expect(prompt).toContain("LAST_ASSISTANT_OUTPUT<<EOF\nfinal answer\nEOF");
+  });
+
+  test("finalizeChatTurn keeps accumulated output as final message for follow up chat", () => {
+    const runtime = buildRuntime();
+
+    const firstTask = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "original question" }],
+    });
+    runtime.currentTask = firstTask;
+    runtime.appendAssistantOutput("第一段。");
+
+    const followUpTask = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      source: TaskSource.INTERNAL,
+      chain_round: 1,
+      payload: [],
+    });
+    runtime.currentTask = followUpTask;
+    runtime.appendAssistantOutput("第二段。");
+
+    const finalizationResult = runtime.finalizeChatTurn(followUpTask, {
+      resultText: "第二段。",
+      visibleTextBuffer: "第二段。",
+    });
+
+    expect(finalizationResult.finalMessage).toBe("第一段。第二段。");
+    expect(finalizationResult.completedPayload.message.data).toBe(
+      "第一段。第二段。",
+    );
   });
 
   test("keeps original input and accumulated output for internal task in same chat", async () => {

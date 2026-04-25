@@ -81,6 +81,31 @@ describe("createLogSystem", () => {
     });
   });
 
+  test("creates json formatted entries through logger helpers", () => {
+    const { entries, sink } = createMemorySink();
+    const log = createLogSystem({
+      level: "debug",
+      sinks: [sink],
+    });
+
+    log.createLogger("runtime").debugJson("Intent Request handled", {
+      parsedRequests: [{ request: "FOLLOW_UP" }],
+      dispatchResults: [],
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: "debug",
+      source: "runtime",
+      message: "Intent Request handled",
+      format: "json",
+      data: {
+        parsedRequests: [{ request: "FOLLOW_UP" }],
+        dispatchResults: [],
+      },
+    });
+  });
+
   test("filters entries below configured level", () => {
     const { entries, sink } = createMemorySink();
     const log = createLogSystem({
@@ -201,5 +226,29 @@ describe("log output formatters", () => {
     expect(formatted).toContain("[INFO]");
     expect(formatted).toContain("runtime");
     expect(formatted).toContain("Intent Request dispatched");
+  });
+
+  test("formats json logs as pretty multiline blocks", () => {
+    const formatted = formatPrettyLogEntry(
+      {
+        ...entry,
+        level: "debug",
+        message: "Intent Request handled",
+        format: "json",
+        data: {
+          intentRequestText: '[FOLLOW_UP, "continue"]',
+          parsedRequests: [{ request: "FOLLOW_UP" }],
+          dispatchResults: [],
+        },
+      },
+      {
+        color: false,
+      },
+    );
+
+    expect(formatted).toContain("[DEBUG] runtime Intent Request handled");
+    expect(formatted).toContain('\n    "intentRequestText":');
+    expect(formatted).toContain('\n    "parsedRequests": [');
+    expect(formatted).toContain('\n    "dispatchResults": []');
   });
 });

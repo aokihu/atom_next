@@ -20,6 +20,7 @@ const createLogEntry = (
     source,
     message,
     tags: options.tags,
+    format: options.format,
     data: options.data,
     error: normalizeError(options.error),
   };
@@ -38,18 +39,43 @@ export const createLogger = ({
     emit(createLogEntry(source, level, message, options));
   };
 
+  const writeJson = (
+    level: LogLevel,
+    message: string,
+    data?: unknown,
+    options?: Omit<LogOptions, "data" | "format">,
+  ) => {
+    write(level, message, {
+      ...options,
+      data,
+      format: "json",
+    });
+  };
+
   return {
     debug(message, options) {
       write("debug", message, options);
     },
+    debugJson(message, data, options) {
+      writeJson("debug", message, data, options);
+    },
     info(message, options) {
       write("info", message, options);
+    },
+    infoJson(message, data, options) {
+      writeJson("info", message, data, options);
     },
     warn(message, options) {
       write("warn", message, options);
     },
+    warnJson(message, data, options) {
+      writeJson("warn", message, data, options);
+    },
     error(message, options) {
       write("error", message, options);
+    },
+    errorJson(message, data, options) {
+      writeJson("error", message, data, options);
     },
   };
 };

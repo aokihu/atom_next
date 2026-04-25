@@ -26,6 +26,7 @@ export type LogEntry = {
   source: LogSource;
   message: string;
   tags?: string[];
+  format?: "json";
   data?: unknown;
   error?: LogEntryError;
 };
@@ -54,15 +55,36 @@ export type LogEntry = {
 
 export type LogOptions = {
   tags?: string[];
+  format?: "json";
   data?: unknown;
   error?: unknown;
 };
 
 export type Logger = {
   debug(message: string, options?: LogOptions): void;
+  debugJson(
+    message: string,
+    data?: unknown,
+    options?: Omit<LogOptions, "data" | "format">,
+  ): void;
   info(message: string, options?: LogOptions): void;
+  infoJson(
+    message: string,
+    data?: unknown,
+    options?: Omit<LogOptions, "data" | "format">,
+  ): void;
   warn(message: string, options?: LogOptions): void;
+  warnJson(
+    message: string,
+    data?: unknown,
+    options?: Omit<LogOptions, "data" | "format">,
+  ): void;
   error(message: string, options?: LogOptions): void;
+  errorJson(
+    message: string,
+    data?: unknown,
+    options?: Omit<LogOptions, "data" | "format">,
+  ): void;
 };
 
 export type LogSink = {

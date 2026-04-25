@@ -52,21 +52,62 @@ const colorizeLevel = (level: LogLevel, text: string, color: boolean) => {
   return color ? `${LEVEL_COLORS[level]}${text}${COLOR_RESET}` : text;
 };
 
+const indentBlock = (text: string, spaces = 2) => {
+  const indent = " ".repeat(spaces);
+  return text
+    .split("\n")
+    .map((line) => `${indent}${line}`)
+    .join("\n");
+};
+
+const formatPrettyPrefix = (entry: LogEntry, options: PrettyLogOptions) => {
+  const level = entry.level.toUpperCase();
+  const source = entry.source;
+  const formattedSource =
+    options.color === true
+      ? colorizeText(source, Bun.color("rgb(180,180,180", "ansi-256") as string)
+      : source;
+
+  return [
+    colorizeLevel(entry.level, `[${level}]`, options.color === true),
+    formattedSource,
+    entry.message,
+  ].join(" ");
+};
+
+const resolveJsonPayload = (entry: LogEntry) => {
+  if (entry.data !== undefined && !entry.error) {
+    return entry.data;
+  }
+
+  if (entry.data === undefined && entry.error) {
+    return { error: entry.error };
+  }
+
+  return {
+    data: entry.data,
+    error: entry.error,
+  };
+};
+
 export const formatPrettyLogEntry = (
   entry: LogEntry,
   options: PrettyLogOptions = {},
 ) => {
-  const level = entry.level.toUpperCase();
-  const source = entry.source;
+  const prefix = formatPrettyPrefix(entry, options);
+
+  if (entry.format === "json") {
+    const payload = resolveJsonPayload(entry);
+    return `${prefix}\n${indentBlock(
+      JSON.stringify(payload ?? null, null, 2) ?? "null",
+    )}`;
+  }
+
   const context = [
     ...formatLogData(entry.data),
     ...(entry.error ? [`error=${formatLogValue(entry.error.message)}`] : []),
   ];
   const suffix = context.length > 0 ? ` ${context.join(" ")}` : "";
 
-  return [
-    colorizeLevel(entry.level, `[${level}]`, options.color === true),
-    colorizeText(source, Bun.color("rgb(180,180,180", "ansi-256") as string),
-    `${entry.message}${suffix}`,
-  ].join(" ");
+  return `${prefix}${suffix}`;
 };
