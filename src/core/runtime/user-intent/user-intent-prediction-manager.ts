@@ -132,6 +132,8 @@ export class UserIntentPredictionManager {
       visibleOutputBudget: resolvedPolicy.visibleOutputBudget,
       preferEarlyFollowUp: resolvedPolicy.preferEarlyFollowUp,
       isNewChatInSession: resolvedPolicy.isNewChatInSession,
+      topicRelation: resolvedPolicy.topicRelation,
+      shouldIsolateConversation: resolvedPolicy.shouldIsolateConversation,
       responseStrategyText: resolvedPolicy.responseStrategyText,
       reasons: resolvedPolicy.reasons,
     });

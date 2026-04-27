@@ -25,9 +25,10 @@ import {
 } from "./prompt";
 import {
   createFallbackPostFollowUpContinuation,
+  normalizePostFollowUpContinuation,
   exportPostFollowUpPrompt as runExportPostFollowUpPrompt,
   exportPostFollowUpUserPrompt as runExportPostFollowUpUserPrompt,
-  parsePostFollowUpText,
+  PostFollowUpContinuationSchema,
   POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
   sliceRecentAssistantOutput,
 } from "./post-follow-up";
@@ -498,19 +499,15 @@ export class Runtime {
 
     if (!isEmpty(rawFollowUpIntent)) {
       try {
-        const text = await transport.generateText(systemPrompt, userPrompt, {
+        const output = await transport.generateObject(systemPrompt, userPrompt, {
           modelProfile: this.getTransportModelProfile("balanced"),
+          maxOutputTokens: POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
+          schema: PostFollowUpContinuationSchema,
+          schemaName: "post_follow_up_continuation",
+          schemaDescription:
+            "Structured continuation summary for internal follow-up preprocessing.",
         });
-
-        // 输出压缩的FOLLOW UP内容
-
-        this.#logger?.info("PostFollowUp Result", {
-          data: {
-            text: text ?? "no message",
-          },
-        });
-
-        const parsedContinuation = parsePostFollowUpText(text);
+        const parsedContinuation = normalizePostFollowUpContinuation(output);
 
         if (parsedContinuation) {
           continuation = parsedContinuation;
@@ -614,6 +611,12 @@ export class Runtime {
       hasSessionHistory: () => this.hasSessionHistory(),
       getFormalConversationOutputBudget: () => {
         return this.getFormalConversationOutputBudget();
+      },
+      applyTopicArchiveTurnLifecycle: () => {
+        this.#contextManager.applyTopicArchiveTurnLifecycle();
+      },
+      applyTopicIsolation: (topicRelation) => {
+        return this.#contextManager.applyTopicIsolation(topicRelation);
       },
     });
   }

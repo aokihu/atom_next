@@ -54,12 +54,16 @@ export type RuntimeContinuationContext = {
 };
 
 export type RuntimeMemoryScopeStatus = "idle" | "loaded" | "empty";
+export type RuntimeMemoryScopeKind = "search_result" | "topic_archive" | null;
 
 export type RuntimeMemoryScopeContext = {
   status: RuntimeMemoryScopeStatus;
   query: string;
   reason: string;
   outputs: RuntimeMemoryItem[];
+  kind: RuntimeMemoryScopeKind;
+  archivedFromConversation: boolean;
+  ttlTurnsRemaining: number | null;
   updatedAt: number | null;
 };
 

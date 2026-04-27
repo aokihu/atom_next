@@ -50,6 +50,9 @@ export const createRuntimeMemoryScopeContext = (): RuntimeMemoryScopeContext => 
     query: "",
     reason: "",
     outputs: [],
+    kind: null,
+    archivedFromConversation: false,
+    ttlTurnsRemaining: null,
     updatedAt: null,
   };
 };

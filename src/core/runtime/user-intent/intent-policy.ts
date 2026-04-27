@@ -9,7 +9,11 @@
  * 它不持有 session 状态，只负责纯计算。
  */
 import type { MemoryScope, TaskSource } from "@/types";
-import type { PredictedIntent, PredictedIntentType } from "./intent-prediction";
+import type {
+  PredictedIntent,
+  PredictedIntentType,
+  PredictedTopicRelation,
+} from "./intent-prediction";
 
 /* ==================== */
 /* Policy Constants     */
@@ -51,6 +55,8 @@ export type IntentExecutionPolicy = {
   visibleOutputBudget: number | null;
   preferEarlyFollowUp: boolean;
   isNewChatInSession: boolean;
+  topicRelation: PredictedTopicRelation;
+  shouldIsolateConversation: boolean;
   responseStrategyText: string;
   reasons: string[];
   updatedAt: number | null;
@@ -66,6 +72,7 @@ export type IntentControlInput = {
   chainRound: number | null;
   currentMemoryState: IntentMemoryState;
   sessionHistoryAvailable: boolean;
+  shouldIsolateConversation: boolean;
 };
 
 /* ==================== */
@@ -87,6 +94,8 @@ export const createIntentExecutionPolicy = (): IntentExecutionPolicy => {
     visibleOutputBudget: null,
     preferEarlyFollowUp: false,
     isNewChatInSession: false,
+    topicRelation: "uncertain",
+    shouldIsolateConversation: false,
     responseStrategyText: "",
     reasons: [],
     updatedAt: null,
@@ -98,6 +107,8 @@ const createResponseStrategyText = (input: {
   requestTokenReserve: number;
   visibleOutputBudget: number;
   isNewChatInSession: boolean;
+  shouldIsolateConversation: boolean;
+  topicRelation: PredictedTopicRelation;
 }) => {
   const lines = [
     "当前轮输出预算：",
@@ -107,7 +118,15 @@ const createResponseStrategyText = (input: {
     "",
   ];
 
-  if (input.isNewChatInSession) {
+  if (input.shouldIsolateConversation) {
+    lines.push(
+      "话题隔离规则：",
+      `- TOPIC_RELATION=${input.topicRelation}`,
+      "- 当前 chat 被判定为新话题，旧 session conversation 已隔离",
+      "- 如果需要参考旧话题，只能参考临时 short memory 摘要，不要延续旧推理链",
+      "",
+    );
+  } else if (input.isNewChatInSession) {
     lines.push(
       "会话规则：",
       "- 这是同一 session 下的新 chat，不是上一个 chat 的自然尾声",
@@ -133,11 +152,15 @@ export const resolveIntentPolicy = (input: IntentControlInput) => {
   const policy = createIntentExecutionPolicy();
   const { predictedIntent } = input;
   const outputBudget = predictedIntent.outputBudget;
+  const hasConversationContinuity =
+    input.sessionHistoryAvailable && !input.shouldIsolateConversation;
 
   policy.maxOutputTokens = outputBudget.maxOutputTokens;
   policy.requestTokenReserve = outputBudget.requestTokenReserve;
   policy.visibleOutputBudget = outputBudget.visibleOutputBudget;
   policy.preferEarlyFollowUp = outputBudget.visibleOutputBudget !== null;
+  policy.topicRelation = predictedIntent.topicRelation;
+  policy.shouldIsolateConversation = input.shouldIsolateConversation;
   policy.isNewChatInSession =
     input.taskSource === "external" && input.sessionHistoryAvailable;
 
@@ -151,6 +174,8 @@ export const resolveIntentPolicy = (input: IntentControlInput) => {
       requestTokenReserve: outputBudget.requestTokenReserve,
       visibleOutputBudget: outputBudget.visibleOutputBudget,
       isNewChatInSession: policy.isNewChatInSession,
+      shouldIsolateConversation: policy.shouldIsolateConversation,
+      topicRelation: policy.topicRelation,
     });
   }
 
@@ -179,7 +204,7 @@ export const resolveIntentPolicy = (input: IntentControlInput) => {
   policy.memoryQuery = predictedIntent.memoryQuery;
   policy.predictionTrust =
     predictedIntent.confidence >= 0.8 ? "high" : "medium";
-  policy.promptVariant = input.sessionHistoryAvailable
+  policy.promptVariant = hasConversationContinuity
     ? "continuity"
     : "default";
 
@@ -205,7 +230,7 @@ export const resolveIntentPolicy = (input: IntentControlInput) => {
   }
 
   policy.promptVariant = "recall";
-  policy.maxFollowUpRounds = input.sessionHistoryAvailable ? 2 : 1;
+  policy.maxFollowUpRounds = hasConversationContinuity ? 2 : 1;
   policy.reasons.push(
     "Memory recall intent promotes the prompt variant to recall.",
   );

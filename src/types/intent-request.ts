@@ -135,6 +135,8 @@ export type PrepareConversationIntentRequestParams = {
   visibleOutputBudget: number | null;
   preferEarlyFollowUp: boolean;
   isNewChatInSession: boolean;
+  topicRelation: "related" | "unrelated" | "uncertain";
+  shouldIsolateConversation: boolean;
   responseStrategyText: string;
 };
 

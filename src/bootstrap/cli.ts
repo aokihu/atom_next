@@ -29,6 +29,7 @@ type ParsedArguments = {
   "log-pipe": string;
   "log-file": boolean;
   "log-silent": boolean;
+  "context-pipe": string;
 };
 
 export type BootArguments = {
@@ -42,6 +43,7 @@ export type BootArguments = {
   logPipe?: string;
   logFile: boolean;
   logSilent: boolean;
+  contextPipe?: string;
 };
 
 /**
@@ -71,6 +73,8 @@ export type BootArguments = {
  *              --log-file      启用文件日志输出
  *
  *              --log-silent    禁用所有日志输出
+ *
+ *              --context-pipe  指定已有命名管道路径用于上下文数据输出
  */
 
 /**
@@ -98,6 +102,7 @@ Atom Next - AI 驱动的开发工具
   --log-pipe <path>      启用命名管道日志输出，path 必须是已存在的 FIFO
   --log-file             启用文件日志输出
   --log-silent           禁用所有日志输出
+  --context-pipe         指定已有命名管道路径用于上下文数据输出
 
 示例:
   atom                          # 同时启动 TUI 和 Server
@@ -152,6 +157,9 @@ const cliOpts: ParseArgsConfig["options"] = {
   },
   "log-silent": {
     type: "boolean",
+  },
+  "context-pipe": {
+    type: "string",
   },
 };
 
@@ -248,6 +256,7 @@ export const parseArguments = (args: string[]): BootArguments => {
   const logPipe = parsed["log-pipe"];
   const logFile = parsed["log-file"] ?? false;
   const logSilent = parsed["log-silent"] ?? false;
+  const contextPipe = withDefault<string>(parsed["context-pipe"], "");
 
   /* --- 组装启动参数 --- */
   const bootArgs: BootArguments = {
@@ -261,6 +270,7 @@ export const parseArguments = (args: string[]): BootArguments => {
     logPipe,
     logFile,
     logSilent,
+    contextPipe,
   };
 
   validateBootArguments(bootArgs);

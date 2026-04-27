@@ -1,7 +1,13 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
-import { generateText as runGenerateText, stepCountIs, streamText } from "ai";
+import {
+  generateText as runGenerateText,
+  Output,
+  stepCountIs,
+  streamText,
+} from "ai";
 import { finished } from "node:stream/promises";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { ZodType } from "zod";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import type { ToolDefinitionMap } from "@/services/tools";
@@ -69,6 +75,12 @@ type GenerateTextOptions = {
   modelProfile?: TransportModelProfile;
 };
 
+type GenerateObjectOptions<TOutput> = GenerateTextOptions & {
+  schema: ZodType<TOutput>;
+  schemaName?: string;
+  schemaDescription?: string;
+};
+
 type SendResult = {
   text: string;
   intentRequestText: string;
@@ -92,20 +104,18 @@ type RawToolCallStartEvent = {
   toolCall: RawToolCallPayload;
 };
 
-type RawToolCallFinishEvent =
-  & {
-      toolCall: RawToolCallPayload;
+type RawToolCallFinishEvent = {
+  toolCall: RawToolCallPayload;
+} & (
+  | {
+      success: true;
+      output: unknown;
     }
-  & (
-    | {
-        success: true;
-        output: unknown;
-      }
-    | {
-        success: false;
-        error: unknown;
-      }
-  );
+  | {
+      success: false;
+      error: unknown;
+    }
+);
 
 /**
  * Core Transport
@@ -154,13 +164,9 @@ export class Transport {
     };
   }
 
-  #resolveModel(
-    kind: "stream" | "text",
-    modelProfile?: TransportModelProfile,
-  ) {
-    const cache = kind === "stream"
-      ? this.#streamModelCache
-      : this.#textModelCache;
+  #resolveModel(kind: "stream" | "text", modelProfile?: TransportModelProfile) {
+    const cache =
+      kind === "stream" ? this.#streamModelCache : this.#textModelCache;
     const setCache = (nextCache: TransportModelCache) => {
       if (kind === "stream") {
         this.#streamModelCache = nextCache;
@@ -265,7 +271,9 @@ export class Transport {
       ...(stopWhen ? { stopWhen } : {}),
       ...(options.onToolCallStart
         ? {
-            experimental_onToolCallStart: async (event: RawToolCallStartEvent) => {
+            experimental_onToolCallStart: async (
+              event: RawToolCallStartEvent,
+            ) => {
               await options.onToolCallStart?.({
                 toolName: event.toolCall.toolName,
                 toolCallId: event.toolCall.toolCallId,
@@ -276,7 +284,9 @@ export class Transport {
         : {}),
       ...(options.onToolCallFinish
         ? {
-            experimental_onToolCallFinish: async (event: RawToolCallFinishEvent) => {
+            experimental_onToolCallFinish: async (
+              event: RawToolCallFinishEvent,
+            ) => {
               await options.onToolCallFinish?.({
                 toolName: event.toolCall.toolName,
                 toolCallId: event.toolCall.toolCallId,
@@ -309,12 +319,13 @@ export class Transport {
     await finished(parser, { readable: false });
     await flushVisibleText();
 
-    const [intentRequestText, finishReason, usage, totalUsage] = await Promise.all([
-      parser.intentRequestText,
-      result.finishReason,
-      result.usage,
-      result.totalUsage,
-    ]);
+    const [intentRequestText, finishReason, usage, totalUsage] =
+      await Promise.all([
+        parser.intentRequestText,
+        result.finishReason,
+        result.usage,
+        result.totalUsage,
+      ]);
 
     return {
       text,
@@ -340,5 +351,29 @@ export class Transport {
     });
 
     return result.text;
+  }
+
+  public async generateObject<TOutput>(
+    systemPrompt: string,
+    userPrompt: string,
+    options: GenerateObjectOptions<TOutput>,
+  ): Promise<TOutput> {
+    const model = this.#resolveModel("text", options.modelProfile);
+    const result = await runGenerateText({
+      model,
+      system: systemPrompt,
+      prompt: userPrompt,
+      abortSignal: options.abortSignal,
+      maxOutputTokens: options.maxOutputTokens,
+      output: Output.object({
+        schema: options.schema,
+        ...(options.schemaName ? { name: options.schemaName } : {}),
+        ...(options.schemaDescription
+          ? { description: options.schemaDescription }
+          : {}),
+      }),
+    });
+
+    return result.output;
   }
 }

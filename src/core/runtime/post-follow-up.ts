@@ -1,4 +1,5 @@
 import { isEmpty } from "radashi";
+import { z } from "zod";
 import {
   MAX_FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_LENGTH,
   MAX_FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_LENGTH,
@@ -19,6 +20,12 @@ export type PostFollowUpContinuation = {
   avoidRepeat: string;
 };
 
+export const PostFollowUpContinuationSchema = z.object({
+  summary: z.string().optional(),
+  nextPrompt: z.string().optional(),
+  avoidRepeat: z.string().optional(),
+}).passthrough();
+
 const clampText = (text: string, maxLength: number) => {
   const normalized = text.trim();
 
@@ -27,26 +34,6 @@ const clampText = (text: string, maxLength: number) => {
   }
 
   return normalized.slice(0, maxLength).trim();
-};
-
-const parsePostFollowUpJson = (text: string) => {
-  const match = text.match(
-    /<PostFollowUpResult>\s*([\s\S]*?)\s*<\/PostFollowUpResult>/,
-  );
-
-  if (!match?.[1]) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(match[1]) as {
-      summary?: string;
-      nextPrompt?: string;
-      avoidRepeat?: string;
-    };
-  } catch {
-    return null;
-  }
 };
 
 export const sliceRecentAssistantOutput = (
@@ -86,24 +73,19 @@ export const exportPostFollowUpUserPrompt = (input: {
   ].join("\n");
 };
 
-export const parsePostFollowUpText = (
-  text: string,
+export const normalizePostFollowUpContinuation = (
+  input: z.infer<typeof PostFollowUpContinuationSchema>,
 ): PostFollowUpContinuation | null => {
-  const parsed = parsePostFollowUpJson(text);
-  if (!parsed) {
-    return null;
-  }
-
   const summary = clampText(
-    String(parsed.summary ?? ""),
+    String(input.summary ?? ""),
     MAX_FOLLOW_UP_WITH_TOOLS_SUMMARY_LENGTH,
   );
   const nextPrompt = clampText(
-    String(parsed.nextPrompt ?? ""),
+    String(input.nextPrompt ?? ""),
     MAX_FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_LENGTH,
   );
   const avoidRepeat = clampText(
-    String(parsed.avoidRepeat ?? ""),
+    String(input.avoidRepeat ?? ""),
     MAX_FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_LENGTH,
   );
 

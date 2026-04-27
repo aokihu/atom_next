@@ -22,7 +22,10 @@ import type {
 } from "@/types";
 import { TaskSource } from "@/types/task";
 import type { IntentExecutionPolicy } from "../user-intent";
-import { parseIntentPredictionText } from "../user-intent";
+import {
+  createPredictedIntent,
+  IntentPredictionSchema,
+} from "../user-intent";
 import type { PrepareExecutionContext } from "./types";
 
 /* ==================== */
@@ -55,6 +58,8 @@ export function buildPrepareConversationIntentRequest(
       visibleOutputBudget: policy.visibleOutputBudget,
       preferEarlyFollowUp: policy.preferEarlyFollowUp,
       isNewChatInSession: policy.isNewChatInSession,
+      topicRelation: policy.topicRelation,
+      shouldIsolateConversation: policy.shouldIsolateConversation,
       responseStrategyText: policy.responseStrategyText,
     },
   };
@@ -77,40 +82,62 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
     return null;
   }
 
+  deps.applyTopicArchiveTurnLifecycle();
+
+  const sessionHistoryAvailable = deps.hasSessionHistory();
+  const outputBudget = deps.getFormalConversationOutputBudget();
+  const fallbackIntent = createPredictedIntent();
+  let predictedIntentInput = {
+    sessionId: task.sessionId,
+    type: fallbackIntent.type,
+    topicRelation: fallbackIntent.topicRelation,
+    needsMemory: fallbackIntent.needsMemory,
+    needsMemorySave: fallbackIntent.needsMemorySave,
+    memoryQuery: fallbackIntent.memoryQuery,
+    confidence: fallbackIntent.confidence,
+    outputBudget: {
+      maxOutputTokens: outputBudget?.maxOutputTokens ?? null,
+      requestTokenReserve: outputBudget?.requestTokenReserve ?? null,
+      visibleOutputBudget: outputBudget?.visibleOutputBudget ?? null,
+    },
+  };
+
   try {
-    const outputBudget = deps.getFormalConversationOutputBudget();
-    const predictionText = await deps.transport.generateText(
+    const parsedIntent = await deps.transport.generateObject(
       deps.exportIntentPrompt(),
       deps.exportUserPrompt(),
       {
         maxOutputTokens: 120,
         modelProfile: deps.getTransportModelProfile("basic"),
+        schema: IntentPredictionSchema,
+        schemaName: "intent_prediction",
+        schemaDescription: "Structured prediction for current user intent and topic relation.",
       },
     );
-    const parsedIntent = parseIntentPredictionText(predictionText);
+    predictedIntentInput = {
+      ...predictedIntentInput,
+      type: parsedIntent.type ?? fallbackIntent.type,
+      topicRelation: parsedIntent.topicRelation ?? fallbackIntent.topicRelation,
+      needsMemory: parsedIntent.needsMemory ?? fallbackIntent.needsMemory,
+      needsMemorySave:
+        parsedIntent.needsMemorySave ?? fallbackIntent.needsMemorySave,
+      memoryQuery: parsedIntent.memoryQuery?.trim() ?? fallbackIntent.memoryQuery,
+      confidence: parsedIntent.confidence ?? fallbackIntent.confidence,
+    };
+  } catch {}
 
-    deps.setPredictedIntent(task.sessionId, {
-      sessionId: task.sessionId,
-      type: parsedIntent.type,
-      needsMemory: parsedIntent.needsMemory,
-      needsMemorySave: parsedIntent.needsMemorySave,
-      memoryQuery: parsedIntent.memoryQuery,
-      confidence: parsedIntent.confidence,
-      outputBudget: {
-        maxOutputTokens: outputBudget?.maxOutputTokens ?? null,
-        requestTokenReserve: outputBudget?.requestTokenReserve ?? null,
-        visibleOutputBudget: outputBudget?.visibleOutputBudget ?? null,
-      },
-    });
-  } catch {
-    deps.setFallbackPredictedIntent(task.sessionId);
-  }
+  deps.setPredictedIntent(task.sessionId, predictedIntentInput);
+
+  const topicIsolation = deps.applyTopicIsolation(
+    predictedIntentInput.topicRelation,
+  );
 
   const policy = deps.resolveIntentPolicy(task.sessionId, {
     taskSource: task.source,
     chainRound: deps.getCurrentChainRound(),
     currentMemoryState: deps.getCurrentMemoryState(),
-    sessionHistoryAvailable: deps.hasSessionHistory(),
+    sessionHistoryAvailable,
+    shouldIsolateConversation: topicIsolation.shouldIsolateConversation,
   });
 
   return buildPrepareConversationIntentRequest(policy);

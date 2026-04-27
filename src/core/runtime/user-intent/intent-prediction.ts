@@ -11,6 +11,7 @@
  * 它不负责 session 状态保存，也不负责 policy 解析。
  */
 import { isEmpty } from "radashi";
+import { z } from "zod";
 
 /* ==================== */
 /* Prediction Types     */
@@ -27,6 +28,15 @@ export const PREDICTED_INTENT_TYPES = [
 
 export type PredictedIntentType = (typeof PREDICTED_INTENT_TYPES)[number];
 
+export const PREDICTED_TOPIC_RELATIONS = [
+  "related",
+  "unrelated",
+  "uncertain",
+] as const;
+
+export type PredictedTopicRelation =
+  (typeof PREDICTED_TOPIC_RELATIONS)[number];
+
 export type PredictedIntentOutputBudget = {
   maxOutputTokens: number | null;
   requestTokenReserve: number | null;
@@ -36,6 +46,7 @@ export type PredictedIntentOutputBudget = {
 export type PredictedIntent = {
   sessionId: string;
   type: PredictedIntentType;
+  topicRelation: PredictedTopicRelation;
   needsMemory: boolean;
   needsMemorySave: boolean;
   memoryQuery: string;
@@ -43,6 +54,15 @@ export type PredictedIntent = {
   outputBudget: PredictedIntentOutputBudget;
   updatedAt: number | null;
 };
+
+export const IntentPredictionSchema = z.object({
+  type: z.enum(PREDICTED_INTENT_TYPES).optional(),
+  topicRelation: z.enum(PREDICTED_TOPIC_RELATIONS).optional(),
+  needsMemory: z.boolean().optional(),
+  needsMemorySave: z.boolean().optional(),
+  memoryQuery: z.string().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+}).passthrough();
 
 /* ==================== */
 /* Prediction Factory   */
@@ -52,6 +72,7 @@ export const createPredictedIntent = (): PredictedIntent => {
   return {
     sessionId: "",
     type: "unknown",
+    topicRelation: "uncertain",
     needsMemory: false,
     needsMemorySave: false,
     memoryQuery: "",
@@ -69,55 +90,52 @@ export const createPredictedIntent = (): PredictedIntent => {
 /* Prediction Parsing   */
 /* ==================== */
 
-const isPredictedIntentType = (value: string): value is PredictedIntentType => {
-  return PREDICTED_INTENT_TYPES.includes(value as PredictedIntentType);
-};
-
-const parseIntentBoolean = (value: string) => {
-  if (value === "true") {
-    return true;
-  }
-
-  if (value === "false") {
-    return false;
-  }
-
-  return null;
-};
-
 export const parseIntentPredictionText = (text: string) => {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => !isEmpty(line));
-
-  const values: Record<string, string> = {};
-
-  for (const line of lines) {
-    const equalIndex = line.indexOf("=");
-
-    if (equalIndex <= 0) {
-      continue;
-    }
-
-    const key = line.slice(0, equalIndex).trim().toUpperCase();
-    const value = line.slice(equalIndex + 1).trim();
-
-    values[key] = value;
+  if (isEmpty(text.trim())) {
+    return {
+      type: "unknown" as PredictedIntentType,
+      topicRelation: "uncertain" as PredictedTopicRelation,
+      needsMemory: false,
+      needsMemorySave: false,
+      memoryQuery: "",
+      confidence: null,
+    };
   }
 
-  const type = values.TYPE?.toLowerCase() ?? "unknown";
-  const needsMemory = parseIntentBoolean(values.NEEDS_MEMORY ?? "false");
-  const needsMemorySave = parseIntentBoolean(
-    values.NEEDS_MEMORY_SAVE ?? "false",
-  );
-  const confidence = Number(values.CONFIDENCE);
+  let parsedJson: unknown;
+
+  try {
+    parsedJson = JSON.parse(text);
+  } catch {
+    return {
+      type: "unknown" as PredictedIntentType,
+      topicRelation: "uncertain" as PredictedTopicRelation,
+      needsMemory: false,
+      needsMemorySave: false,
+      memoryQuery: "",
+      confidence: null,
+    };
+  }
+
+  const parsed = IntentPredictionSchema.safeParse(parsedJson);
+
+  if (!parsed.success) {
+    return {
+      type: "unknown" as PredictedIntentType,
+      topicRelation: "uncertain" as PredictedTopicRelation,
+      needsMemory: false,
+      needsMemorySave: false,
+      memoryQuery: "",
+      confidence: null,
+    };
+  }
 
   return {
-    type: isPredictedIntentType(type) ? type : "unknown",
-    needsMemory: needsMemory ?? false,
-    needsMemorySave: needsMemorySave ?? false,
-    memoryQuery: values.MEMORY_QUERY?.trim() ?? "",
-    confidence: Number.isFinite(confidence) ? confidence : null,
+    type: parsed.data.type ?? "unknown",
+    topicRelation: parsed.data.topicRelation ?? "uncertain",
+    needsMemory: parsed.data.needsMemory ?? false,
+    needsMemorySave: parsed.data.needsMemorySave ?? false,
+    memoryQuery: parsed.data.memoryQuery?.trim() ?? "",
+    confidence: parsed.data.confidence ?? null,
   };
 };

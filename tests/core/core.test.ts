@@ -13,6 +13,10 @@ import { WatchmanPhase } from "@/services/watchman/types";
 
 const streamText = mock();
 const generateText = mock();
+const outputObject = mock((options) => ({
+  type: "object",
+  ...options,
+}));
 const stepCountIs = mock((stepCount) => ({
   type: "step-count",
   stepCount,
@@ -21,6 +25,9 @@ const stepCountIs = mock((stepCount) => ({
 mock.module("ai", () => ({
   streamText,
   generateText,
+  Output: {
+    object: outputObject,
+  },
   stepCountIs,
 }));
 
@@ -102,15 +109,17 @@ describe("Core memory intent requests", () => {
   beforeEach(() => {
     streamText.mockReset();
     generateText.mockReset();
+    outputObject.mockClear();
     stepCountIs.mockClear();
     generateText.mockResolvedValue({
-      text: [
-        "TYPE=unknown",
-        "NEEDS_MEMORY=false",
-        "NEEDS_MEMORY_SAVE=false",
-        "MEMORY_QUERY=",
-        "CONFIDENCE=0.50",
-      ].join("\n"),
+      output: {
+        type: "unknown",
+        topicRelation: "uncertain",
+        needsMemory: false,
+        needsMemorySave: false,
+        memoryQuery: "",
+        confidence: 0.5,
+      },
     });
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
@@ -618,13 +627,14 @@ describe("Core memory intent requests", () => {
     });
 
     generateText.mockResolvedValue({
-      text: [
-        "TYPE=memory_lookup",
-        "NEEDS_MEMORY=true",
-        "NEEDS_MEMORY_SAVE=false",
-        "MEMORY_QUERY=AGENTS md",
-        "CONFIDENCE=0.96",
-      ].join("\n"),
+      output: {
+        type: "memory_lookup",
+        topicRelation: "related",
+        needsMemory: true,
+        needsMemorySave: false,
+        memoryQuery: "AGENTS md",
+        confidence: 0.96,
+      },
     });
 
     const streamCalls = [];
@@ -752,22 +762,24 @@ describe("Core memory intent requests", () => {
 
     generateText
       .mockResolvedValueOnce({
-        text: [
-          "TYPE=memory_lookup",
-          "NEEDS_MEMORY=true",
-          "NEEDS_MEMORY_SAVE=false",
-          "MEMORY_QUERY=AGENTS md",
-          "CONFIDENCE=0.96",
-        ].join("\n"),
+        output: {
+          type: "memory_lookup",
+          topicRelation: "related",
+          needsMemory: true,
+          needsMemorySave: false,
+          memoryQuery: "AGENTS md",
+          confidence: 0.96,
+        },
       })
       .mockResolvedValueOnce({
-        text: [
-          "TYPE=follow_up",
-          "NEEDS_MEMORY=false",
-          "NEEDS_MEMORY_SAVE=false",
-          "MEMORY_QUERY=",
-          "CONFIDENCE=0.88",
-        ].join("\n"),
+        output: {
+          type: "follow_up",
+          topicRelation: "related",
+          needsMemory: false,
+          needsMemorySave: false,
+          memoryQuery: "",
+          confidence: 0.88,
+        },
       });
 
     const streamCalls = [];
@@ -984,22 +996,24 @@ describe("Core memory intent requests", () => {
 
     generateText
       .mockResolvedValueOnce({
-        text: [
-          "TYPE=memory_lookup",
-          "NEEDS_MEMORY=true",
-          "NEEDS_MEMORY_SAVE=false",
-          "MEMORY_QUERY=AGENTS md",
-          "CONFIDENCE=0.96",
-        ].join("\n"),
+        output: {
+          type: "memory_lookup",
+          topicRelation: "related",
+          needsMemory: true,
+          needsMemorySave: false,
+          memoryQuery: "AGENTS md",
+          confidence: 0.96,
+        },
       })
       .mockResolvedValueOnce({
-        text: [
-          "TYPE=follow_up",
-          "NEEDS_MEMORY=false",
-          "NEEDS_MEMORY_SAVE=false",
-          "MEMORY_QUERY=",
-          "CONFIDENCE=0.87",
-        ].join("\n"),
+        output: {
+          type: "follow_up",
+          topicRelation: "related",
+          needsMemory: false,
+          needsMemorySave: false,
+          memoryQuery: "",
+          confidence: 0.87,
+        },
       });
 
     const streamCalls = [];

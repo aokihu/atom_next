@@ -22,6 +22,7 @@ import type {
   IntentControlInput,
   IntentExecutionPolicy,
   PredictedIntent,
+  PredictedTopicRelation,
 } from "../user-intent";
 
 /* ==================== */
@@ -58,6 +59,13 @@ export type PrepareExecutionContextDeps = {
   getCurrentMemoryState: () => PrepareMemoryState;
   hasSessionHistory: () => boolean;
   getFormalConversationOutputBudget: () => RuntimeOutputBudget | null;
+  applyTopicArchiveTurnLifecycle: () => void;
+  applyTopicIsolation: (
+    topicRelation: PredictedTopicRelation,
+  ) => {
+    shouldIsolateConversation: boolean;
+    archivedConversationSummary: string | null;
+  };
 };
 
 /* ==================== */

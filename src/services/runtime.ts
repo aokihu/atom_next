@@ -203,8 +203,10 @@ export class RuntimeService extends BaseService {
    * 获取 formal conversation 的输出 token 上限。
    */
   public getFormalConversationMaxOutputTokens() {
-    return this.#config.transport?.formalConversationMaxOutputTokens
-      ?? DefaultConfig.transport.formalConversationMaxOutputTokens;
+    return (
+      this.#config.transport?.formalConversationMaxOutputTokens ??
+      DefaultConfig.transport.formalConversationMaxOutputTokens
+    );
   }
 
   /**
@@ -359,5 +361,13 @@ export class RuntimeService extends BaseService {
       startedAt: this.#startedAt,
       startup: Date.now() - this.#startedAt,
     };
+  }
+
+  /**
+   * 获取输出上下文数据的命名管道路径
+   * @todo 方便调试上下文数据使用
+   */
+  public getContextNamedPipePath() {
+    return this.#readArgument("contextPipe");
   }
 }

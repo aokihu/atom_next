@@ -31,12 +31,17 @@ import {
   createRuntimeMemoryContext,
   createRuntimeMemoryScopeContext,
   createRuntimeSessionContext,
+  createRuntimeConversationContext,
 } from "./state";
 import {
   syncContinuationContext,
   syncFollowUpContext,
   syncTaskSessions,
 } from "./task-sync";
+import {
+  createTopicArchiveMemoryItem,
+  createTopicArchiveSummary,
+} from "./topic-archive";
 import type {
   RuntimeContext,
   RuntimeContinuationContext,
@@ -45,6 +50,8 @@ import type {
   RuntimeTaskSession,
   SessionMemoryClearPolicy,
 } from "./types";
+
+const TOPIC_ARCHIVE_TTL_TURNS = 5;
 
 export type {
   RuntimeConversationContext,
@@ -246,6 +253,11 @@ export class ContextManager {
     };
   }
 
+  public clearConversationContext() {
+    this.#getActiveSessionContext().conversation =
+      createRuntimeConversationContext();
+  }
+
   public getCurrentChatOriginalUserInput() {
     return this.#context.followUp?.originalUserInput ?? "";
   }
@@ -306,6 +318,67 @@ export class ContextManager {
     }
 
     sessionContext.memory = createRuntimeMemoryContext();
+  }
+
+  public applyTopicArchiveTurnLifecycle() {
+    const shortMemory = this.#getActiveSessionContext().memory.short;
+
+    if (
+      shortMemory.status !== "loaded" ||
+      shortMemory.kind !== "topic_archive" ||
+      shortMemory.ttlTurnsRemaining === null
+    ) {
+      return;
+    }
+
+    const nextTtl = shortMemory.ttlTurnsRemaining - 1;
+
+    if (nextTtl <= 0) {
+      this.clearMemoryContext("short");
+      return;
+    }
+
+    shortMemory.ttlTurnsRemaining = nextTtl;
+    shortMemory.updatedAt = Date.now();
+  }
+
+  public applyTopicIsolation(topicRelation: "related" | "unrelated" | "uncertain") {
+    const sessionContext = this.#getActiveSessionContext();
+
+    if (sessionContext.conversation.updatedAt === null) {
+      return {
+        shouldIsolateConversation: false,
+        archivedConversationSummary: null,
+      };
+    }
+
+    if (topicRelation === "related") {
+      return {
+        shouldIsolateConversation: false,
+        archivedConversationSummary: null,
+      };
+    }
+
+    const archivedConversationSummary = createTopicArchiveSummary(
+      sessionContext.conversation,
+    );
+
+    sessionContext.memory.short = createLoadedMemoryScopeContext(
+      [createTopicArchiveMemoryItem(archivedConversationSummary)],
+      {
+        query: "topic archive",
+        reason: "Archived previous session conversation due to topic change",
+        kind: "topic_archive",
+        archivedFromConversation: true,
+        ttlTurnsRemaining: TOPIC_ARCHIVE_TTL_TURNS,
+      },
+    );
+    this.clearConversationContext();
+
+    return {
+      shouldIsolateConversation: true,
+      archivedConversationSummary,
+    };
   }
 
   public getMemoryContext(scope: MemoryScope) {

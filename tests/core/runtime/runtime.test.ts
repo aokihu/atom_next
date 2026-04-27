@@ -353,20 +353,14 @@ describe("Runtime context", () => {
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
 
-    const generateText = async () => {
-      return [
-        "<PostFollowUpResult>",
-        JSON.stringify({
+    const result = await runtime.preparePostFollowUpContinuation({
+      generateObject: async () => {
+        return {
           summary: "已完成前半部分。",
           nextPrompt: "继续补充剩余分析，不要重复前文。",
           avoidRepeat: "不要重复第一段和第二段。",
-        }),
-        "</PostFollowUpResult>",
-      ].join("\n");
-    };
-
-    const result = await runtime.preparePostFollowUpContinuation({
-      generateText,
+        };
+      },
     } as any);
 
     expect(result).toEqual({
@@ -400,7 +394,11 @@ describe("Runtime context", () => {
     });
 
     const result = await runtime.preparePostFollowUpContinuation({
-      generateText: async () => "invalid output",
+      generateObject: async () => ({
+        summary: "",
+        nextPrompt: "",
+        avoidRepeat: "",
+      }),
     } as any);
 
     expect(result.fallbackUsed).toBe(true);
@@ -664,6 +662,8 @@ describe("Runtime context", () => {
       maxFollowUpRounds: 2,
       promptVariant: "recall",
       predictionTrust: "high",
+      topicRelation: "uncertain",
+      shouldIsolateConversation: false,
       reasons: ["test policy"],
     });
     runtime.recordMemorySearchResult("long", {
@@ -782,6 +782,8 @@ describe("Runtime context", () => {
       visibleOutputBudget: 1744,
       preferEarlyFollowUp: true,
       isNewChatInSession: true,
+      topicRelation: "related",
+      shouldIsolateConversation: false,
       responseStrategyText: [
         "当前轮输出预算：",
         "- MAX_OUTPUT_TOKENS=2000",
@@ -809,6 +811,8 @@ describe("Runtime context", () => {
     expect(prompt).toContain("VISIBLE_OUTPUT_BUDGET=1744");
     expect(prompt).toContain("PREFER_EARLY_FOLLOW_UP=true");
     expect(prompt).toContain("IS_NEW_CHAT_IN_SESSION=true");
+    expect(prompt).toContain("TOPIC_RELATION=related");
+    expect(prompt).toContain("SHOULD_ISOLATE_CONVERSATION=false");
     expect(prompt).toContain("RESPONSE_STRATEGY<<EOF");
     expect(prompt).toContain("- MAX_OUTPUT_TOKENS=2000");
     expect(prompt).toContain("这是同一 session 下的新 chat");
@@ -830,14 +834,15 @@ describe("Runtime context", () => {
     });
     runtime.currentTask = task;
 
-    transport.generateText = async () => {
-      return [
-        "TYPE=memory_lookup",
-        "NEEDS_MEMORY=true",
-        "NEEDS_MEMORY_SAVE=false",
-        "MEMORY_QUERY=AGENTS md",
-        "CONFIDENCE=0.95",
-      ].join("\n");
+    transport.generateObject = async () => {
+      return {
+        type: "memory_lookup",
+        topicRelation: "related",
+        needsMemory: true,
+        needsMemorySave: false,
+        memoryQuery: "AGENTS md",
+        confidence: 0.95,
+      };
     };
 
     const request = await runtime.prepareExecutionContext(task, transport);
@@ -852,6 +857,8 @@ describe("Runtime context", () => {
     expect(request?.params.visibleOutputBudget).toBe(1744);
     expect(request?.params.preferEarlyFollowUp).toBe(true);
     expect(request?.params.isNewChatInSession).toBe(false);
+    expect(request?.params.topicRelation).toBe("related");
+    expect(request?.params.shouldIsolateConversation).toBe(false);
     expect(request?.params.responseStrategyText).toContain("MAX_OUTPUT_TOKENS=2000");
     expect(runtime.getMemoryContext("long").status).toBe("idle");
   });
@@ -894,6 +901,8 @@ describe("Runtime context", () => {
         visibleOutputBudget: 1744,
         preferEarlyFollowUp: true,
         isNewChatInSession: false,
+        topicRelation: "related",
+        shouldIsolateConversation: false,
         responseStrategyText: "预算策略：MAX_OUTPUT_TOKENS=2000",
       },
     }]);
@@ -924,9 +933,12 @@ describe("Runtime context", () => {
     runtime.currentTask = task;
 
     let called = false;
-    transport.generateText = async () => {
+    transport.generateObject = async () => {
       called = true;
-      return "TYPE=memory_lookup";
+      return {
+        type: "memory_lookup",
+        topicRelation: "related",
+      };
     };
 
     const policy = await runtime.prepareExecutionContext(task, transport);
@@ -934,6 +946,138 @@ describe("Runtime context", () => {
     expect(called).toBe(false);
     expect(policy).toBeNull();
     expect(runtime.getMemoryContext("long").status).toBe("idle");
+  });
+
+  test("prepareExecutionContext archives previous conversation into short memory for unrelated topic", async () => {
+    const { runtime, transport } = await buildRuntimeWithServices();
+
+    runtime.currentTask = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "继续上一个架构设计" }],
+    });
+    runtime.commitSessionTurn(
+      "继续上一个架构设计",
+      "上一轮我们讨论了 Runtime、Transport 和 Queue 的职责边界。",
+    );
+
+    const task = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-2",
+      payload: [{ type: "text", data: "顺便推荐几种适合新手的咖啡豆" }],
+    });
+    runtime.currentTask = task;
+
+    transport.generateObject = async () => {
+      return {
+        type: "direct_answer",
+        topicRelation: "unrelated",
+        needsMemory: false,
+        needsMemorySave: false,
+        memoryQuery: "",
+        confidence: 0.91,
+      };
+    };
+
+    const request = await runtime.prepareExecutionContext(task, transport);
+    const shortMemory = runtime.getMemoryContext("short");
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(request?.params.topicRelation).toBe("unrelated");
+    expect(request?.params.shouldIsolateConversation).toBe(true);
+    expect(request?.params.isNewChatInSession).toBe(true);
+    expect(shortMemory.status).toBe("loaded");
+    expect(shortMemory.kind).toBe("topic_archive");
+    expect(shortMemory.archivedFromConversation).toBe(true);
+    expect(shortMemory.ttlTurnsRemaining).toBe(5);
+    expect(shortMemory.outputs[0]?.memory.key).toContain("runtime.short.topic_archive.");
+    expect(prompt).toContain("<Conversation>\nSTATE=empty\n</Conversation>");
+    expect(prompt).toContain("<Kind>topic_archive</Kind>");
+    expect(prompt).toContain("<TTLTurnsRemaining>5</TTLTurnsRemaining>");
+    expect(prompt).toContain("TOPIC_RELATION=unrelated");
+    expect(prompt).toContain("SHOULD_ISOLATE_CONVERSATION=true");
+  });
+
+  test("topic archive ttl decreases only on later external chats and clears at zero", async () => {
+    const { runtime, transport } = await buildRuntimeWithServices();
+
+    runtime.currentTask = buildTask("task-1", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "延续上个话题" }],
+    });
+    runtime.commitSessionTurn(
+      "延续上个话题",
+      "上一轮讨论了 watchman 和 memory 的边界。",
+    );
+
+    const isolateTask = buildTask("task-2", {
+      sessionId: "session-1",
+      chatId: "chat-2",
+      payload: [{ type: "text", data: "推荐一个跑步耳机" }],
+    });
+    runtime.currentTask = isolateTask;
+
+    transport.generateObject = async () => {
+      return {
+        type: "direct_answer",
+        topicRelation: "unrelated",
+        needsMemory: false,
+        needsMemorySave: false,
+        memoryQuery: "",
+        confidence: 0.9,
+      };
+    };
+
+    await runtime.prepareExecutionContext(isolateTask, transport);
+    expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(5);
+
+    const internalTask = buildTask("task-3", {
+      sessionId: "session-1",
+      chatId: "chat-2",
+      source: TaskSource.INTERNAL,
+      payload: [{ type: "text", data: "continue" }],
+      chain_round: 1,
+    });
+    runtime.currentTask = internalTask;
+    await runtime.prepareExecutionContext(internalTask, transport);
+    expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(5);
+
+    for (let index = 0; index < 4; index += 1) {
+      const externalTask = buildTask(`task-ext-${index}`, {
+        sessionId: "session-1",
+        chatId: `chat-ext-${index}`,
+        payload: [{ type: "text", data: `新的相关问题 ${index}` }],
+      });
+      runtime.currentTask = externalTask;
+
+      transport.generateObject = async () => {
+        return {
+          type: "direct_answer",
+          topicRelation: "related",
+          needsMemory: false,
+          needsMemorySave: false,
+          memoryQuery: "",
+          confidence: 0.9,
+        };
+      };
+
+      await runtime.prepareExecutionContext(externalTask, transport);
+      expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(4 - index);
+    }
+
+    const clearTask = buildTask("task-clear", {
+      sessionId: "session-1",
+      chatId: "chat-clear",
+      payload: [{ type: "text", data: "最后一个新问题" }],
+    });
+    runtime.currentTask = clearTask;
+    await runtime.prepareExecutionContext(clearTask, transport);
+
+    expect(runtime.getMemoryContext("short").status).toBe("idle");
+    expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBeNull();
   });
 
   test("executeIntentRequests loads memory search results before follow up continues", async () => {
@@ -1138,6 +1282,8 @@ describe("Runtime context", () => {
       maxFollowUpRounds: 1,
       promptVariant: "recall",
       predictionTrust: "high",
+      topicRelation: "uncertain",
+      shouldIsolateConversation: false,
       reasons: ["test policy"],
     });
     runtime.commitSessionTurn("first question", "first answer");

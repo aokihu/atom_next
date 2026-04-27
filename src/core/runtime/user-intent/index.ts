@@ -7,9 +7,14 @@
  */
 export {
   createPredictedIntent,
+  IntentPredictionSchema,
   parseIntentPredictionText,
 } from "./intent-prediction";
-export type { PredictedIntent, PredictedIntentType } from "./intent-prediction";
+export type {
+  PredictedIntent,
+  PredictedIntentType,
+  PredictedTopicRelation,
+} from "./intent-prediction";
 export {
   createIntentExecutionPolicy,
   resolveIntentPolicy,

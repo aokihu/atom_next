@@ -210,6 +210,8 @@ const processPrepareConversationIntentRequest = (
     visibleOutputBudget: request.params.visibleOutputBudget,
     preferEarlyFollowUp: request.params.preferEarlyFollowUp,
     isNewChatInSession: request.params.isNewChatInSession,
+    topicRelation: request.params.topicRelation,
+    shouldIsolateConversation: request.params.shouldIsolateConversation,
     responseStrategyText: request.params.responseStrategyText,
     reasons: [],
   });

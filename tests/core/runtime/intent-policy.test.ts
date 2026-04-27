@@ -27,6 +27,7 @@ describe("Intent policy resolver", () => {
         long: "idle",
       },
       sessionHistoryAvailable: false,
+      shouldIsolateConversation: false,
     });
 
     expect(policy.acceptedIntentType).toBe("unknown");
@@ -41,6 +42,7 @@ describe("Intent policy resolver", () => {
       ...createPredictedIntent(),
       sessionId: "session-1",
       type: "memory_lookup",
+      topicRelation: "related",
       needsMemory: true,
       memoryQuery: "AGENTS md",
       confidence: 0.96,
@@ -61,6 +63,7 @@ describe("Intent policy resolver", () => {
         long: "idle",
       },
       sessionHistoryAvailable: true,
+      shouldIsolateConversation: false,
     });
 
     expect(policy.acceptedIntentType).toBe("memory_lookup");
@@ -99,6 +102,7 @@ describe("Intent policy resolver", () => {
         long: "loaded",
       },
       sessionHistoryAvailable: false,
+      shouldIsolateConversation: false,
     });
 
     expect(policy.acceptedIntentType).toBe("memory_lookup");
@@ -127,11 +131,48 @@ describe("Intent policy resolver", () => {
         long: "idle",
       },
       sessionHistoryAvailable: true,
+      shouldIsolateConversation: false,
     });
 
     expect(policy.acceptedIntentType).toBe("memory_save");
     expect(policy.allowMemorySave).toBe(false);
     expect(policy.predictionTrust).toBe("medium");
     expect(policy.promptVariant).toBe("continuity");
+  });
+
+  test("isolates conversation for unrelated topic even when session has history", () => {
+    const predictedIntent = {
+      ...createPredictedIntent(),
+      sessionId: "session-1",
+      type: "direct_answer",
+      topicRelation: "unrelated",
+      confidence: 0.88,
+      outputBudget: {
+        maxOutputTokens: 2000,
+        requestTokenReserve: 256,
+        visibleOutputBudget: 1744,
+      },
+    };
+
+    const policy = resolveIntentPolicy({
+      predictedIntent,
+      taskSource: "external",
+      chainRound: null,
+      currentMemoryState: {
+        core: "idle",
+        short: "idle",
+        long: "idle",
+      },
+      sessionHistoryAvailable: true,
+      shouldIsolateConversation: true,
+    });
+
+    expect(policy.isNewChatInSession).toBe(true);
+    expect(policy.topicRelation).toBe("unrelated");
+    expect(policy.shouldIsolateConversation).toBe(true);
+    expect(policy.promptVariant).toBe("default");
+    expect(policy.responseStrategyText).toContain(
+      "当前 chat 被判定为新话题，旧 session conversation 已隔离",
+    );
   });
 });

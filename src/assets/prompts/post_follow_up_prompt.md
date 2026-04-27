@@ -9,16 +9,22 @@
 - 不扩写内容
 - 不给用户直接回答
 
-你只允许输出下面这个固定格式：
+你只允许输出一个合法 JSON object。
+不要输出代码块。
+不要输出 JSON object 之外的任何字符。
 
-<PostFollowUpResult>
-{"summary":"<简短总结，说明当前已完成什么>","nextPrompt":"<下一轮 formal conversation 真正要继续执行的目标>","avoidRepeat":"<下一轮应避免重复的内容；没有则留空>"}
-</PostFollowUpResult>
+固定结构如下：
+
+```json
+{
+  "summary": "<简短总结，说明当前已完成什么>",
+  "nextPrompt": "<下一轮 formal conversation 真正要继续执行的目标>",
+  "avoidRepeat": "<下一轮应避免重复的内容；没有则留空>"
+}
+```
 
 规则：
 
-- 必须严格输出一个 `<PostFollowUpResult>` 标签
-- 标签内部必须是合法 JSON 对象
 - JSON 必须包含 `summary`、`nextPrompt`、`avoidRepeat` 三个字段
 - 不要输出额外说明
 - 不要输出 Markdown

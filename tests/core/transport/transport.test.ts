@@ -5,6 +5,10 @@ import { RuntimeService } from "@/services/runtime";
 
 const streamText = mock();
 const generateText = mock();
+const outputObject = mock((options) => ({
+  type: "object",
+  ...options,
+}));
 const stepCountIs = mock((stepCount) => ({
   type: "step-count",
   stepCount,
@@ -13,6 +17,9 @@ const stepCountIs = mock((stepCount) => ({
 mock.module("ai", () => ({
   streamText,
   generateText,
+  Output: {
+    object: outputObject,
+  },
   stepCountIs,
 }));
 
@@ -660,6 +667,7 @@ describe("Transport.send", () => {
 describe("Transport.generateText", () => {
   beforeEach(() => {
     generateText.mockReset();
+    outputObject.mockClear();
     streamText.mockReset();
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
@@ -708,5 +716,49 @@ describe("Transport.generateText", () => {
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]?.model).toBeDefined();
     expect(result).toBe("TYPE=memory_lookup");
+  });
+
+  test("passes schema options to generateText and returns structured output", async () => {
+    const abortController = new AbortController();
+    const schema = {
+      safeParse: () => ({ success: true }),
+    };
+
+    generateText.mockResolvedValue({
+      output: {
+        type: "memory_lookup",
+        topicRelation: "related",
+      },
+    });
+
+    const transport = new Transport(buildServiceManager());
+    const result = await transport.generateObject(
+      "system prompt",
+      "user prompt",
+      {
+        abortSignal: abortController.signal,
+        maxOutputTokens: 96,
+        schema,
+        schemaName: "intent_prediction",
+        schemaDescription: "prediction output",
+      },
+    );
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]?.system).toBe("system prompt");
+    expect(generateText.mock.calls[0]?.[0]?.prompt).toBe("user prompt");
+    expect(generateText.mock.calls[0]?.[0]?.abortSignal).toBe(
+      abortController.signal,
+    );
+    expect(generateText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(96);
+    expect(outputObject).toHaveBeenCalledWith({
+      schema,
+      name: "intent_prediction",
+      description: "prediction output",
+    });
+    expect(result).toEqual({
+      type: "memory_lookup",
+      topicRelation: "related",
+    });
   });
 });

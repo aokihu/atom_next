@@ -121,6 +121,22 @@ export const convertMemoryScopeContextToPrompt = (
 
   const prompt = [`<${tag}>`, `<Status>${memoryContext.status}</Status>`];
 
+  if (memoryContext.kind) {
+    prompt.push(`<Kind>${memoryContext.kind}</Kind>`);
+  }
+
+  if (memoryContext.archivedFromConversation) {
+    prompt.push(
+      `<ArchivedFromConversation>${memoryContext.archivedFromConversation}</ArchivedFromConversation>`,
+    );
+  }
+
+  if (memoryContext.ttlTurnsRemaining !== null) {
+    prompt.push(
+      `<TTLTurnsRemaining>${memoryContext.ttlTurnsRemaining}</TTLTurnsRemaining>`,
+    );
+  }
+
   if (memoryContext.query !== "") {
     prompt.push(`<Query>${memoryContext.query}</Query>`);
   }
@@ -200,6 +216,8 @@ export const convertIntentPolicyToPrompt = (policy: IntentExecutionPolicy) => {
     `VISIBLE_OUTPUT_BUDGET=${policy.visibleOutputBudget ?? ""}`,
     `PREFER_EARLY_FOLLOW_UP=${policy.preferEarlyFollowUp}`,
     `IS_NEW_CHAT_IN_SESSION=${policy.isNewChatInSession}`,
+    `TOPIC_RELATION=${policy.topicRelation}`,
+    `SHOULD_ISOLATE_CONVERSATION=${policy.shouldIsolateConversation}`,
   ];
 
   if (policy.responseStrategyText !== "") {

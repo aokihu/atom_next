@@ -21,6 +21,9 @@ export const createLoadedMemoryScopeContext = (
   options: {
     query?: string;
     reason?: string;
+    kind?: RuntimeMemoryScopeContext["kind"];
+    archivedFromConversation?: boolean;
+    ttlTurnsRemaining?: number | null;
   } = {},
 ): RuntimeMemoryScopeContext => {
   return {
@@ -28,6 +31,9 @@ export const createLoadedMemoryScopeContext = (
     query: options.query?.trim() ?? "",
     reason: options.reason?.trim() ?? "",
     outputs: structuredClone(outputs),
+    kind: options.kind ?? "search_result",
+    archivedFromConversation: options.archivedFromConversation ?? false,
+    ttlTurnsRemaining: options.ttlTurnsRemaining ?? null,
     updatedAt: Date.now(),
   };
 };
@@ -41,6 +47,9 @@ export const createEmptyMemoryScopeContext = (options: {
     query: options.query.trim(),
     reason: options.reason.trim(),
     outputs: [],
+    kind: null,
+    archivedFromConversation: false,
+    ttlTurnsRemaining: null,
     updatedAt: Date.now(),
   };
 };
