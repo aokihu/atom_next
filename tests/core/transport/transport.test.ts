@@ -52,6 +52,15 @@ const buildStreamResult = ({
   chunks = [],
   consumeErrors = [],
   finishReason = "stop",
+  steps = [
+    {
+      toolCalls: [],
+      toolResults: [],
+    },
+  ],
+  response = {
+    messages: [],
+  },
   usage = {
     inputTokens: 10,
     outputTokens: 20,
@@ -76,6 +85,8 @@ const buildStreamResult = ({
     finishReason: Promise.resolve(finishReason),
     usage: Promise.resolve(usage),
     totalUsage: Promise.resolve(totalUsage),
+    steps: Promise.resolve(steps),
+    response: Promise.resolve(response),
   };
 };
 
@@ -144,6 +155,10 @@ describe("Transport.send", () => {
       finishReason: "stop",
       usage,
       totalUsage,
+      stepCount: 1,
+      toolCallCount: 0,
+      toolResultCount: 0,
+      responseMessageCount: 0,
     });
   });
 
@@ -258,6 +273,23 @@ describe("Transport.send", () => {
           outputTokens: 20,
           totalTokens: 30,
         }),
+        steps: Promise.resolve([
+          {
+            toolCalls: [
+              {
+                toolName: "read",
+              },
+            ],
+            toolResults: [
+              {
+                toolName: "read",
+              },
+            ],
+          },
+        ]),
+        response: Promise.resolve({
+          messages: [{ role: "assistant" }, { role: "tool" }],
+        }),
       };
     });
 
@@ -292,6 +324,10 @@ describe("Transport.send", () => {
     });
     expect(result.text).toBe("Looked up file. Done.");
     expect(result.intentRequestText).toBe("");
+    expect(result.stepCount).toBe(1);
+    expect(result.toolCallCount).toBe(1);
+    expect(result.toolResultCount).toBe(1);
+    expect(result.responseMessageCount).toBe(2);
   });
 
   test("uses default maxToolSteps when tools are present and keeps text parsing isolated from tool events", async () => {
@@ -346,6 +382,19 @@ describe("Transport.send", () => {
           outputTokens: 20,
           totalTokens: 30,
         }),
+        steps: Promise.resolve([
+          {
+            toolCalls: [
+              {
+                toolName: "tree",
+              },
+            ],
+            toolResults: [],
+          },
+        ]),
+        response: Promise.resolve({
+          messages: [{ role: "assistant" }],
+        }),
       };
     });
 
@@ -373,6 +422,8 @@ describe("Transport.send", () => {
     });
     expect(result.text).toBe("Summary");
     expect(result.intentRequestText).toBe("request-a");
+    expect(result.toolCallCount).toBe(1);
+    expect(result.toolResultCount).toBe(0);
   });
 
   test("throws when runtime service is missing", () => {

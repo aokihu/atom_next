@@ -36,6 +36,15 @@ const { Core } = await import("@/core/core");
 const buildStreamResult = ({
   chunks = [],
   finishReason = "stop",
+  steps = [
+    {
+      toolCalls: [],
+      toolResults: [],
+    },
+  ],
+  response = {
+    messages: [],
+  },
   usage = {
     inputTokens: 10,
     outputTokens: 20,
@@ -56,6 +65,8 @@ const buildStreamResult = ({
     finishReason: Promise.resolve(finishReason),
     usage: Promise.resolve(usage),
     totalUsage: Promise.resolve(totalUsage),
+    steps: Promise.resolve(steps),
+    response: Promise.resolve(response),
   };
 };
 

@@ -382,7 +382,8 @@ const parseGatewayConfig = (raw: unknown): GatewayConfigScheme => {
 
 /**
  * 解析 transport 配置。
- * 缺省时回退到默认配置，当前只暴露 formal conversation 的输出上限。
+ * 缺省时回退到默认配置，当前只暴露 formal conversation 的输出上限
+ * 和 tools 多步调用上限。
  */
 const parseTransportConfig = (raw: unknown): TransportConfigScheme => {
   const defaultTransport = DefaultConfig.transport;
@@ -397,20 +398,35 @@ const parseTransportConfig = (raw: unknown): TransportConfigScheme => {
 
   const transportConfig = raw as Record<string, unknown>;
   const maxOutputTokens = transportConfig.formalConversationMaxOutputTokens;
-
-  if (isUndefined(maxOutputTokens)) {
-    return structuredClone(defaultTransport);
-  }
+  const maxToolSteps = transportConfig.formalConversationMaxToolSteps;
 
   if (!isNumber(maxOutputTokens) || !Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0) {
-    throw buildConfigError(
-      "config.transport.formalConversationMaxOutputTokens",
-      "expected a positive integer",
-    );
+    if (!isUndefined(maxOutputTokens)) {
+      throw buildConfigError(
+        "config.transport.formalConversationMaxOutputTokens",
+        "expected a positive integer",
+      );
+    }
+  }
+
+  if (!isNumber(maxToolSteps) || !Number.isInteger(maxToolSteps) || maxToolSteps <= 0) {
+    if (!isUndefined(maxToolSteps)) {
+      throw buildConfigError(
+        "config.transport.formalConversationMaxToolSteps",
+        "expected a positive integer",
+      );
+    }
   }
 
   return {
-    formalConversationMaxOutputTokens: maxOutputTokens,
+    formalConversationMaxOutputTokens:
+      isUndefined(maxOutputTokens)
+        ? defaultTransport.formalConversationMaxOutputTokens
+        : maxOutputTokens,
+    formalConversationMaxToolSteps:
+      isUndefined(maxToolSteps)
+        ? defaultTransport.formalConversationMaxToolSteps
+        : maxToolSteps,
   };
 };
 

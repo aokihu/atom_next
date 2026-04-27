@@ -20,6 +20,7 @@ import {
 } from "@/services";
 import { startTui } from "@/tui";
 import { parseArguments, parseLogConfig } from "@/bootstrap/cli";
+import { disableAISDKWarningLogs } from "@/bootstrap/ai-sdk";
 
 const startServerApp = async (
   args: BootstrapResult,
@@ -112,6 +113,8 @@ const startServerApp = async (
  * 这里只负责按模式分流，不承担配置解析或主题解析细节。
  */
 const main = async () => {
+  disableAISDKWarningLogs();
+
   /* ----- 启动器入口 ----- */
   const cliArgs = parseArguments(Bun.argv.slice(2));
   const log = createLogSystem(parseLogConfig(cliArgs));

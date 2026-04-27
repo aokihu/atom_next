@@ -89,6 +89,7 @@ describe("runFormalConversationWorkflow", () => {
       },
       exportPrompts: async () => ["system prompt", "user prompt"],
       getFormalConversationMaxOutputTokens: () => 256,
+      getFormalConversationMaxToolSteps: () => 10,
       createConversationToolRegistry,
       appendAssistantOutput,
       clearContinuationContext,
@@ -114,6 +115,10 @@ describe("runFormalConversationWorkflow", () => {
         finishReason: "stop",
         usage: buildUsage(),
         totalUsage: buildUsage(),
+        stepCount: 1,
+        toolCallCount: 0,
+        toolResultCount: 0,
+        responseMessageCount: 1,
       };
     });
     const transport = { send };
@@ -131,11 +136,16 @@ describe("runFormalConversationWorkflow", () => {
     expect(createConversationToolRegistry).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send.mock.calls[0]?.[2]?.maxOutputTokens).toBe(256);
+    expect(send.mock.calls[0]?.[2]?.maxToolSteps).toBe(10);
     expect(send.mock.calls[0]?.[2]?.tools).toBe(tools);
     expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
       finishReason: "stop",
       visibleTextCharLength: "visible answer".length,
       intentRequestText: "",
+      stepCount: 1,
+      toolCallCount: 0,
+      toolResultCount: 0,
+      responseMessageCount: 1,
     });
     expect(appendAssistantOutput).toHaveBeenCalledWith("visible answer");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
@@ -187,6 +197,7 @@ describe("runFormalConversationWorkflow", () => {
       },
       exportPrompts: async () => ["system prompt", "user prompt"],
       getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
       createConversationToolRegistry: mock(() => tools),
       appendAssistantOutput: mock(() => {}),
       clearContinuationContext,
@@ -214,6 +225,10 @@ describe("runFormalConversationWorkflow", () => {
           finishReason: "stop",
           usage: buildUsage(),
           totalUsage: buildUsage(),
+          stepCount: 2,
+          toolCallCount: 1,
+          toolResultCount: 1,
+          responseMessageCount: 2,
         };
       }),
     };
@@ -230,6 +245,10 @@ describe("runFormalConversationWorkflow", () => {
       finishReason: "stop",
       visibleTextCharLength: "visible-1visible-2".length,
       intentRequestText: "request-a",
+      stepCount: 2,
+      toolCallCount: 1,
+      toolResultCount: 1,
+      responseMessageCount: 2,
     });
     expect(parseIntentRequest).toHaveBeenCalledWith("request-a");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
@@ -237,5 +256,385 @@ describe("runFormalConversationWorkflow", () => {
       resultText: "final answer",
       visibleTextBuffer: "visible-1visible-2",
     });
+  });
+
+  test("finalizes with visible boundary message when finishReason is tool-calls without intent request", async () => {
+    const task = buildTask("task-3", {
+      eventTarget: new EventEmitter(),
+    });
+
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTask) {
+        currentTask = nextTask;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        read: {
+          description: "read file",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      reportToolCallStarted: mock(() => {}),
+      reportToolCallFinished: mock(() => {}),
+      finalizeChatTurn: mock((_task, options) => ({
+        finalMessage: options.resultText,
+        visibleChunk: options.visibleTextBuffer,
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "complete",
+          message: {
+            createdAt: Date.now(),
+            data: options.resultText,
+          },
+        },
+      })),
+    };
+
+    const updateTask = mock(() => {});
+    const completed = mock(() => {});
+    task.eventTarget?.on(ChatEvents.CHAT_COMPLETED, completed);
+    const taskQueue = {
+      updateTask,
+      addTask: mock(async () => {}),
+    };
+
+    const transport = {
+      send: mock(async (_systemPrompt, _userPrompt, options) => {
+        await options.onTextDelta?.("先看看目录结构。");
+
+        return {
+          text: "先看看目录结构。",
+          intentRequestText: "",
+          finishReason: "tool-calls",
+          usage: buildUsage(),
+          totalUsage: buildUsage(),
+          stepCount: 5,
+          toolCallCount: 5,
+          toolResultCount: 5,
+          responseMessageCount: 10,
+        };
+      }),
+    };
+
+    const result = await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(result).toEqual({
+      decision: { type: "finalize_chat" },
+    });
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用已完成");
+    expect(updateTask.mock.calls).toEqual([
+      [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
+      [task.id, { state: TaskState.COMPLETE }, { shouldSyncEvent: false }],
+    ]);
+  });
+
+  test("reports tool start and finish events to runtime hooks", async () => {
+    const task = buildTask("task-4", {
+      eventTarget: new EventEmitter(),
+    });
+    const reportToolCallStarted = mock(() => {});
+    const reportToolCallFinished = mock(() => {});
+
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTask) {
+        currentTask = nextTask;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        read: {
+          description: "read file",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      reportToolCallStarted,
+      reportToolCallFinished,
+      finalizeChatTurn: mock(() => ({
+        finalMessage: "done",
+        visibleChunk: "done",
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "complete",
+          message: {
+            createdAt: Date.now(),
+            data: "done",
+          },
+        },
+      })),
+    };
+
+    const taskQueue = {
+      updateTask: mock(() => {}),
+      addTask: mock(async () => {}),
+    };
+
+    const transport = {
+      send: mock(async (_systemPrompt, _userPrompt, options) => {
+        await options.onToolCallStart?.({
+          toolName: "read",
+          toolCallId: "call_1",
+          input: { filepath: "/tmp/demo.txt" },
+        });
+        await options.onToolCallFinish?.({
+          toolName: "read",
+          toolCallId: "call_1",
+          input: { filepath: "/tmp/demo.txt" },
+          result: { filepath: "/tmp/demo.txt", content: [] },
+        });
+
+        return {
+          text: "done",
+          intentRequestText: "",
+          finishReason: "stop",
+          usage: buildUsage(),
+          totalUsage: buildUsage(),
+          stepCount: 1,
+          toolCallCount: 1,
+          toolResultCount: 1,
+          responseMessageCount: 2,
+        };
+      }),
+    };
+
+    await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(reportToolCallStarted).toHaveBeenCalledWith({
+      toolName: "read",
+      toolCallId: "call_1",
+      input: { filepath: "/tmp/demo.txt" },
+    });
+    expect(reportToolCallFinished).toHaveBeenCalledWith({
+      toolName: "read",
+      toolCallId: "call_1",
+      input: { filepath: "/tmp/demo.txt" },
+      result: { filepath: "/tmp/demo.txt", content: [] },
+    });
+  });
+
+  test("finalizes with visible failure message when tool call fails without visible output", async () => {
+    const eventTarget = new EventEmitter();
+    const outputUpdated = mock(() => {});
+    const completed = mock(() => {});
+    eventTarget.on(ChatEvents.CHAT_OUTPUT_UPDATED, outputUpdated);
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, completed);
+
+    const task = buildTask("task-5", { eventTarget });
+
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTask) {
+        currentTask = nextTask;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        read: {
+          description: "read file",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      reportToolCallStarted: mock(() => {}),
+      reportToolCallFinished: mock(() => {}),
+      finalizeChatTurn: mock((_task, options) => ({
+        finalMessage: options.resultText,
+        visibleChunk: options.visibleTextBuffer,
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "complete",
+          message: {
+            createdAt: Date.now(),
+            data: options.resultText,
+          },
+        },
+      })),
+    };
+
+    const updateTask = mock(() => {});
+    const taskQueue = {
+      updateTask,
+      addTask: mock(async () => {}),
+    };
+
+    const transport = {
+      send: mock(async (_systemPrompt, _userPrompt, options) => {
+        await options.onToolCallFinish?.({
+          toolName: "read",
+          toolCallId: "call_2",
+          input: { filepath: "/tmp/missing.txt" },
+          result: { error: "The file does not exist, check filepath" },
+        });
+
+        return {
+          text: "",
+          intentRequestText: "",
+          finishReason: "tool-calls",
+          usage: buildUsage(),
+          totalUsage: buildUsage(),
+          stepCount: 1,
+          toolCallCount: 1,
+          toolResultCount: 1,
+          responseMessageCount: 2,
+        };
+      }),
+    };
+
+    const result = await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(result).toEqual({
+      decision: { type: "finalize_chat" },
+    });
+    expect(outputUpdated).toHaveBeenCalledTimes(1);
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用失败");
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("The file does not exist");
+    expect(updateTask.mock.calls).toEqual([
+      [task.id, { state: TaskState.COMPLETE }, { shouldSyncEvent: false }],
+    ]);
+  });
+
+  test("finalizes when tool-calls returns without any executed tools", async () => {
+    const eventTarget = new EventEmitter();
+    const completed = mock(() => {});
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, completed);
+
+    const task = buildTask("task-6", {
+      eventTarget,
+    });
+
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTask) {
+        currentTask = nextTask;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", ""],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        ls: {
+          description: "list dir",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      reportToolCallStarted: mock(() => {}),
+      reportToolCallFinished: mock(() => {}),
+      finalizeChatTurn: mock((_task, options) => ({
+        finalMessage: options.resultText,
+        visibleChunk: options.visibleTextBuffer,
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "complete",
+          message: {
+            createdAt: Date.now(),
+            data: options.resultText,
+          },
+        },
+      })),
+    };
+
+    const taskQueue = {
+      updateTask: mock(() => {}),
+      addTask: mock(async () => {}),
+    };
+
+    const transport = {
+      send: mock(async () => ({
+        text: "",
+        intentRequestText: "",
+        finishReason: "tool-calls",
+        usage: buildUsage(),
+        totalUsage: buildUsage(),
+        stepCount: 1,
+        toolCallCount: 0,
+        toolResultCount: 0,
+        responseMessageCount: 1,
+      })),
+    };
+
+    const result = await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(result).toEqual({
+      decision: { type: "finalize_chat" },
+    });
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("没有实际执行任何工具");
   });
 });

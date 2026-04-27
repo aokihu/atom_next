@@ -22,6 +22,7 @@ const buildConfig = (): ConfigFileScheme => {
     },
     transport: {
       formalConversationMaxOutputTokens: undefined,
+      formalConversationMaxToolSteps: 10,
     },
     gateway: {
       enable: false,
@@ -102,6 +103,20 @@ describe("RuntimeService", () => {
     });
 
     expect(runtime.getFormalConversationMaxOutputTokens()).toBe(256);
+  });
+
+  test("returns formal conversation max tool steps after loading config", () => {
+    const runtime = new RuntimeService();
+
+    runtime.loadConfig({
+      ...buildConfig(),
+      transport: {
+        formalConversationMaxOutputTokens: undefined,
+        formalConversationMaxToolSteps: 12,
+      },
+    });
+
+    expect(runtime.getFormalConversationMaxToolSteps()).toBe(12);
   });
 
   test("returns formal conversation output budget after loading config", () => {

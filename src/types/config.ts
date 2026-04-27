@@ -178,11 +178,12 @@ export type GatewayConfigScheme = {
 
 /**
  * Transport 运行参数配置。
- * 当前先收口 formal conversation 的输出上限，
- * 方便在测试 FOLLOW_UP 时压缩单轮输出预算。
+ * 当前先收口 formal conversation 的输出上限与 tools 多步上限，
+ * 方便分别调试文本续跑和单次 tools multi-step 收束。
  */
 export type TransportConfigScheme = {
   formalConversationMaxOutputTokens?: number;
+  formalConversationMaxToolSteps?: number;
 };
 
 /**
@@ -217,6 +218,7 @@ export const DefaultConfig: ConfigFileScheme = {
   providers: {},
   transport: {
     formalConversationMaxOutputTokens: undefined,
+    formalConversationMaxToolSteps: 10,
   },
   gateway: {
     enable: false,

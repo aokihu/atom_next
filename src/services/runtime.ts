@@ -210,6 +210,16 @@ export class RuntimeService extends BaseService {
   }
 
   /**
+   * 获取 formal conversation 的 tools 多步调用上限。
+   */
+  public getFormalConversationMaxToolSteps() {
+    return (
+      this.#config.transport?.formalConversationMaxToolSteps ??
+      DefaultConfig.transport.formalConversationMaxToolSteps
+    );
+  }
+
+  /**
    * 获取 formal conversation 的输出预算快照。
    */
   public getFormalConversationOutputBudget(): RuntimeOutputBudget | null {

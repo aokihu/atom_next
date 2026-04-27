@@ -103,6 +103,7 @@ describe("parseConfigFile", () => {
       },
       transport: {
         formalConversationMaxOutputTokens: undefined,
+        formalConversationMaxToolSteps: 10,
       },
       gateway: {
         enable: true,
@@ -375,6 +376,25 @@ describe("parseConfigFile", () => {
       ...DefaultConfig,
       transport: {
         formalConversationMaxOutputTokens: 256,
+        formalConversationMaxToolSteps: 10,
+      },
+    });
+  });
+
+  test("parses transport formal conversation max tool steps", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        transport: {
+          formalConversationMaxToolSteps: 12,
+        },
+      }),
+    );
+
+    expect(await parseConfigFile(file)).toEqual({
+      ...DefaultConfig,
+      transport: {
+        formalConversationMaxOutputTokens: undefined,
+        formalConversationMaxToolSteps: 12,
       },
     });
   });
@@ -390,6 +410,20 @@ describe("parseConfigFile", () => {
 
     await expect(parseConfigFile(file)).rejects.toThrow(
       "Invalid config.transport.formalConversationMaxOutputTokens",
+    );
+  });
+
+  test("throws when transport formal conversation max tool steps is invalid", async () => {
+    const file = await createTempConfigFile(
+      JSON.stringify({
+        transport: {
+          formalConversationMaxToolSteps: 0,
+        },
+      }),
+    );
+
+    await expect(parseConfigFile(file)).rejects.toThrow(
+      "Invalid config.transport.formalConversationMaxToolSteps",
     );
   });
 

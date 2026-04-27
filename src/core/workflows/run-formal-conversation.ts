@@ -33,6 +33,9 @@ type FormalConversationTransportOutput = {
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
+  toolCallStartCount: number;
+  toolCallFinishCount: number;
+  toolFailureMessages: string[];
 };
 
 type ParsedIntentRequests = {
@@ -40,6 +43,9 @@ type ParsedIntentRequests = {
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
+  toolCallStartCount: number;
+  toolCallFinishCount: number;
+  toolFailureMessages: string[];
   intentRequestResult: ReturnType<Runtime["parseIntentRequest"]>;
 };
 
@@ -48,6 +54,9 @@ type ExecutedIntentRequests = {
   transportResult: Awaited<ReturnType<Transport["send"]>>;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
+  toolCallStartCount: number;
+  toolCallFinishCount: number;
+  toolFailureMessages: string[];
   requestExecutionResult: Awaited<
     ReturnType<Runtime["executeIntentRequests"]>
   >;
@@ -113,6 +122,75 @@ function emitChatOutputUpdatedEvent(task: TaskItem, delta: string): void {
   task.eventTarget?.emit(ChatEvents.CHAT_OUTPUT_UPDATED, payload);
 }
 
+const shouldFinalizeToolCallBoundary = (
+  input: ExecutedIntentRequests,
+) => {
+  return (
+    input.transportResult.finishReason === "tool-calls"
+    && input.transportResult.intentRequestText.trim() === ""
+    && input.requestExecutionResult.status === "continue"
+  );
+};
+
+const getToolFailureMessage = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const errorValue = (value as Record<string, unknown>).error;
+  return typeof errorValue === "string" && errorValue.trim() !== ""
+    ? errorValue.trim()
+    : undefined;
+};
+
+const stringifyToolError = (value: unknown) => {
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  return String(value);
+};
+
+const buildToolFailureVisibleMessage = (messages: string[]) => {
+  const [firstMessage] = messages;
+  return firstMessage
+    ? `工具调用失败，暂时无法继续分析当前工作区。错误：${firstMessage}`
+    : "工具调用失败，暂时无法继续分析当前工作区。";
+};
+
+const buildToolBoundaryVisibleMessage = (input: ExecutedIntentRequests) => {
+  if (input.toolFailureMessages.length > 0) {
+    return buildToolFailureVisibleMessage(input.toolFailureMessages);
+  }
+
+  if (input.transportResult.toolCallCount === 0) {
+    return "模型进入了工具调用阶段，但没有实际执行任何工具。请调整问题范围，或让我先检查更具体的文件或目录。";
+  }
+
+  if (input.transportResult.toolResultCount === 0) {
+    return "工具调用已开始，但没有返回可用结果，当前分析已停止。请调整问题范围，或让我先检查更具体的文件或目录。";
+  }
+
+  return "工具调用已完成，但在当前多步调用内仍未形成最终结果。请缩小分析范围，或指定更具体的文件或目录。";
+};
+
+const buildToolLoopTerminationResult = (
+  input: ExecutedIntentRequests,
+): AppliedIntentRequests => {
+  const visibleTextBuffer = buildToolBoundaryVisibleMessage(input);
+
+  return {
+    env: input.env,
+    transportResult: {
+      ...input.transportResult,
+      text: visibleTextBuffer,
+    },
+    visibleTextBuffer,
+    hasStreamedVisibleOutput: false,
+    decision: { type: "finalize_chat" },
+  };
+};
+
 /* ==================== */
 /* Workflow Steps       */
 /* ==================== */
@@ -163,6 +241,9 @@ async function sendConversation(
   let hasSyncedProcessingState = false;
   let hasStreamedVisibleOutput = false;
   let visibleTextBuffer = "";
+  let toolCallStartCount = 0;
+  let toolCallFinishCount = 0;
+  const toolFailureMessages: string[] = [];
   const tools = input.env.runtime.createConversationToolRegistry();
 
   const transportResult = await input.env.transport.send(
@@ -170,6 +251,7 @@ async function sendConversation(
     input.userPrompt,
     {
       maxOutputTokens: input.env.runtime.getFormalConversationMaxOutputTokens(),
+      maxToolSteps: input.env.runtime.getFormalConversationMaxToolSteps(),
       tools,
       onTextDelta: (textDelta) => {
         if (!hasSyncedProcessingState) {
@@ -186,6 +268,25 @@ async function sendConversation(
         hasStreamedVisibleOutput = true;
         visibleTextBuffer += textDelta;
       },
+      onToolCallStart: (event) => {
+        toolCallStartCount += 1;
+        input.env.runtime.reportToolCallStarted(event);
+      },
+      onToolCallFinish: (event) => {
+        toolCallFinishCount += 1;
+
+        if ("error" in event && event.error) {
+          toolFailureMessages.push(stringifyToolError(event.error));
+        } else {
+          const failureMessage = getToolFailureMessage(event.result);
+
+          if (failureMessage) {
+            toolFailureMessages.push(failureMessage);
+          }
+        }
+
+        input.env.runtime.reportToolCallFinished(event);
+      },
     },
   );
 
@@ -196,6 +297,9 @@ async function sendConversation(
     transportResult,
     visibleTextBuffer,
     hasStreamedVisibleOutput,
+    toolCallStartCount,
+    toolCallFinishCount,
+    toolFailureMessages,
   };
 }
 
@@ -212,6 +316,10 @@ async function parseIntentRequests(
     finishReason: String(input.transportResult.finishReason),
     visibleTextCharLength: input.visibleTextBuffer.length,
     intentRequestText: input.transportResult.intentRequestText,
+    stepCount: input.transportResult.stepCount,
+    toolCallCount: input.transportResult.toolCallCount,
+    toolResultCount: input.transportResult.toolResultCount,
+    responseMessageCount: input.transportResult.responseMessageCount,
   });
 
   return {
@@ -219,6 +327,9 @@ async function parseIntentRequests(
     transportResult: input.transportResult,
     visibleTextBuffer: input.visibleTextBuffer,
     hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
+    toolCallStartCount: input.toolCallStartCount,
+    toolCallFinishCount: input.toolCallFinishCount,
+    toolFailureMessages: input.toolFailureMessages,
     intentRequestResult: input.env.runtime.parseIntentRequest(
       input.transportResult.intentRequestText,
     ),
@@ -239,6 +350,9 @@ async function executeIntentRequests(
     transportResult: input.transportResult,
     visibleTextBuffer: input.visibleTextBuffer,
     hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
+    toolCallStartCount: input.toolCallStartCount,
+    toolCallFinishCount: input.toolCallFinishCount,
+    toolFailureMessages: input.toolFailureMessages,
     requestExecutionResult: await input.env.runtime.executeIntentRequests(
       input.env.task,
       input.intentRequestResult.safeRequests,
@@ -259,6 +373,10 @@ async function executeIntentRequests(
 async function applyIntentRequestExecution(
   input: ExecutedIntentRequests,
 ): Promise<AppliedIntentRequests> {
+  if (shouldFinalizeToolCallBoundary(input)) {
+    return buildToolLoopTerminationResult(input);
+  }
+
   if (input.requestExecutionResult.status === "continue") {
     return {
       env: input.env,

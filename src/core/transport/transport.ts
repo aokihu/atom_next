@@ -87,6 +87,10 @@ type SendResult = {
   finishReason: FinishReason;
   usage: LanguageModelUsage;
   totalUsage: LanguageModelUsage;
+  stepCount: number;
+  toolCallCount: number;
+  toolResultCount: number;
+  responseMessageCount: number;
 };
 
 type TransportModelCache = {
@@ -319,13 +323,23 @@ export class Transport {
     await finished(parser, { readable: false });
     await flushVisibleText();
 
-    const [intentRequestText, finishReason, usage, totalUsage] =
+    const [intentRequestText, finishReason, usage, totalUsage, steps, response] =
       await Promise.all([
         parser.intentRequestText,
         result.finishReason,
         result.usage,
         result.totalUsage,
+        result.steps,
+        result.response,
       ]);
+
+    const stepCount = steps.length;
+    const toolCallCount = steps.reduce((count, step) => {
+      return count + step.toolCalls.length;
+    }, 0);
+    const toolResultCount = steps.reduce((count, step) => {
+      return count + step.toolResults.length;
+    }, 0);
 
     return {
       text,
@@ -333,6 +347,10 @@ export class Transport {
       finishReason,
       usage,
       totalUsage,
+      stepCount,
+      toolCallCount,
+      toolResultCount,
+      responseMessageCount: response.messages.length,
     };
   }
 

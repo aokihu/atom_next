@@ -16,7 +16,9 @@ import {
   handleIntentRequestRuntime as runHandleIntentRequestRuntime,
   type IntentRequestExecutionResult,
 } from "./intent-request";
-import { buildContinuationFormalConversationTask as runBuildContinuationFormalConversationTask } from "./intent-request/execution-helpers";
+import {
+  buildContinuationFormalConversationTask as runBuildContinuationFormalConversationTask,
+} from "./intent-request/execution-helpers";
 import {
   exportPredictionPrompt as runExportPredictionPrompt,
   exportRuntimeSystemPrompt as runExportRuntimeSystemPrompt,
@@ -424,6 +426,15 @@ export class Runtime {
   }
 
   /**
+   * 读取 formal conversation 的 tools 多步调用上限。
+   */
+  public getFormalConversationMaxToolSteps() {
+    return resolveRuntimeService(
+      this.#serviceManager,
+    ).getFormalConversationMaxToolSteps();
+  }
+
+  /**
    * 读取 formal conversation 的输出预算。
    */
   public getFormalConversationOutputBudget() {
@@ -439,6 +450,10 @@ export class Runtime {
     finishReason: string;
     visibleTextCharLength: number;
     intentRequestText: string;
+    stepCount?: number;
+    toolCallCount?: number;
+    toolResultCount?: number;
+    responseMessageCount?: number;
   }) {
     if (!this.#logger || !shouldReportIntentRequestLogs(this.#serviceManager)) {
       return;
@@ -455,6 +470,10 @@ export class Runtime {
       visibleTextCharLength: input.visibleTextCharLength,
       intentRequestTextLength: input.intentRequestText.length,
       hasIntentRequest,
+      stepCount: input.stepCount ?? null,
+      toolCallCount: input.toolCallCount ?? null,
+      toolResultCount: input.toolResultCount ?? null,
+      responseMessageCount: input.responseMessageCount ?? null,
       tokenLimitedWithoutIntentRequest:
         input.finishReason === "length" && !hasIntentRequest,
     });
@@ -475,6 +494,38 @@ export class Runtime {
     }
 
     this.#logger.debugJson("Post Follow Up processed", input);
+  }
+
+  /**
+   * 输出 tool start 调试日志。
+   */
+  public reportToolCallStarted(input: {
+    toolName: string;
+    toolCallId?: string;
+    input: unknown;
+  }) {
+    if (!this.#logger || !shouldReportIntentRequestLogs(this.#serviceManager)) {
+      return;
+    }
+
+    this.#logger.debugJson("Tool call started", input);
+  }
+
+  /**
+   * 输出 tool finish 调试日志。
+   */
+  public reportToolCallFinished(input: {
+    toolName: string;
+    toolCallId?: string;
+    input: unknown;
+    result?: unknown;
+    error?: unknown;
+  }) {
+    if (!this.#logger || !shouldReportIntentRequestLogs(this.#serviceManager)) {
+      return;
+    }
+
+    this.#logger.debugJson("Tool call finished", input);
   }
 
   /**
