@@ -25,6 +25,7 @@ export const MAX_SKILL_NAME_LENGTH = 120;
 export const MAX_FOLLOW_UP_WITH_TOOLS_SUMMARY_LENGTH = 1000;
 export const MAX_FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_LENGTH = 1000;
 export const MAX_FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_LENGTH = 500;
+export const MAX_FOLLOW_UP_WITH_TOOLS_END_REASON_LENGTH = 500;
 export const SKILL_NAME_PATTERN = /^[A-Za-z0-9:_/-]+$/;
 
 /* ==================== */

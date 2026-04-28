@@ -18,6 +18,8 @@ import {
 } from "@/types";
 import {
   checkFollowUpIntentRequestSafety,
+  checkFollowUpWithToolsEndIntentRequestSafety,
+  checkFollowUpWithToolsFinishedIntentRequestSafety,
   checkFollowUpWithToolsIntentRequestSafety,
 } from "./follow-up";
 import { checkLoadMemoryIntentRequestSafety } from "./load-memory";
@@ -71,6 +73,10 @@ const checkSingleIntentRequestSafety = (
       return checkFollowUpIntentRequestSafety(request, context);
     case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
       return checkFollowUpWithToolsIntentRequestSafety(request, context);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED:
+      return checkFollowUpWithToolsFinishedIntentRequestSafety(request, context);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_END:
+      return checkFollowUpWithToolsEndIntentRequestSafety(request, context);
   }
 };
 

@@ -32,11 +32,13 @@ import {
   createRuntimeMemoryScopeContext,
   createRuntimeSessionContext,
   createRuntimeConversationContext,
+  createRuntimeToolContext,
 } from "./state";
 import {
   syncContinuationContext,
   syncFollowUpContext,
   syncTaskSessions,
+  syncToolContext,
 } from "./task-sync";
 import {
   createTopicArchiveMemoryItem,
@@ -48,6 +50,8 @@ import type {
   RuntimePromptContextSnapshot,
   RuntimeSessionContext,
   RuntimeTaskSession,
+  RuntimeToolContext,
+  RuntimeToolResultItem,
   SessionMemoryClearPolicy,
 } from "./types";
 
@@ -63,8 +67,42 @@ export type {
   RuntimePromptContextSnapshot,
   RuntimeSessionContext,
   RuntimeTaskSession,
+  RuntimeToolActiveCall,
+  RuntimeToolContext,
+  RuntimeToolContextMode,
+  RuntimeToolResultItem,
   SessionMemoryClearPolicy,
 } from "./types";
+
+const summarizeContextValue = (value: unknown, maxLength = 240): string => {
+  let serialized = "";
+
+  if (typeof value === "string") {
+    serialized = value;
+  } else {
+    try {
+      serialized = JSON.stringify(value) ?? String(value);
+    } catch {
+      serialized = String(value);
+    }
+  }
+
+  const normalized = serialized.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  if (maxLength <= 3) {
+    return normalized.slice(0, maxLength);
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+};
+
+const buildToolResultKey = (toolName: string, input: unknown): string => {
+  return `${toolName}:${summarizeContextValue(input, 160)}`;
+};
 
 /* ==================== */
 /* Context Manager      */
@@ -141,6 +179,14 @@ export class ContextManager {
     return this.#context.followUp;
   }
 
+  #getOrCreateToolContext() {
+    if (!this.#context.toolContext) {
+      this.#context.toolContext = createRuntimeToolContext();
+    }
+
+    return this.#context.toolContext;
+  }
+
   /* ==================== */
   /* Task Sync           */
   /* ==================== */
@@ -165,6 +211,12 @@ export class ContextManager {
       previousChatId,
       task,
     });
+    const nextToolContext = syncToolContext({
+      previousToolContext: this.#context.toolContext,
+      previousSessionId: this.#context.meta.sessionId,
+      previousChatId,
+      task,
+    });
 
     this.#taskSessions = nextTaskSession.taskSessions;
     this.#context.meta.round = nextTaskSession.round;
@@ -172,6 +224,7 @@ export class ContextManager {
     this.#context.channel.source = task.source;
     this.#context.followUp = nextFollowUp;
     this.#context.continuation = nextContinuation;
+    this.#context.toolContext = nextToolContext;
     this.#getActiveSessionContext();
   }
 
@@ -197,6 +250,9 @@ export class ContextManager {
         : undefined,
       continuation: this.#context.continuation
         ? structuredClone(this.#context.continuation)
+        : undefined,
+      toolContext: this.#context.toolContext
+        ? structuredClone(this.#context.toolContext)
         : undefined,
       conversation: structuredClone(sessionContext.conversation),
       memory: structuredClone(sessionContext.memory),
@@ -241,6 +297,139 @@ export class ContextManager {
     return this.#context.continuation
       ? structuredClone(this.#context.continuation)
       : createRuntimeContinuationContext();
+  }
+
+  public activateToolContext() {
+    const toolContext = this.#getOrCreateToolContext();
+
+    toolContext.mode = "active";
+    toolContext.updatedAt = Date.now();
+  }
+
+  public setToolContextMode(mode: RuntimeToolContextMode) {
+    const toolContext = this.#getOrCreateToolContext();
+
+    toolContext.mode = mode;
+    toolContext.updatedAt = Date.now();
+  }
+
+  public setActiveToolCall(input: {
+    toolName: string;
+    toolCallId?: string;
+    input: unknown;
+  }) {
+    const toolContext = this.#getOrCreateToolContext();
+
+    toolContext.activeToolCall = {
+      toolName: input.toolName,
+      toolCallId: input.toolCallId?.trim() || input.toolName,
+      input: structuredClone(input.input),
+      updatedAt: Date.now(),
+    };
+    toolContext.updatedAt = Date.now();
+  }
+
+  public clearActiveToolCall() {
+    if (!this.#context.toolContext) {
+      return;
+    }
+
+    this.#context.toolContext.activeToolCall = undefined;
+    this.#context.toolContext.updatedAt = Date.now();
+  }
+
+  public appendToolResult(input: {
+    toolName: string;
+    toolCallId?: string;
+    toolInput: unknown;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+    reusable?: boolean;
+  }) {
+    const toolContext = this.#getOrCreateToolContext();
+    const key = buildToolResultKey(input.toolName, input.toolInput);
+    const now = Date.now();
+    const outputSummary = input.result === undefined
+      ? ""
+      : summarizeContextValue(input.result);
+    const errorMessage = input.error?.trim() ?? "";
+    const nextItem: RuntimeToolResultItem = {
+      record: {
+        key,
+        toolName: input.toolName,
+        toolCallId: input.toolCallId?.trim() || input.toolName,
+        input: structuredClone(input.toolInput),
+        ...(input.result !== undefined
+          ? { result: structuredClone(input.result) }
+          : {}),
+        ...(errorMessage !== "" ? { error: errorMessage } : {}),
+        ok: input.ok,
+        createdAt: now,
+        updatedAt: now,
+      },
+      promptView: {
+        key,
+        toolName: input.toolName,
+        target: summarizeContextValue(input.toolInput, 120),
+        summary: input.ok
+          ? `Tool ${input.toolName} executed successfully`
+          : `Tool ${input.toolName} failed`,
+        outputSummary,
+        errorMessage,
+        reusable: input.reusable !== false,
+      },
+    };
+
+    const existingIndex = toolContext.results.findIndex((item) =>
+      item.record.key === key
+    );
+
+    if (existingIndex >= 0) {
+      toolContext.results.splice(existingIndex, 1, nextItem);
+    } else {
+      toolContext.results.push(nextItem);
+    }
+
+    toolContext.injectionOrder = [
+      ...toolContext.injectionOrder.filter((itemKey) => itemKey !== key),
+      key,
+    ];
+    toolContext.updatedAt = now;
+  }
+
+  public removeToolResult(key: string) {
+    if (!this.#context.toolContext) {
+      return false;
+    }
+
+    const nextResults = this.#context.toolContext.results.filter((item) =>
+      item.record.key !== key
+    );
+
+    if (nextResults.length === this.#context.toolContext.results.length) {
+      return false;
+    }
+
+    this.#context.toolContext.results = nextResults;
+    this.#context.toolContext.injectionOrder =
+      this.#context.toolContext.injectionOrder.filter((itemKey) => itemKey !== key);
+    this.#context.toolContext.updatedAt = Date.now();
+    return true;
+  }
+
+  public clearToolContext() {
+    this.#context.toolContext = undefined;
+  }
+
+  public hasActiveToolContext() {
+    return this.#context.toolContext?.mode === "active";
+  }
+
+  public getToolContext(): RuntimeToolContext {
+    return this.#context.toolContext
+      ? structuredClone(this.#context.toolContext)
+      : createRuntimeToolContext();
   }
 
   public commitSessionTurn(userInput: string, assistantOutput: string) {

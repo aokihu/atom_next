@@ -40,6 +40,14 @@ function joinPromptChunks(chunks: string[]): string {
     .join("\n");
 }
 
+function resolvePromptWorkspace(runtimeService: RuntimeService) {
+  try {
+    return runtimeService.getWorkspace();
+  } catch {
+    return "";
+  }
+}
+
 /**
  * 基于 Runtime 当前状态导出最终 system message。
  * @description
@@ -57,6 +65,7 @@ export function exportRuntimeSystemPrompt(
   const agentsPrompt = resolveAgentsPrompt(input.runtimeService);
   const runtimePrompt = convertRuntimeContextToPrompt({
     ...input.promptContext,
+    workspace: resolvePromptWorkspace(input.runtimeService),
     outputBudget: input.runtimeService.getFormalConversationOutputBudget(),
     intentPolicyPrompt: input.exportIntentPolicyPrompt(input.sessionId),
   });

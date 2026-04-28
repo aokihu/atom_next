@@ -42,7 +42,7 @@ export const writeTool = (context: ToolExecutionContext) =>
   ({
     description: "Write or append text content to a file inside workspace",
     inputSchema: z.object({
-      filepath: z.string().describe("the absolute path of file"),
+      filepath: z.string().describe("the absolute path of a file inside the current workspace"),
       content: z.string().describe("the text content to write"),
       append: z.boolean().optional().describe("append content when true"),
     }),

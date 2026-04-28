@@ -637,4 +637,188 @@ describe("runFormalConversationWorkflow", () => {
     expect(completed).toHaveBeenCalledTimes(1);
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("没有实际执行任何工具");
   });
+
+  test("defers completion and schedules next internal round when runtime executes pending tool calls", async () => {
+    const task = buildTask("task-7");
+
+    let currentTask;
+    const nextTask = buildTask("task-7-next", {
+      source: TaskSource.INTERNAL,
+      sessionId: task.sessionId,
+      chatId: task.chatId,
+      payload: [],
+    });
+    const runtime = {
+      set currentTask(nextTaskValue) {
+        currentTask = nextTaskValue;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        read: {
+          description: "read file",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({ safeRequests: [] })),
+      executeIntentRequests: mock(async () => ({ status: "continue" })),
+      executeConversationToolCalls: mock(async () => ({ ok: true })),
+      buildContinuationFormalConversationTask: mock(() => nextTask),
+      finalizeChatTurn: mock(() => {
+        throw new Error("should not finalize");
+      }),
+    };
+
+    const updateTask = mock(() => {});
+    const addTask = mock(async () => {});
+    const taskQueue = {
+      updateTask,
+      addTask,
+    };
+
+    const transport = {
+      send: mock(async () => ({
+        text: "",
+        intentRequestText: "",
+        finishReason: "tool-calls",
+        usage: buildUsage(),
+        totalUsage: buildUsage(),
+        stepCount: 1,
+        toolCallCount: 1,
+        toolResultCount: 0,
+        responseMessageCount: 1,
+        pendingToolCalls: [
+          {
+            toolName: "read",
+            toolCallId: "call_1",
+            input: { filepath: "/tmp/demo.txt" },
+          },
+        ],
+      })),
+    };
+
+    const result = await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(result).toEqual({
+      decision: { type: "defer_completion" },
+    });
+    expect(runtime.executeConversationToolCalls).toHaveBeenCalledWith([
+      {
+        toolName: "read",
+        toolCallId: "call_1",
+        input: { filepath: "/tmp/demo.txt" },
+      },
+    ]);
+    expect(updateTask).toHaveBeenCalledWith(
+      task.id,
+      { state: TaskState.FOLLOW_UP },
+      { shouldSyncEvent: false },
+    );
+    expect(addTask).toHaveBeenCalledWith(nextTask);
+  });
+
+  test("finalizes with runtime tool execution failure message when pending tool call cannot be executed", async () => {
+    const eventTarget = new EventEmitter();
+    const completed = mock(() => {});
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, completed);
+
+    const task = buildTask("task-8", { eventTarget });
+
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTaskValue) {
+        currentTask = nextTaskValue;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 128,
+      getFormalConversationMaxToolSteps: () => 10,
+      createConversationToolRegistry: mock(() => ({
+        read: {
+          description: "read file",
+          inputSchema: {},
+        },
+      })),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({ safeRequests: [] })),
+      executeIntentRequests: mock(async () => ({ status: "continue" })),
+      executeConversationToolCalls: mock(async () => ({
+        ok: false,
+        reasonCode: "tool_error",
+        reason: "read failed",
+      })),
+      buildContinuationFormalConversationTask: mock(() => {
+        throw new Error("should not schedule next task");
+      }),
+      finalizeChatTurn: mock((_task, options) => ({
+        finalMessage: options.resultText,
+        visibleChunk: options.visibleTextBuffer,
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "complete",
+          message: {
+            createdAt: Date.now(),
+            data: options.resultText,
+          },
+        },
+      })),
+    };
+
+    const taskQueue = {
+      updateTask: mock(() => {}),
+      addTask: mock(async () => {}),
+    };
+
+    const transport = {
+      send: mock(async () => ({
+        text: "",
+        intentRequestText: "",
+        finishReason: "tool-calls",
+        usage: buildUsage(),
+        totalUsage: buildUsage(),
+        stepCount: 1,
+        toolCallCount: 1,
+        toolResultCount: 0,
+        responseMessageCount: 1,
+        pendingToolCalls: [
+          {
+            toolName: "read",
+            toolCallId: "call_2",
+            input: { filepath: "/tmp/demo.txt" },
+          },
+        ],
+      })),
+    };
+
+    const result = await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+    );
+
+    expect(result).toEqual({
+      decision: { type: "finalize_chat" },
+    });
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用失败");
+    expect(completed.mock.calls[0]?.[0]?.message.data).toContain("read failed");
+  });
 });

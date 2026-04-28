@@ -164,7 +164,7 @@ export const lsTool = (context: ToolExecutionContext) =>
   ({
     description: "List files in a directory using built-in filesystem APIs",
     inputSchema: z.object({
-      dirpath: z.string().describe("the absolute path of directory"),
+      dirpath: z.string().describe("the absolute path of a directory inside the current workspace"),
       all: z.boolean().optional().describe("list hidden files when true"),
       long: z.boolean().optional().describe("use long listing format when true"),
     }),

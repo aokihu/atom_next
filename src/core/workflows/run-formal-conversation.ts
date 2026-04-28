@@ -2,7 +2,6 @@ import type { TaskItem } from "@/types/task";
 import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types";
-import { promiseChain } from "radashi";
 import type { TaskQueue } from "../queue";
 import type { Runtime } from "../runtime";
 import type { Transport } from "../transport";
@@ -69,6 +68,10 @@ type AppliedIntentRequests = {
   hasStreamedVisibleOutput: boolean;
   decision: FormalConversationWorkflowDecision;
 };
+
+type ToolBoundaryResolution =
+  | FormalConversationTransportOutput
+  | AppliedIntentRequests;
 
 export type RunFormalConversationWorkflowResult = {
   decision: FormalConversationWorkflowDecision;
@@ -191,6 +194,35 @@ const buildToolLoopTerminationResult = (
   };
 };
 
+const shouldExecutePendingToolCalls = (
+  input: FormalConversationTransportOutput,
+) => {
+  return (
+    input.transportResult.finishReason === "tool-calls"
+    && (input.transportResult.pendingToolCalls?.length ?? 0) > 0
+  );
+};
+
+const buildToolExecutionFailureResult = (
+  input: FormalConversationTransportOutput,
+  reason: string,
+): AppliedIntentRequests => {
+  const visibleTextBuffer = reason.trim() === ""
+    ? "工具调用失败，暂时无法继续分析当前工作区。"
+    : `工具调用失败，暂时无法继续分析当前工作区。错误：${reason}`;
+
+  return {
+    env: input.env,
+    transportResult: {
+      ...input.transportResult,
+      text: visibleTextBuffer,
+    },
+    visibleTextBuffer,
+    hasStreamedVisibleOutput: false,
+    decision: { type: "finalize_chat" },
+  };
+};
+
 /* ==================== */
 /* Workflow Steps       */
 /* ==================== */
@@ -300,6 +332,39 @@ async function sendConversation(
     toolCallStartCount,
     toolCallFinishCount,
     toolFailureMessages,
+  };
+}
+
+async function handleToolBoundary(
+  input: FormalConversationTransportOutput,
+): Promise<ToolBoundaryResolution> {
+  if (!shouldExecutePendingToolCalls(input)) {
+    return input;
+  }
+
+  const toolExecutionResult = await input.env.runtime.executeConversationToolCalls(
+    input.transportResult.pendingToolCalls ?? [],
+  );
+
+  if (!toolExecutionResult.ok) {
+    return buildToolExecutionFailureResult(input, toolExecutionResult.reason);
+  }
+
+  input.env.taskQueue.updateTask(
+    input.env.task.id,
+    { state: TaskState.FOLLOW_UP },
+    { shouldSyncEvent: false },
+  );
+  await input.env.taskQueue.addTask(
+    input.env.runtime.buildContinuationFormalConversationTask(input.env.task),
+  );
+
+  return {
+    env: input.env,
+    transportResult: input.transportResult,
+    visibleTextBuffer: input.visibleTextBuffer,
+    hasStreamedVisibleOutput: input.hasStreamedVisibleOutput,
+    decision: { type: "defer_completion" },
   };
 }
 
@@ -462,26 +527,19 @@ export const runFormalConversationWorkflow = async (
   runtime: Runtime,
   transport: Transport,
 ) => {
-  /**
-   * 保留 promiseChain 的原因：
-   * - step 顺序清晰
-   * - 异常统一向上冒泡
-   * - 错误处理继续集中在 workflow 外部收口
-   */
-  return promiseChain(
-    syncRuntimeTask,
-    exportPrompts,
-    sendConversation,
-    parseIntentRequests,
-    executeIntentRequests,
-    applyIntentRequestExecution,
-    finalizeConversation,
-  )(
-    createFormalConversationWorkflowEnv(
-      task,
-      taskQueue,
-      runtime,
-      transport,
-    ),
+  const env = await syncRuntimeTask(
+    createFormalConversationWorkflowEnv(task, taskQueue, runtime, transport),
   );
+  const prompts = await exportPrompts(env);
+  const transportOutput = await sendConversation(prompts);
+  const toolBoundaryResult = await handleToolBoundary(transportOutput);
+
+  if ("decision" in toolBoundaryResult) {
+    return finalizeConversation(toolBoundaryResult);
+  }
+
+  const parsed = await parseIntentRequests(toolBoundaryResult);
+  const executed = await executeIntentRequests(parsed);
+  const applied = await applyIntentRequestExecution(executed);
+  return finalizeConversation(applied);
 };

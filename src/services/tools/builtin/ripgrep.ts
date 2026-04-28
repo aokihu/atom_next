@@ -76,7 +76,7 @@ export const ripgrepTool = (context: ToolExecutionContext) =>
   ({
     description: "Search file content in directory by using ripgrep",
     inputSchema: z.object({
-      dirpath: z.string().describe("the absolute path of directory"),
+      dirpath: z.string().describe("the absolute path of a directory inside the current workspace"),
       pattern: z.string().describe("search pattern used by rg"),
       caseSensitive: z.boolean().optional().describe("use case-sensitive matching when true"),
       fileGlob: z.string().optional().describe("optional glob for filtering files, e.g. *.ts"),

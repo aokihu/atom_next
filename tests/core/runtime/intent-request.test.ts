@@ -58,6 +58,43 @@ describe("parseIntentRequests", () => {
     ]);
   });
 
+  test("parses follow up with tools finished request", () => {
+    const result = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS_FINISHED,"结束工具阶段",summary=已完成工具检查;nextPrompt=基于结果整理最终回答;avoidRepeat=不要重复原始读取内容]',
+    );
+
+    expect(result).toEqual([
+      {
+        source: "conversation",
+        request: "FOLLOW_UP_WITH_TOOLS_FINISHED",
+        intent: "结束工具阶段",
+        params: {
+          summary: "已完成工具检查",
+          nextPrompt: "基于结果整理最终回答",
+          avoidRepeat: "不要重复原始读取内容",
+        },
+      },
+    ]);
+  });
+
+  test("parses follow up with tools end request", () => {
+    const result = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS_END,"结束工具阶段",reasonCode=tool_error;reason=read 工具返回了不可恢复错误]',
+    );
+
+    expect(result).toEqual([
+      {
+        source: "conversation",
+        request: "FOLLOW_UP_WITH_TOOLS_END",
+        intent: "结束工具阶段",
+        params: {
+          reasonCode: "tool_error",
+          reason: "read 工具返回了不可恢复错误",
+        },
+      },
+    ]);
+  });
+
   test("parses save memory request with memory scope", () => {
     const result = parseIntentRequests(
       '[SAVE_MEMORY, "保存这段记忆", text=skill cache ready;scope=long]',
@@ -301,6 +338,34 @@ describe("parseIntentRequests", () => {
     );
   });
 
+  test("rejects follow up with tools finished request when tool context is missing", () => {
+    const requests = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS_FINISHED,"结束工具阶段",summary=已完成工具检查]',
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      hasActiveToolContext: false,
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests[0]?.code).toBe("tool_context_required");
+  });
+
+  test("rejects follow up with tools end request when tool context is missing", () => {
+    const requests = parseIntentRequests(
+      '[FOLLOW_UP_WITH_TOOLS_END,"结束工具阶段",reasonCode=tool_error;reason=tool failed]',
+    );
+    const result = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      hasActiveToolContext: false,
+    });
+
+    expect(result.safeRequests).toEqual([]);
+    expect(result.rejectedRequests[0]?.code).toBe("tool_context_required");
+  });
+
   test("rejects load skill request when skill name is unsafe", () => {
     const requests = parseIntentRequests(
       '[LOAD_SKILL, "需要查看技能说明", skill=../secret]',
@@ -395,6 +460,48 @@ describe("parseIntentRequests", () => {
         status: "accepted",
         message:
           "FOLLOW_UP_WITH_TOOLS request accepted and will be scheduled by Core with continuation context when current output finishes",
+      },
+    ]);
+  });
+
+  test("dispatches tool lifecycle requests when active tool context is present", () => {
+    const requests = parseIntentRequests(`
+[FOLLOW_UP_WITH_TOOLS_FINISHED,"结束工具阶段",summary=已完成工具检查]
+[FOLLOW_UP_WITH_TOOLS_END,"异常结束工具阶段",reasonCode=tool_error;reason=tool failed]
+    `);
+    const safetyResult = checkIntentRequestSafety(requests, {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      hasActiveToolContext: true,
+    });
+
+    expect(dispatchIntentRequests(safetyResult.safeRequests)).toEqual([
+      {
+        request: {
+          source: "conversation",
+          request: "FOLLOW_UP_WITH_TOOLS_FINISHED",
+          intent: "结束工具阶段",
+          params: {
+            summary: "已完成工具检查",
+          },
+        },
+        status: "accepted",
+        message:
+          "FOLLOW_UP_WITH_TOOLS_FINISHED request accepted and will be used to close current tool continuation state",
+      },
+      {
+        request: {
+          source: "conversation",
+          request: "FOLLOW_UP_WITH_TOOLS_END",
+          intent: "异常结束工具阶段",
+          params: {
+            reasonCode: "tool_error",
+            reason: "tool failed",
+          },
+        },
+        status: "accepted",
+        message:
+          "FOLLOW_UP_WITH_TOOLS_END request accepted and will be used to close current tool continuation state with failure reason",
       },
     ]);
   });

@@ -8,6 +8,8 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsEndIntentRequest,
+  FollowUpWithToolsFinishedIntentRequest,
   FollowUpWithToolsIntentRequest,
   IntentRequest,
   LoadMemoryIntentRequest,
@@ -18,6 +20,7 @@ import type {
   UpdateMemoryIntentRequest,
 } from "@/types";
 import {
+  isFollowUpWithToolsEndReasonCode,
   IntentRequestSource,
   IntentRequestType,
   isIntentRequestMemoryScope,
@@ -394,6 +397,69 @@ const parseFollowUpWithToolsIntentRequest = (
   };
 };
 
+const parseFollowUpWithToolsFinishedIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): FollowUpWithToolsFinishedIntentRequest | null => {
+  const summary = params.summary;
+  const nextPrompt = params.nextPrompt;
+  const avoidRepeat = params.avoidRepeat;
+
+  if (!isString(summary) || isEmpty(summary)) {
+    return null;
+  }
+
+  if (isString(nextPrompt) && isEmpty(nextPrompt)) {
+    return null;
+  }
+
+  if (!isEmpty(avoidRepeat) && !isString(avoidRepeat)) {
+    return null;
+  }
+
+  return {
+    source: IntentRequestSource.CONVERSATION,
+    request: IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED,
+    intent,
+    params: {
+      summary,
+      ...(isString(nextPrompt) && !isEmpty(nextPrompt)
+        ? { nextPrompt }
+        : {}),
+      ...(isString(avoidRepeat) && !isEmpty(avoidRepeat)
+        ? { avoidRepeat }
+        : {}),
+    },
+  };
+};
+
+const parseFollowUpWithToolsEndIntentRequest = (
+  intent: string,
+  params: RawIntentRequestParams,
+): FollowUpWithToolsEndIntentRequest | null => {
+  const reasonCode = params.reasonCode;
+  const reason = params.reason;
+
+  if (
+    !isString(reasonCode) ||
+    !isFollowUpWithToolsEndReasonCode(reasonCode) ||
+    !isString(reason) ||
+    isEmpty(reason)
+  ) {
+    return null;
+  }
+
+  return {
+    source: IntentRequestSource.CONVERSATION,
+    request: IntentRequestType.FOLLOW_UP_WITH_TOOLS_END,
+    intent,
+    params: {
+      reasonCode,
+      reason,
+    },
+  };
+};
+
 const parseTypedIntentRequest = (
   request: IntentRequestType,
   intent: string,
@@ -418,6 +484,10 @@ const parseTypedIntentRequest = (
       return parseFollowUpIntentRequest(intent, params);
     case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
       return parseFollowUpWithToolsIntentRequest(intent, params);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED:
+      return parseFollowUpWithToolsFinishedIntentRequest(intent, params);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_END:
+      return parseFollowUpWithToolsEndIntentRequest(intent, params);
   }
 };
 

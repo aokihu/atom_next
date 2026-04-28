@@ -8,6 +8,8 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsEndIntentRequest,
+  FollowUpWithToolsFinishedIntentRequest,
   FollowUpWithToolsIntentRequest,
   IntentRequest,
   LoadMemoryIntentRequest,
@@ -24,6 +26,7 @@ import { TaskState, type TaskItem } from "@/types/task";
 import { isEmpty } from "radashi";
 import { createRuntimeMemoryItem } from "../memory-item";
 import {
+  buildContinuationFormalConversationTask,
   buildFollowUpTask,
   buildFollowUpWithToolsTask,
   buildFormalConversationTask,
@@ -268,11 +271,48 @@ const processFollowUpWithToolsIntentRequest = (
   context: RuntimeIntentRequestExecutionContext,
 ): IntentRequestExecutionResult => {
   context.setContinuationContext(request.params);
+  context.activateToolContext();
+  context.setToolContextMode("active");
 
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
     nextTask: buildFollowUpWithToolsTask(task, request),
+  };
+};
+
+const processFollowUpWithToolsFinishedIntentRequest = (
+  task: TaskItem,
+  request: FollowUpWithToolsFinishedIntentRequest,
+  context: RuntimeIntentRequestExecutionContext,
+): IntentRequestExecutionResult => {
+  context.setToolContextMode("finished");
+
+  if (!request.params.nextPrompt) {
+    return {
+      status: "continue",
+    };
+  }
+
+  context.setFinishedContinuationContext(request.params);
+
+  return {
+    status: "stop",
+    nextState: TaskState.FOLLOW_UP,
+    nextTask: buildContinuationFormalConversationTask(task),
+  };
+};
+
+const processFollowUpWithToolsEndIntentRequest = (
+  _task: TaskItem,
+  request: FollowUpWithToolsEndIntentRequest,
+  context: RuntimeIntentRequestExecutionContext,
+): IntentRequestExecutionResult => {
+  context.recordToolEnd(request.params);
+  context.setToolContextMode("ended");
+
+  return {
+    status: "continue",
   };
 };
 
@@ -346,6 +386,10 @@ export const processIntentRequest = (
       return processFollowUpIntentRequest(task, request);
     case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
       return processFollowUpWithToolsIntentRequest(task, request, context);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED:
+      return processFollowUpWithToolsFinishedIntentRequest(task, request, context);
+    case IntentRequestType.FOLLOW_UP_WITH_TOOLS_END:
+      return processFollowUpWithToolsEndIntentRequest(task, request, context);
     case IntentRequestType.LOAD_SKILL:
       return {
         status: "continue",

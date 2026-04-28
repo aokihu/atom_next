@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -227,6 +227,18 @@ describe("Runtime context", () => {
     expect(prompt).toContain("ACCUMULATED_ASSISTANT_OUTPUT<<EOF\n\nEOF");
   });
 
+  test("renders workspace in runtime prompt when cli workspace is available", async () => {
+    const { runtime, workspace } = await buildRuntimeWithToolService();
+
+    runtime.currentTask = buildTask("task-workspace-prompt");
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+
+    expect(prompt).toContain(`Workspace = ${workspace}`);
+  });
+
   test("appends assistant output in order and preserves multiline content", async () => {
     const runtime = buildRuntime();
 
@@ -333,6 +345,74 @@ describe("Runtime context", () => {
     expect(prompt).toContain(
       "<AvoidRepeat>不要重复前文的 ToolService 说明。</AvoidRepeat>",
     );
+  });
+
+  test("executeConversationToolCalls writes tool context and replaces duplicated target", async () => {
+    const { runtime, workspace } = await buildRuntimeWithToolService();
+    const filepath = join(workspace, "tool-context.txt");
+    await writeFile(filepath, "line-1\nline-2");
+
+    runtime.currentTask = buildTask("task-tool-context-1");
+
+    const firstResult = await runtime.executeConversationToolCalls([
+      {
+        toolName: "read",
+        toolCallId: "call_1",
+        input: { filepath },
+      },
+    ]);
+
+    expect(firstResult).toEqual({ ok: true });
+    expect(runtime.getToolContext().results).toHaveLength(1);
+
+    const secondResult = await runtime.executeConversationToolCalls([
+      {
+        toolName: "read",
+        toolCallId: "call_2",
+        input: { filepath },
+      },
+    ]);
+
+    expect(secondResult).toEqual({ ok: true });
+    expect(runtime.getToolContext().results).toHaveLength(1);
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+    expect(prompt).toContain("<ToolContext>");
+    expect(prompt).toContain("<Mode>active</Mode>");
+    expect(prompt).toContain("<ToolName>read</ToolName>");
+    expect(prompt).toContain(filepath);
+  });
+
+  test("executeIntentRequests finishes tool mode and schedules plain continuation when nextPrompt is present", async () => {
+    const { runtime } = await buildRuntimeWithServices();
+    const task = buildTask("task-tool-finished-1");
+
+    runtime.currentTask = task;
+    runtime.activateToolContext();
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "FOLLOW_UP_WITH_TOOLS_FINISHED",
+        intent: "结束工具阶段",
+        params: {
+          summary: "已完成工具检查",
+          nextPrompt: "基于当前结果整理最终回答",
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("stop");
+    expect(result.nextState).toBe(TaskState.FOLLOW_UP);
+    expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
+    expect(runtime.hasActiveToolContext()).toBe(false);
+    expect(runtime.getContinuationContext()).toEqual({
+      summary: "已完成工具检查",
+      nextPrompt: "基于当前结果整理最终回答",
+      avoidRepeat: "",
+      updatedAt: expect.any(Number),
+    });
   });
 
   test("preparePostFollowUpContinuation writes continuation from compressed follow up intent", async () => {
@@ -543,6 +623,30 @@ describe("Runtime context", () => {
     expect(finalizationResult.finalMessage).toBe("第一段。第二段。");
     expect(finalizationResult.completedPayload.message.data).toBe(
       "第一段。第二段。",
+    );
+  });
+
+  test("finalizeChatTurn appends visible failure chunk after prior streamed output", () => {
+    const runtime = buildRuntime();
+
+    const task = buildTask("task-tool-failure-finalize", {
+      sessionId: "session-1",
+      chatId: "chat-1",
+      payload: [{ type: "text", data: "check workspace" }],
+    });
+    runtime.currentTask = task;
+    runtime.appendAssistantOutput("我先检查一下。");
+
+    const finalizationResult = runtime.finalizeChatTurn(task, {
+      resultText: "工具调用失败，暂时无法继续分析当前工作区。错误：Permission denied",
+      visibleTextBuffer: "工具调用失败，暂时无法继续分析当前工作区。错误：Permission denied",
+    });
+
+    expect(finalizationResult.finalMessage).toBe(
+      "我先检查一下。工具调用失败，暂时无法继续分析当前工作区。错误：Permission denied",
+    );
+    expect(finalizationResult.completedPayload.message.data).toBe(
+      "我先检查一下。工具调用失败，暂时无法继续分析当前工作区。错误：Permission denied",
     );
   });
 

@@ -17,11 +17,13 @@ import { isNumber, isNullish } from "radashi";
 import {
   createRuntimeContinuationContext,
   createRuntimeFollowUpContext,
+  createRuntimeToolContext,
 } from "./state";
 import type {
   RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeTaskSession,
+  RuntimeToolContext,
   SyncContinuationContextInput,
   SyncFollowUpContextInput,
   SyncTaskSessionResult,
@@ -175,5 +177,38 @@ export const syncContinuationContext = (
   return {
     ...createRuntimeContinuationContext(),
     ...input.previousContinuation,
+  };
+};
+
+const hasActiveToolContext = (
+  toolContext?: RuntimeToolContext,
+): toolContext is RuntimeToolContext => {
+  return !isNullish(toolContext) && toolContext.updatedAt !== null;
+};
+
+export const syncToolContext = (input: {
+  previousToolContext?: RuntimeToolContext;
+  previousSessionId: string;
+  previousChatId: string;
+  task: TaskItem;
+}): RuntimeToolContext | undefined => {
+  if (!hasActiveToolContext(input.previousToolContext)) {
+    return undefined;
+  }
+
+  const hasSessionChanged = input.previousSessionId !== input.task.sessionId;
+  const hasChatChanged = input.previousChatId !== input.task.chatId;
+
+  if (
+    input.task.source === TaskSource.EXTERNAL ||
+    hasSessionChanged ||
+    hasChatChanged
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...createRuntimeToolContext(),
+    ...input.previousToolContext,
   };
 };

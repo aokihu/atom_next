@@ -40,7 +40,7 @@ export const readTool = (context: ToolExecutionContext) =>
   ({
     description: "Read file content, include line number and content",
     inputSchema: z.object({
-      filepath: z.string().describe("the absolute path of file"),
+      filepath: z.string().describe("the absolute path of a file inside the current workspace"),
     }),
     execute: async ({ filepath }: ReadToolInput) => {
       const policy = createPermissionPolicy(context);

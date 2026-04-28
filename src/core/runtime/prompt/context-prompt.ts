@@ -6,16 +6,19 @@ import type {
   RuntimeContinuationContext,
   RuntimeFollowUpContext,
   RuntimeMemoryScopeContext,
+  RuntimeToolContext,
 } from "../context-manager";
 import type { IntentExecutionPolicy } from "../user-intent/intent-policy";
 import { sliceRecentAssistantOutput } from "../post-follow-up";
 
 type RuntimeContextPromptInput = {
   sessionId: string;
+  workspace: string;
   round: number;
   source: TaskSource;
   conversation: RuntimeConversationContext;
   continuation?: RuntimeContinuationContext;
+  toolContext?: RuntimeToolContext;
   followUp?: RuntimeFollowUpContext;
   memory: Record<MemoryScope, RuntimeMemoryScopeContext>;
   outputBudget?: RuntimeOutputBudget | null;
@@ -107,6 +110,69 @@ export const convertContinuationContextToPrompt = (
         `<AvoidRepeat>${continuation.avoidRepeat}</AvoidRepeat>`,
         "</Continuation>",
       ];
+};
+
+export const convertToolContextToPrompt = (
+  toolContext?: RuntimeToolContext,
+) => {
+  if (!toolContext || toolContext.updatedAt === null) {
+    return [];
+  }
+
+  const prompt = [
+    "<ToolContext>",
+    `<Mode>${toolContext.mode}</Mode>`,
+  ];
+
+  if (toolContext.activeToolCall) {
+    prompt.push(
+      "<ActiveToolCall>",
+      `<ToolName>${toolContext.activeToolCall.toolName}</ToolName>`,
+      `<ToolCallId>${toolContext.activeToolCall.toolCallId}</ToolCallId>`,
+      "<Input>",
+      JSON.stringify(toolContext.activeToolCall.input),
+      "</Input>",
+      "</ActiveToolCall>",
+    );
+  }
+
+  if (toolContext.injectionOrder.length === 0) {
+    prompt.push("<ToolResults></ToolResults>", "</ToolContext>");
+    return prompt;
+  }
+
+  prompt.push("<ToolResults>");
+
+  for (const key of toolContext.injectionOrder) {
+    const item = toolContext.results.find((result) => result.record.key === key);
+
+    if (!item) {
+      continue;
+    }
+
+    prompt.push(
+      "<ToolResult>",
+      `<Key>${item.record.key}</Key>`,
+      `<ToolName>${item.record.toolName}</ToolName>`,
+      `<ToolCallId>${item.record.toolCallId}</ToolCallId>`,
+      `<Target>${item.promptView.target}</Target>`,
+      `<Summary>${item.promptView.summary}</Summary>`,
+      `<Reusable>${item.promptView.reusable}</Reusable>`,
+    );
+
+    if (item.promptView.outputSummary !== "") {
+      prompt.push("<OutputSummary>", item.promptView.outputSummary, "</OutputSummary>");
+    }
+
+    if (item.promptView.errorMessage !== "") {
+      prompt.push("<ErrorMessage>", item.promptView.errorMessage, "</ErrorMessage>");
+    }
+
+    prompt.push("</ToolResult>");
+  }
+
+  prompt.push("</ToolResults>", "</ToolContext>");
+  return prompt;
 };
 
 export const convertMemoryScopeContextToPrompt = (
@@ -251,6 +317,7 @@ export const convertRuntimeContextToPrompt = (
     "<Context>",
     "<Meta>",
     `Session ID = ${promptContext.sessionId}`,
+    `Workspace = ${promptContext.workspace}`,
     `Time = ${new Date().toISOString()}`,
     `Round = ${promptContext.round}`,
     "</Meta>",
@@ -261,6 +328,7 @@ export const convertRuntimeContextToPrompt = (
     ...convertConversationContextToPrompt(promptContext.conversation),
     ...promptContext.intentPolicyPrompt,
     ...convertContinuationContextToPrompt(promptContext.continuation),
+    ...convertToolContextToPrompt(promptContext.toolContext),
     "<Memory>",
     ...convertMemoryScopeContextToPrompt("core", promptContext.memory.core),
     ...convertMemoryScopeContextToPrompt("long", promptContext.memory.long),

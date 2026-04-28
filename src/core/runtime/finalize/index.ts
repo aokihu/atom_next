@@ -32,8 +32,15 @@ export function finalizeChatTurn(
   options: FinalizeChatTurnOptions,
 ): RuntimeChatFinalizationResult {
   const accumulatedOutput = contextManager.getAccumulatedAssistantOutput();
+  const shouldAppendVisibleChunk =
+    !isEmpty(accumulatedOutput) &&
+    !isEmpty(options.visibleTextBuffer) &&
+    !accumulatedOutput.endsWith(options.visibleTextBuffer) &&
+    options.resultText === options.visibleTextBuffer;
   const finalMessage = isEmpty(accumulatedOutput)
     ? options.resultText
+    : shouldAppendVisibleChunk
+    ? `${accumulatedOutput}${options.visibleTextBuffer}`
     : accumulatedOutput;
   contextManager.setLastAssistantOutput(finalMessage);
   const originalUserInput = contextManager.getCurrentChatOriginalUserInput();

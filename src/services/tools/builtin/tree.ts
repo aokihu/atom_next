@@ -159,7 +159,7 @@ export const treeTool = (context: ToolExecutionContext) =>
   ({
     description: "Show directory tree using built-in filesystem traversal",
     inputSchema: z.object({
-      dirpath: z.string().describe("the absolute path of directory"),
+      dirpath: z.string().describe("the absolute path of a directory inside the current workspace"),
       level: z.number().int().positive().optional().describe("max display depth"),
       all: z.boolean().optional().describe("list hidden files when true"),
     }),

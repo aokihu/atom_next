@@ -159,6 +159,7 @@ describe("Transport.send", () => {
       toolCallCount: 0,
       toolResultCount: 0,
       responseMessageCount: 0,
+      pendingToolCalls: [],
     });
   });
 

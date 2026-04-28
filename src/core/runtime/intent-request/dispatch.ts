@@ -8,6 +8,8 @@
  */
 import type {
   FollowUpIntentRequest,
+  FollowUpWithToolsEndIntentRequest,
+  FollowUpWithToolsFinishedIntentRequest,
   FollowUpWithToolsIntentRequest,
   IntentRequest,
   IntentRequestDispatchResult,
@@ -139,6 +141,24 @@ const dispatchFollowUpWithToolsIntentRequest = (
   };
 };
 
+const dispatchFollowUpWithToolsFinishedIntentRequest = (
+  request: FollowUpWithToolsFinishedIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "FOLLOW_UP_WITH_TOOLS_FINISHED request accepted and will be used to close current tool continuation state",
+  );
+};
+
+const dispatchFollowUpWithToolsEndIntentRequest = (
+  request: FollowUpWithToolsEndIntentRequest,
+) => {
+  return createAcceptedDispatchResult(
+    request,
+    "FOLLOW_UP_WITH_TOOLS_END request accepted and will be used to close current tool continuation state with failure reason",
+  );
+};
+
 /* ==================== */
 /* Public Dispatch API  */
 /* ==================== */
@@ -172,6 +192,10 @@ export const dispatchIntentRequests = (
         return dispatchFollowUpIntentRequest(request);
       case IntentRequestType.FOLLOW_UP_WITH_TOOLS:
         return dispatchFollowUpWithToolsIntentRequest(request);
+      case IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED:
+        return dispatchFollowUpWithToolsFinishedIntentRequest(request);
+      case IntentRequestType.FOLLOW_UP_WITH_TOOLS_END:
+        return dispatchFollowUpWithToolsEndIntentRequest(request);
     }
   });
 };

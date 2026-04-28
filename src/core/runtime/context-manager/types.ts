@@ -30,6 +30,7 @@ export type RuntimeContext = {
   };
   followUp?: RuntimeFollowUpContext;
   continuation?: RuntimeContinuationContext;
+  toolContext?: RuntimeToolContext;
 };
 
 export type RuntimeFollowUpContext = {
@@ -50,6 +51,50 @@ export type RuntimeContinuationContext = {
   summary: string;
   nextPrompt: string;
   avoidRepeat: string;
+  updatedAt: number | null;
+};
+
+export type RuntimeToolContextMode = "idle" | "active" | "finished" | "ended";
+
+export type RuntimeToolActiveCall = {
+  toolName: string;
+  toolCallId: string;
+  input: unknown;
+  updatedAt: number | null;
+};
+
+export type RuntimeToolResultRecord = {
+  key: string;
+  toolName: string;
+  toolCallId: string;
+  input: unknown;
+  result?: unknown;
+  error?: string;
+  ok: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type RuntimeToolResultPromptView = {
+  key: string;
+  toolName: string;
+  target: string;
+  summary: string;
+  outputSummary: string;
+  errorMessage: string;
+  reusable: boolean;
+};
+
+export type RuntimeToolResultItem = {
+  record: RuntimeToolResultRecord;
+  promptView: RuntimeToolResultPromptView;
+};
+
+export type RuntimeToolContext = {
+  mode: RuntimeToolContextMode;
+  activeToolCall?: RuntimeToolActiveCall;
+  results: RuntimeToolResultItem[];
+  injectionOrder: string[];
   updatedAt: number | null;
 };
 
@@ -122,6 +167,7 @@ export type RuntimePromptContextSnapshot = {
   source: TaskSource;
   followUp?: RuntimeFollowUpContext;
   continuation?: RuntimeContinuationContext;
+  toolContext?: RuntimeToolContext;
   conversation: RuntimeConversationContext;
   memory: RuntimeMemoryContext;
 };

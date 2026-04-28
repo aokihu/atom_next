@@ -9,7 +9,12 @@ import type { ServiceManager } from "@/libs/service-manage";
 import { type TaskItem } from "@/types/task";
 import type { ProviderProfileLevel } from "@/types/config";
 import { isEmpty } from "radashi";
-import type { ToolDefinitionMap, ToolExecutionContext } from "@/services/tools";
+import {
+  ToolBudgetExceededError,
+  ToolPolicyBlockedError,
+  type ToolDefinitionMap,
+  type ToolExecutionContext,
+} from "@/services/tools";
 import {
   createIntentRequestExecutionContext as runCreateIntentRequestExecutionContext,
   executeIntentRequests as runIntentRequests,
@@ -63,6 +68,44 @@ type RuntimeOptions = {
   logger?: Logger;
 };
 
+const summarizeRuntimeValue = (value: unknown, maxLength = 320): string => {
+  let serialized = "";
+
+  if (typeof value === "string") {
+    serialized = value;
+  } else {
+    try {
+      serialized = JSON.stringify(value) ?? String(value);
+    } catch {
+      serialized = String(value);
+    }
+  }
+
+  const normalized = serialized.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  if (maxLength <= 3) {
+    return normalized.slice(0, maxLength);
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+};
+
+const resolveToolEndReasonCode = (error: unknown) => {
+  if (error instanceof ToolBudgetExceededError) {
+    return "tool_budget_exceeded" as const;
+  }
+
+  if (error instanceof ToolPolicyBlockedError) {
+    return "tool_blocked" as const;
+  }
+
+  return "tool_error" as const;
+};
+
 export class Runtime {
   #serviceManager: ServiceManager;
   #currentTask: TaskItem | null = null;
@@ -92,6 +135,7 @@ export class Runtime {
     return {
       sessionId: this.#currentTask.sessionId,
       chatId: this.#currentTask.chatId,
+      hasActiveToolContext: this.#contextManager.hasActiveToolContext(),
     };
   }
 
@@ -316,6 +360,26 @@ export class Runtime {
    */
   public getContinuationContext() {
     return this.#contextManager.getContinuationContext();
+  }
+
+  public activateToolContext() {
+    this.#contextManager.activateToolContext();
+  }
+
+  public setToolContextMode(mode: "active" | "finished" | "ended") {
+    this.#contextManager.setToolContextMode(mode);
+  }
+
+  public clearToolContext() {
+    this.#contextManager.clearToolContext();
+  }
+
+  public hasActiveToolContext() {
+    return this.#contextManager.hasActiveToolContext();
+  }
+
+  public getToolContext() {
+    return this.#contextManager.getToolContext();
   }
 
   /**
@@ -619,9 +683,117 @@ export class Runtime {
    * 不应直接接触 ToolService 本体或工具执行上下文细节。
    */
   public createConversationToolRegistry(): ToolDefinitionMap {
-    return resolveToolService(this.#serviceManager).createToolRegistry({
+    return resolveToolService(this.#serviceManager).createToolProtocolRegistry({
       context: this.createToolExecutionContext(),
     });
+  }
+
+  /**
+   * 执行当前 formal conversation 产出的 tool calls。
+   * @description
+   * ai-sdk 继续负责 tool schema 与 tool call 协议；
+   * Runtime 接管真实执行和结果回流。
+   */
+  public async executeConversationToolCalls(toolCalls: Array<{
+    toolName: string;
+    toolCallId?: string;
+    input: unknown;
+  }>) {
+    const toolService = resolveToolService(this.#serviceManager);
+    const context = this.createToolExecutionContext();
+
+    if (toolCalls.length === 0) {
+      return {
+        ok: false,
+        reasonCode: "tool_result_empty" as const,
+        reason: "模型进入工具阶段，但没有提供可执行的工具调用。",
+      };
+    }
+
+    this.activateToolContext();
+
+    for (const toolCall of toolCalls) {
+      this.#contextManager.setActiveToolCall({
+        toolName: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        input: toolCall.input,
+      });
+      this.reportToolCallStarted(toolCall);
+
+      try {
+        const result = await toolService.executeTool({
+          context,
+          toolName: toolCall.toolName,
+          toolInput: toolCall.input,
+          toolCallId: toolCall.toolCallId,
+        });
+        const toolError =
+          result &&
+            typeof result === "object" &&
+            !Array.isArray(result) &&
+            typeof (result as Record<string, unknown>).error === "string"
+            ? String((result as Record<string, unknown>).error)
+            : "";
+
+        this.#contextManager.appendToolResult({
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          toolInput: toolCall.input,
+          ok: toolError === "",
+          result,
+          ...(toolError !== "" ? { error: toolError } : {}),
+        });
+        this.reportToolCallFinished({
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          input: toolCall.input,
+          ...(toolError !== "" ? { error: toolError } : { result }),
+        });
+
+        if (toolError !== "") {
+          this.#contextManager.setToolContextMode("ended");
+          this.#contextManager.clearActiveToolCall();
+          return {
+            ok: false,
+            reasonCode: "tool_error" as const,
+            reason: toolError,
+          };
+        }
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : summarizeRuntimeValue(error);
+        const reasonCode = resolveToolEndReasonCode(error);
+
+        this.#contextManager.appendToolResult({
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          toolInput: toolCall.input,
+          ok: false,
+          error: reason,
+        });
+        this.#contextManager.setToolContextMode("ended");
+        this.reportToolCallFinished({
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          input: toolCall.input,
+          error,
+        });
+        this.#contextManager.clearActiveToolCall();
+
+        return {
+          ok: false,
+          reasonCode,
+          reason,
+        };
+      }
+    }
+
+    this.#contextManager.clearActiveToolCall();
+    this.#contextManager.setToolContextMode("active");
+
+    return {
+      ok: true,
+    };
   }
 
   /**

@@ -50,6 +50,8 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 <<<REQUEST>>>
 [FOLLOW_UP, "对当前会话进度和下一轮任务的简要说明"]
 [FOLLOW_UP_WITH_TOOLS, "对当前会话进度和下一轮任务的简要说明", summary=<当前已确认信息>;nextPrompt=<下一轮目标>;avoidRepeat=<避免重复内容>]
+[FOLLOW_UP_WITH_TOOLS_FINISHED, "工具阶段已完成的简要说明", summary=<已确认结果>;nextPrompt=<如需继续收束则填写下一轮目标>;avoidRepeat=<避免重复内容>]
+[FOLLOW_UP_WITH_TOOLS_END, "工具阶段异常结束的简要说明", reasonCode=<tool_error|tool_blocked|tool_budget_exceeded|tool_result_empty|tool_context_conflict>;reason=<异常原因>]
 ```
 
 要求：
@@ -108,6 +110,14 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 
 - 不属于用户输入
 - 不会进入 user prompt
+
+## FOLLOW_UP_WITH_TOOLS_FINISHED / FOLLOW_UP_WITH_TOOLS_END 规则
+
+- `FOLLOW_UP_WITH_TOOLS_FINISHED` 只在当前处于 tools continuation 时允许使用
+- `FOLLOW_UP_WITH_TOOLS_FINISHED` 用于正常结束 tools mode；`summary` 必填，`nextPrompt` 可选
+- `FOLLOW_UP_WITH_TOOLS_END` 只在当前处于 tools continuation 时允许使用
+- `FOLLOW_UP_WITH_TOOLS_END` 用于异常结束 tools mode；必须同时提供 `reasonCode` 与 `reason`
+- `reasonCode` 只能使用：`tool_error`、`tool_blocked`、`tool_budget_exceeded`、`tool_result_empty`、`tool_context_conflict`
 - 只会进入下一轮的一次性 system context
 
 当 tool 调用失败时，还必须额外遵守下面规则：

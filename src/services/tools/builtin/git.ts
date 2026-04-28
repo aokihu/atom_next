@@ -56,7 +56,7 @@ export const gitTool = (context: ToolExecutionContext) =>
   ({
     description: "Run git subcommand in a workspace directory",
     inputSchema: z.object({
-      cwd: z.string().describe("the absolute path used as git working directory"),
+      cwd: z.string().describe("the absolute path of a working directory inside the current workspace"),
       subcommand: z.string().describe("git subcommand, e.g. status/log/diff"),
       args: z.array(z.string()).optional().describe("additional git args as string array"),
       timeoutMs: z.number().int().positive().optional().describe("command timeout in ms, default 30000"),

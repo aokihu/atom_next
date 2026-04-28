@@ -28,6 +28,8 @@ export enum IntentRequestType {
   LOAD_SKILL = "LOAD_SKILL",
   FOLLOW_UP = "FOLLOW_UP",
   FOLLOW_UP_WITH_TOOLS = "FOLLOW_UP_WITH_TOOLS",
+  FOLLOW_UP_WITH_TOOLS_FINISHED = "FOLLOW_UP_WITH_TOOLS_FINISHED",
+  FOLLOW_UP_WITH_TOOLS_END = "FOLLOW_UP_WITH_TOOLS_END",
 }
 
 /**
@@ -179,6 +181,36 @@ export type FollowUpWithToolsIntentRequestParams = {
   avoidRepeat?: string;
 };
 
+export const FOLLOW_UP_WITH_TOOLS_END_REASON_CODES = [
+  "tool_error",
+  "tool_blocked",
+  "tool_budget_exceeded",
+  "tool_result_empty",
+  "tool_context_conflict",
+] as const;
+
+export type FollowUpWithToolsEndReasonCode =
+  (typeof FOLLOW_UP_WITH_TOOLS_END_REASON_CODES)[number];
+
+export const isFollowUpWithToolsEndReasonCode = (
+  value: string,
+): value is FollowUpWithToolsEndReasonCode => {
+  return FOLLOW_UP_WITH_TOOLS_END_REASON_CODES.includes(
+    value as FollowUpWithToolsEndReasonCode,
+  );
+};
+
+export type FollowUpWithToolsFinishedIntentRequestParams = {
+  summary: string;
+  nextPrompt?: string;
+  avoidRepeat?: string;
+};
+
+export type FollowUpWithToolsEndIntentRequestParams = {
+  reasonCode: FollowUpWithToolsEndReasonCode;
+  reason: string;
+};
+
 export type PrepareConversationIntentRequest = BaseIntentRequest<
   IntentRequestType.PREPARE_CONVERSATION,
   PrepareConversationIntentRequestParams
@@ -224,6 +256,16 @@ export type FollowUpWithToolsIntentRequest = BaseIntentRequest<
   FollowUpWithToolsIntentRequestParams
 >;
 
+export type FollowUpWithToolsFinishedIntentRequest = BaseIntentRequest<
+  IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED,
+  FollowUpWithToolsFinishedIntentRequestParams
+>;
+
+export type FollowUpWithToolsEndIntentRequest = BaseIntentRequest<
+  IntentRequestType.FOLLOW_UP_WITH_TOOLS_END,
+  FollowUpWithToolsEndIntentRequestParams
+>;
+
 /**
  * Intent Request 数据结构
  * @description
@@ -238,7 +280,9 @@ export type IntentRequest =
   | UpdateMemoryIntentRequest
   | LoadSkillIntentRequest
   | FollowUpIntentRequest
-  | FollowUpWithToolsIntentRequest;
+  | FollowUpWithToolsIntentRequest
+  | FollowUpWithToolsFinishedIntentRequest
+  | FollowUpWithToolsEndIntentRequest;
 
 /**
  * Intent Request 安全检查上下文
@@ -248,6 +292,7 @@ export type IntentRequest =
 export type IntentRequestSafetyContext = {
   sessionId: UUID;
   chatId: UUID;
+  hasActiveToolContext?: boolean;
 };
 
 /**
@@ -267,6 +312,8 @@ export enum IntentRequestSafetyIssueCode {
   FOLLOW_UP_WITH_TOOLS_SUMMARY_TOO_LONG = "follow_up_with_tools_summary_too_long",
   FOLLOW_UP_WITH_TOOLS_NEXT_PROMPT_TOO_LONG = "follow_up_with_tools_next_prompt_too_long",
   FOLLOW_UP_WITH_TOOLS_AVOID_REPEAT_TOO_LONG = "follow_up_with_tools_avoid_repeat_too_long",
+  FOLLOW_UP_WITH_TOOLS_END_REASON_TOO_LONG = "follow_up_with_tools_end_reason_too_long",
+  TOOL_CONTEXT_REQUIRED = "tool_context_required",
   INVALID_REQUEST_SOURCE = "invalid_request_source",
 }
 

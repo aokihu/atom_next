@@ -53,6 +53,12 @@ export type TransportToolCallFinishEvent = {
   error?: unknown;
 };
 
+export type TransportPendingToolCall = {
+  toolName: string;
+  toolCallId?: string;
+  input: unknown;
+};
+
 type SendOptions = {
   abortSignal?: AbortSignal;
   maxOutputTokens?: number;
@@ -91,6 +97,7 @@ type SendResult = {
   toolCallCount: number;
   toolResultCount: number;
   responseMessageCount: number;
+  pendingToolCalls: TransportPendingToolCall[];
 };
 
 type TransportModelCache = {
@@ -120,6 +127,41 @@ type RawToolCallFinishEvent = {
       error: unknown;
     }
 );
+
+type RawStepToolCall = {
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+  args?: unknown;
+};
+
+const normalizePendingToolCalls = (steps: Array<{
+  toolCalls: RawStepToolCall[];
+}>, finishReason: FinishReason): TransportPendingToolCall[] => {
+  if (finishReason !== "tool-calls" || steps.length === 0) {
+    return [];
+  }
+
+  const lastStep = steps[steps.length - 1];
+
+  return lastStep.toolCalls
+    .map((toolCall) => {
+      const toolName = toolCall.toolName;
+
+      if (typeof toolName !== "string" || toolName.trim() === "") {
+        return null;
+      }
+
+      return {
+        toolName,
+        ...(typeof toolCall.toolCallId === "string"
+          ? { toolCallId: toolCall.toolCallId }
+          : {}),
+        input: toolCall.input ?? toolCall.args ?? {},
+      } satisfies TransportPendingToolCall;
+    })
+    .filter((toolCall): toolCall is TransportPendingToolCall => toolCall !== null);
+};
 
 /**
  * Core Transport
@@ -351,6 +393,7 @@ export class Transport {
       toolCallCount,
       toolResultCount,
       responseMessageCount: response.messages.length,
+      pendingToolCalls: normalizePendingToolCalls(steps, finishReason),
     };
   }
 

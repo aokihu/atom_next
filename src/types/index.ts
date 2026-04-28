@@ -101,6 +101,9 @@ export type {
   LoadSkillIntentRequestParams,
   FollowUpIntentRequestParams,
   FollowUpWithToolsIntentRequestParams,
+  FollowUpWithToolsFinishedIntentRequestParams,
+  FollowUpWithToolsEndIntentRequestParams,
+  FollowUpWithToolsEndReasonCode,
   PrepareConversationIntentRequest,
   SearchMemoryIntentRequest,
   LoadMemoryIntentRequest,
@@ -110,6 +113,8 @@ export type {
   LoadSkillIntentRequest,
   FollowUpIntentRequest,
   FollowUpWithToolsIntentRequest,
+  FollowUpWithToolsFinishedIntentRequest,
+  FollowUpWithToolsEndIntentRequest,
   IntentRequestSafetyContext,
   RejectedIntentRequest,
   IntentRequestSafetyResult,
@@ -133,9 +138,11 @@ export {
   PREPARE_CONVERSATION_INTENT_TYPES,
   PREPARE_CONVERSATION_PROMPT_VARIANTS,
   PREPARE_CONVERSATION_PREDICTION_TRUST,
+  FOLLOW_UP_WITH_TOOLS_END_REASON_CODES,
   isIntentRequestType,
   isIntentRequestMemoryScope,
   isIntentRequestMemoryUnloadReason,
+  isFollowUpWithToolsEndReasonCode,
 } from "./intent-request";
 
 /* ==================== */

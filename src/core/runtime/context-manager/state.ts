@@ -14,6 +14,7 @@ import type {
   RuntimeMemoryContext,
   RuntimeMemoryScopeContext,
   RuntimeSessionContext,
+  RuntimeToolContext,
 } from "./types";
 
 /* ==================== */
@@ -39,6 +40,15 @@ export const createRuntimeContinuationContext =
       updatedAt: null,
     };
   };
+
+export const createRuntimeToolContext = (): RuntimeToolContext => {
+  return {
+    mode: "idle",
+    results: [],
+    injectionOrder: [],
+    updatedAt: null,
+  };
+};
 
 /* ==================== */
 /* Nested State Factory */

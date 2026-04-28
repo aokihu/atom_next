@@ -86,7 +86,7 @@ export const bashTool = (context: ToolExecutionContext) =>
   ({
     description: "Run a single bash command in workspace or a workspace subdirectory",
     inputSchema: z.object({
-      cwd: z.string().optional().describe("absolute working directory path, defaults to tool workspace"),
+      cwd: z.string().optional().describe("absolute working directory path inside the current workspace, defaults to the workspace root"),
       command: z.string().min(1).describe("bash command string"),
       timeoutMs: z.number().int().positive().optional().describe("command timeout in ms, default 30000"),
     }),

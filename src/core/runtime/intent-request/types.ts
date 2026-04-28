@@ -8,6 +8,8 @@
  */
 import type { MemoryService } from "@/services";
 import type {
+  FollowUpWithToolsEndIntentRequestParams,
+  FollowUpWithToolsFinishedIntentRequestParams,
   FollowUpWithToolsIntentRequestParams,
   MemoryScope,
 } from "@/types";
@@ -66,5 +68,27 @@ export type RuntimeIntentRequestExecutionContext = {
   ) => void;
   setContinuationContext: (
     input: FollowUpWithToolsIntentRequestParams,
+  ) => void;
+  activateToolContext: () => void;
+  setToolContextMode: (
+    mode: "active" | "finished" | "ended",
+  ) => void;
+  appendToolResult: (input: {
+    toolName: string;
+    toolCallId?: string;
+    toolInput: unknown;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+    reusable?: boolean;
+  }) => void;
+  removeToolResult: (key: string) => boolean;
+  clearToolContext: () => void;
+  hasActiveToolContext: () => boolean;
+  setFinishedContinuationContext: (
+    input: FollowUpWithToolsFinishedIntentRequestParams,
+  ) => void;
+  recordToolEnd: (
+    input: FollowUpWithToolsEndIntentRequestParams,
   ) => void;
 };

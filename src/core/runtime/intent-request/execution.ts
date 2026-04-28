@@ -35,7 +35,9 @@ import type {
 
 const isFollowUpRequest = (request: IntentRequest) => {
   return request.request === IntentRequestType.FOLLOW_UP
-    || request.request === IntentRequestType.FOLLOW_UP_WITH_TOOLS;
+    || request.request === IntentRequestType.FOLLOW_UP_WITH_TOOLS
+    || request.request === IntentRequestType.FOLLOW_UP_WITH_TOOLS_FINISHED
+    || request.request === IntentRequestType.FOLLOW_UP_WITH_TOOLS_END;
 };
 
 export const executeIntentRequests = async (

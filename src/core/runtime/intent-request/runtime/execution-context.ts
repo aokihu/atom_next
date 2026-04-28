@@ -65,5 +65,40 @@ export function createIntentRequestExecutionContext(
     setContinuationContext: (continuation) => {
       input.contextManager.setContinuationContext(continuation);
     },
+    activateToolContext: () => {
+      input.contextManager.activateToolContext();
+    },
+    setToolContextMode: (mode) => {
+      input.contextManager.setToolContextMode(mode);
+    },
+    appendToolResult: (toolResult) => {
+      input.contextManager.appendToolResult(toolResult);
+    },
+    removeToolResult: (key) => {
+      return input.contextManager.removeToolResult(key);
+    },
+    clearToolContext: () => {
+      input.contextManager.clearToolContext();
+    },
+    hasActiveToolContext: () => {
+      return input.contextManager.hasActiveToolContext();
+    },
+    setFinishedContinuationContext: (continuation) => {
+      input.contextManager.setContinuationContext({
+        summary: continuation.summary,
+        nextPrompt: continuation.nextPrompt ?? "",
+        avoidRepeat: continuation.avoidRepeat,
+      });
+    },
+    recordToolEnd: (toolEnd) => {
+      input.contextManager.setToolContextMode("ended");
+      input.contextManager.appendToolResult({
+        toolName: "tool_phase_end",
+        toolInput: { reasonCode: toolEnd.reasonCode },
+        ok: false,
+        error: toolEnd.reason,
+        reusable: false,
+      });
+    },
   };
 }

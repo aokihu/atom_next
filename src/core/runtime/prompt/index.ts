@@ -29,6 +29,7 @@ export {
   convertConversationContextToPrompt,
   convertContinuationContextToPrompt,
   convertFollowUpContextToPrompt,
+  convertToolContextToPrompt,
   convertMemoryScopeContextToPrompt,
   convertIntentPolicyToPrompt,
   convertRuntimeContextToPrompt,
