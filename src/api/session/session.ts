@@ -3,7 +3,7 @@
  * @description 负责会话和 chat 的内存状态推进，并协调归档读写
  */
 
-import { buildError, ErrorCause } from "@/libs";
+import { createError, ErrorCause } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import type { RuntimeService } from "@/services/runtime";
 import type {
@@ -123,7 +123,7 @@ const buildCompletedChat = (
     createdAt: chat.createdAt,
     updatedAt: finishedAt,
     finishedAt,
-    status: ChatStatus.COMPLETE,
+    status: ChatStatus.COMPLETED,
     message,
   };
 };
@@ -180,7 +180,7 @@ export class SessionManager {
     const runtime = this.#serviceManager.getService<RuntimeService>("runtime");
 
     if (!runtime) {
-      throw buildError("Runtime service not found", {
+      throw createError("Runtime service not found", {
         cause: ErrorCause.Config,
       });
     }
@@ -192,7 +192,7 @@ export class SessionManager {
     const workspace = this.#getRuntime().getWorkspace();
 
     if (workspace.trim() === "") {
-      throw buildError("workspace argument not found", {
+      throw createError("workspace argument not found", {
         cause: ErrorCause.Config,
       });
     }
@@ -261,7 +261,7 @@ export class SessionManager {
     const chat = session.chats.get(chatId);
 
     if (!chat) {
-      throw buildError(`Chat not found: ${chatId}`, {
+      throw createError(`Chat not found: ${chatId}`, {
         cause: ErrorCause.NotFound,
       });
     }
@@ -316,10 +316,10 @@ export class SessionManager {
     const now = Date.now();
 
     if (
-      chat.status === ChatStatus.COMPLETE ||
+      chat.status === ChatStatus.COMPLETED ||
       chat.status === ChatStatus.FAILED
     ) {
-      throw buildError(
+      throw createError(
         `Cannot append output delta to chat in '${chat.status}' status`,
         {
           cause: ErrorCause.InvalidState,
@@ -342,7 +342,7 @@ export class SessionManager {
     const now = Date.now();
 
     if (
-      chat.status === ChatStatus.COMPLETE ||
+      chat.status === ChatStatus.COMPLETED ||
       chat.status === ChatStatus.FAILED ||
       chat.status === ChatStatus.PROCESSING
     ) {
@@ -367,12 +367,12 @@ export class SessionManager {
     const chat = this.#getChat(session, chatId);
     const now = Date.now();
 
-    if (chat.status === ChatStatus.COMPLETE) {
+    if (chat.status === ChatStatus.COMPLETED) {
       return chat;
     }
 
     if (chat.status === ChatStatus.FAILED) {
-      throw buildError("Cannot complete a failed chat", {
+      throw createError("Cannot complete a failed chat", {
         cause: ErrorCause.InvalidState,
       });
     }
@@ -404,8 +404,8 @@ export class SessionManager {
       return chat;
     }
 
-    if (chat.status === ChatStatus.COMPLETE) {
-      throw buildError("Cannot fail a completed chat", {
+    if (chat.status === ChatStatus.COMPLETED) {
+      throw createError("Cannot fail a completed chat", {
         cause: ErrorCause.InvalidState,
       });
     }
@@ -443,7 +443,7 @@ export class SessionManager {
       result.chunks = chat.chunks;
     }
 
-    if (chat.status === ChatStatus.COMPLETE) {
+    if (chat.status === ChatStatus.COMPLETED) {
       result.message = chat.message;
     }
 
@@ -462,13 +462,13 @@ export class SessionManager {
       if (await hasArchivedSession(workspace, sessionId)) {
         return;
       }
-      throw buildError(`Session not found: ${sessionId}`, {
+      throw createError(`Session not found: ${sessionId}`, {
         cause: ErrorCause.NotFound,
       });
     }
 
     if (!this.#canArchiveSession(session)) {
-      throw buildError(`Session is not archivable: ${sessionId}`, {
+      throw createError(`Session is not archivable: ${sessionId}`, {
         cause: ErrorCause.InvalidState,
       });
     }
@@ -489,7 +489,7 @@ export class SessionManager {
     const session = await readArchivedSession(this.#getWorkspace(), sessionId);
 
     if (!session) {
-      throw buildError(`Session not found: ${sessionId}`, {
+      throw createError(`Session not found: ${sessionId}`, {
         cause: ErrorCause.NotFound,
       });
     }

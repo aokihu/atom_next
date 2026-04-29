@@ -14,7 +14,7 @@ export enum ChatStatus {
   WAITING = "waiting",
   PENDING = "pending",
   PROCESSING = "processing",
-  COMPLETE = "complete",
+  COMPLETED = "completed",
   FAILED = "failed",
 }
 
@@ -59,7 +59,7 @@ export type StreamingChat = BaseChat & {
 };
 
 export type CompletedChat = BaseChat & {
-  status: ChatStatus.COMPLETE;
+  status: ChatStatus.COMPLETED;
   finishedAt: number;
   message: ChatMessage;
 };

@@ -6,6 +6,6 @@
  *              每一个工作流只聚焦于一个任务
  *              复杂的任务应该细分为简单的工作流组合而成,不应该在一个工作流中实现复杂的逻辑工作
  */
-export { runUserIntentPredictionWorkflow } from "./run-user-intent-prediction";
-export { runPostFollowUpWorkflow } from "./run-post-follow-up";
-export { runFormalConversationWorkflow } from "./run-formal-conversation";
+export { runUserIntentPredictionWorkflow } from "./runUserIntentPredictionWorkflow";
+export { runPostFollowUpWorkflow } from "./runPostFollowUpWorkflow";
+export { runFormalConversationWorkflow } from "./runFormalConversationWorkflow";

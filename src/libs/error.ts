@@ -14,7 +14,7 @@ type BuildErrorOptions = {
   cause?: ErrorCause | string;
 };
 
-export const buildError = (message: string, options: BuildErrorOptions = {}) =>
+export const createError = (message: string, options: BuildErrorOptions = {}) =>
   new Error(message, options.cause ? { cause: options.cause } : undefined);
 
 export const hasErrorCause = (

@@ -57,7 +57,7 @@ export function finalizeChatTurn(
     completedPayload: {
       sessionId: task.sessionId,
       chatId: task.chatId,
-      status: ChatStatus.COMPLETE,
+      status: ChatStatus.COMPLETED,
       message: {
         createdAt: Date.now(),
         data: finalMessage,

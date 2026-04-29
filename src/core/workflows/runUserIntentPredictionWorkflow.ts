@@ -141,7 +141,7 @@ async function applyPredictionExecution(
   if (result.status === "continue") {
     input.env.taskQueue.updateTask(
       input.env.task.id,
-      { state: TaskState.COMPLETE },
+      { state: TaskState.COMPLETED },
       { shouldSyncEvent: false },
     );
 

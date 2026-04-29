@@ -8,7 +8,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ServiceManager } from "@/libs/service-manage";
-import { buildTaskItem } from "@/libs/task";
+import { createTaskItem } from "@/libs/task";
 import { TaskWorkflow } from "@/types/task";
 import type { LogEntry, LogSink } from "@/libs/log";
 import { createLogSystem } from "@/libs/log";
@@ -81,7 +81,7 @@ describe("Core logging", () => {
   test.skip("logs initialization and task activation", async () => {
     const { entries, logger } = createMemoryLog();
     const core = new Core(createServiceManager(), { logger });
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       workflow: TaskWorkflow.FORMAL_CONVERSATION,
@@ -114,7 +114,7 @@ describe("Core logging", () => {
   test.skip("logs workflow failures with task context", async () => {
     const { entries, logger } = createMemoryLog();
     const core = new Core(createServiceManager(), { logger });
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-2",
       chatId: "chat-2",
       workflow: TaskWorkflow.FORMAL_CONVERSATION,

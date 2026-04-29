@@ -2,20 +2,20 @@
 import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 
-import { runFormalConversationWorkflow } from "@/core/workflows/run-formal-conversation";
+import { runFormalConversationWorkflow } from "@/core/workflows/runFormalConversationWorkflow";
 import { ChatEvents } from "@/types/event";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const buildTask = (
   id: string,
-  overrides: Partial<TaskItem & { chain_round?: number }> = {},
+  overrides: Partial<TaskItem & { chainRound?: number }> = {},
 ): TaskItem => {
   const now = Date.now();
 
   return {
     id,
     chainId: overrides.chainId ?? id,
-    parentId: overrides.parentId ?? id,
+    parentTaskId: overrides.parentTaskId ?? id,
     sessionId: overrides.sessionId ?? "session-1",
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
@@ -27,8 +27,8 @@ const buildTask = (
     payload: overrides.payload ?? [{ type: "text", data: "hello workflow" }],
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
-    ...(typeof overrides.chain_round === "number"
-      ? { chain_round: overrides.chain_round }
+    ...(typeof overrides.chainRound === "number"
+      ? { chainRound: overrides.chainRound }
       : {}),
   } as TaskItem;
 };
@@ -71,7 +71,7 @@ describe("runFormalConversationWorkflow", () => {
       completedPayload: {
         sessionId: task.sessionId,
         chatId: task.chatId,
-        status: "complete",
+        status: "completed",
         message: {
           createdAt: Date.now(),
           data: "final answer",
@@ -151,7 +151,7 @@ describe("runFormalConversationWorkflow", () => {
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(updateTask.mock.calls).toEqual([
       [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
-      [task.id, { state: TaskState.COMPLETE }, { shouldSyncEvent: false }],
+      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
     expect(outputUpdated).toHaveBeenCalledTimes(1);
     expect(completed).toHaveBeenCalledTimes(1);
@@ -179,7 +179,7 @@ describe("runFormalConversationWorkflow", () => {
       completedPayload: {
         sessionId: task.sessionId,
         chatId: task.chatId,
-        status: "complete",
+        status: "completed",
         message: {
           createdAt: Date.now(),
           data: "final answer",
@@ -297,7 +297,7 @@ describe("runFormalConversationWorkflow", () => {
         completedPayload: {
           sessionId: task.sessionId,
           chatId: task.chatId,
-          status: "complete",
+          status: "completed",
           message: {
             createdAt: Date.now(),
             data: options.resultText,
@@ -346,7 +346,7 @@ describe("runFormalConversationWorkflow", () => {
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用已完成");
     expect(updateTask.mock.calls).toEqual([
       [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
-      [task.id, { state: TaskState.COMPLETE }, { shouldSyncEvent: false }],
+      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
   });
 
@@ -391,7 +391,7 @@ describe("runFormalConversationWorkflow", () => {
         completedPayload: {
           sessionId: task.sessionId,
           chatId: task.chatId,
-          status: "complete",
+          status: "completed",
           message: {
             createdAt: Date.now(),
             data: "done",
@@ -496,7 +496,7 @@ describe("runFormalConversationWorkflow", () => {
         completedPayload: {
           sessionId: task.sessionId,
           chatId: task.chatId,
-          status: "complete",
+          status: "completed",
           message: {
             createdAt: Date.now(),
             data: options.resultText,
@@ -549,7 +549,7 @@ describe("runFormalConversationWorkflow", () => {
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用失败");
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("The file does not exist");
     expect(updateTask.mock.calls).toEqual([
-      [task.id, { state: TaskState.COMPLETE }, { shouldSyncEvent: false }],
+      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
   });
 
@@ -596,7 +596,7 @@ describe("runFormalConversationWorkflow", () => {
         completedPayload: {
           sessionId: task.sessionId,
           chatId: task.chatId,
-          status: "complete",
+          status: "completed",
           message: {
             createdAt: Date.now(),
             data: options.resultText,
@@ -670,7 +670,7 @@ describe("runFormalConversationWorkflow", () => {
       parseIntentRequest: mock(() => ({ safeRequests: [] })),
       executeIntentRequests: mock(async () => ({ status: "continue" })),
       executeConversationToolCalls: mock(async () => ({ ok: true })),
-      buildContinuationFormalConversationTask: mock(() => nextTask),
+      createContinuationFormalConversationTask: mock(() => nextTask),
       finalizeChatTurn: mock(() => {
         throw new Error("should not finalize");
       }),
@@ -763,7 +763,7 @@ describe("runFormalConversationWorkflow", () => {
         reasonCode: "tool_error",
         reason: "read failed",
       })),
-      buildContinuationFormalConversationTask: mock(() => {
+      createContinuationFormalConversationTask: mock(() => {
         throw new Error("should not schedule next task");
       }),
       finalizeChatTurn: mock((_task, options) => ({
@@ -772,7 +772,7 @@ describe("runFormalConversationWorkflow", () => {
         completedPayload: {
           sessionId: task.sessionId,
           chatId: task.chatId,
-          status: "complete",
+          status: "completed",
           message: {
             createdAt: Date.now(),
             data: options.resultText,

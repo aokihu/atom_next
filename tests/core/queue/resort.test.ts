@@ -8,21 +8,21 @@ type TaskParams = Pick<TaskItem, "id"> &
   Partial<
     Pick<
       TaskItem,
-      "chainId" | "parentId" | "priority" | "createdAt" | "updatedAt"
+      "chainId" | "parentTaskId" | "priority" | "createdAt" | "updatedAt"
     >
   >;
 
 const buildTask = ({
   id,
   chainId = id,
-  parentId,
+  parentTaskId,
   priority = 2,
   createdAt = 0,
   updatedAt = 0,
 }: TaskParams): TaskItem => ({
   id,
   chainId,
-  parentId,
+  parentTaskId,
   sessionId: `${id}-session`,
   chatId: `${id}-chat`,
   priority,
@@ -55,7 +55,7 @@ describe("queue resort", () => {
       buildTask({
         id: "child",
         chainId: "root",
-        parentId: "root",
+        parentTaskId: "root",
         priority: 2,
       }),
       buildTask({ id: "other", priority: 2, createdAt: 1 }),
@@ -76,7 +76,7 @@ describe("queue resort", () => {
       buildTask({
         id: "child",
         chainId: "root",
-        parentId: "root",
+        parentTaskId: "root",
         priority: 3,
       }),
     ];
@@ -95,7 +95,7 @@ describe("queue resort", () => {
       buildTask({
         id: "child",
         chainId: "root",
-        parentId: "root",
+        parentTaskId: "root",
         priority: 3,
       }),
     ];

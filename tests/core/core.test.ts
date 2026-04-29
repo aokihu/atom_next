@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { buildTaskItem } from "@/libs";
+import { createTaskItem } from "@/libs";
 import { ServiceManager } from "@/libs/service-manage";
 import { ChatEvents } from "@/types/event";
 import { RuntimeService, MemoryService, ToolService } from "@/services";
@@ -209,7 +209,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "先搜索相关长期记忆，再回答。" }],
@@ -301,7 +301,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "请先搜索默认 scope，再告诉我默认配置。" }],
@@ -398,7 +398,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "请先搜索默认 scope，再回答 MemoryService 默认配置。" }],
@@ -496,7 +496,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "先搜索不存在的长期记忆，再回答。" }],
@@ -591,7 +591,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "请按明确 key 加载记忆后回答。" }],
@@ -669,7 +669,7 @@ describe("Core memory intent requests", () => {
       completedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "你有关于 AGENTS.md 的记忆吗" }],
@@ -731,7 +731,7 @@ describe("Core memory intent requests", () => {
       failedEvents.push(payload);
     });
 
-    const task = buildTaskItem({
+    const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
       payload: [{ type: "text", data: "随便回答一个当前问题" }],
@@ -836,7 +836,7 @@ describe("Core memory intent requests", () => {
     const core = new Core(serviceManager);
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-1",
         payload: [{ type: "text", data: "你有 AGENTS.md 相关的记忆吗" }],
@@ -848,7 +848,7 @@ describe("Core memory intent requests", () => {
     await core.runOnce();
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-2",
         payload: [{ type: "text", data: "是的" }],
@@ -932,7 +932,7 @@ describe("Core memory intent requests", () => {
     const core = new Core(serviceManager);
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-1",
         payload: [{ type: "text", data: "继续检查 tools 集成" }],
@@ -946,7 +946,7 @@ describe("Core memory intent requests", () => {
     await core.runOnce();
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-2",
         payload: [{ type: "text", data: "新的外部问题" }],
@@ -1082,7 +1082,7 @@ describe("Core memory intent requests", () => {
     const core = new Core(serviceManager);
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-1",
         payload: [{ type: "text", data: "你有 AGENTS.md 相关的记忆吗" }],
@@ -1096,7 +1096,7 @@ describe("Core memory intent requests", () => {
     await core.runOnce();
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-2",
         payload: [{ type: "text", data: "是的" }],

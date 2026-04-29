@@ -18,7 +18,7 @@ import { EventEmitter } from "node:events";
 import { tryit } from "radashi";
 import { ServiceManager } from "@/libs/service-manage";
 import { Core } from "@/core";
-import { buildError, buildTaskItem, ErrorCause, hasErrorCause } from "@/libs";
+import { createError, createTaskItem, ErrorCause, hasErrorCause } from "@/libs";
 import type { Logger } from "@/libs/log";
 import { SessionManager } from "./session/session";
 import { startServer } from "./server";
@@ -117,7 +117,7 @@ export class APIServer extends EventEmitter {
     request: BunRequest,
   ): Promise<ChatSubmissionBody> {
     const body = await request.json().catch(() => {
-      throw buildError("request body is not valid JSON", {
+      throw createError("request body is not valid JSON", {
         cause: ErrorCause.BadRequest,
       });
     });
@@ -318,7 +318,7 @@ export class APIServer extends EventEmitter {
 
       await this.#sessionManager.createChat(sessionId, chatId);
       const eventTarget = this;
-      const task = buildTaskItem({
+      const task = createTaskItem({
         chatId,
         sessionId,
         eventTarget,

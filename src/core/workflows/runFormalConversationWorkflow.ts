@@ -356,7 +356,7 @@ async function handleToolBoundary(
     { shouldSyncEvent: false },
   );
   await input.env.taskQueue.addTask(
-    input.env.runtime.buildContinuationFormalConversationTask(input.env.task),
+    input.env.runtime.createContinuationFormalConversationTask(input.env.task),
   );
 
   return {
@@ -480,7 +480,7 @@ async function applyIntentRequestExecution(
  * - finalize 时：
  *   1. 让 runtime 生成最终完成结果
  *   2. 发 output update 事件
- *   3. 推进 COMPLETE 状态
+ *   3. 推进 COMPLETED 状态
  *   4. 发 CHAT_COMPLETED
  */
 async function finalizeConversation(
@@ -503,7 +503,7 @@ async function finalizeConversation(
 
   input.env.taskQueue.updateTask(
     input.env.task.id,
-    { state: TaskState.COMPLETE },
+    { state: TaskState.COMPLETED },
     { shouldSyncEvent: false },
   );
 

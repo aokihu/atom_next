@@ -2,33 +2,33 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "events";
 
-import { buildInternalTaskItem, buildTaskItem } from "@/core/queue/task";
+import { createInternalTaskItem, createTaskItem } from "@/libs/task";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const createTask = (overrides = {}) =>
-  buildTaskItem({
+  createTaskItem({
     sessionId: "session-1",
     chatId: "chat-1",
     ...overrides,
   });
 
 const createInternalTask = (overrides = {}) =>
-  buildInternalTaskItem({
+  createInternalTaskItem({
     sessionId: "session-1",
     chatId: "chat-1",
     chainId: "chain-1",
-    parentId: "parent-1",
+    parentTaskId: "parent-1",
     ...overrides,
   });
 
-describe("buildTaskItem", () => {
+describe("createTaskItem", () => {
   test("creates a task with default values", () => {
     const task = createTask();
 
     expect(task.id).toBeDefined();
     expect(task.id.length).toBeGreaterThan(0);
     expect(task.chainId).toBe(task.id);
-    expect(task.parentId).toBe(task.id);
+    expect(task.parentTaskId).toBe(task.id);
     expect(task.source).toBe(TaskSource.EXTERNAL);
     expect(task.state).toBe(TaskState.WAITING);
     expect(task.priority).toBe(2);
@@ -151,7 +151,7 @@ describe("buildTaskItem", () => {
 
   test("can modify state and updatedAt together", () => {
     const task = createTask();
-    const newState = TaskState.COMPLETE;
+    const newState = TaskState.COMPLETED;
     const newTime = Date.now() + 5000;
 
     expect(() => {
@@ -222,9 +222,9 @@ describe("buildTaskItem", () => {
     expect(task.chainId).toBe(task.id);
   });
 
-  test("creates task with parentId same as id by default", () => {
+  test("creates task with parentTaskId same as id by default", () => {
     const task = createTask();
-    expect(task.parentId).toBe(task.id);
+    expect(task.parentTaskId).toBe(task.id);
   });
 
   test("createdAt and updatedAt are set to current time", () => {
@@ -241,7 +241,7 @@ describe("buildTaskItem", () => {
     const task = createTask();
 
     expect(task.chainId).toBe(task.id);
-    expect(task.parentId).toBe(task.id);
+    expect(task.parentTaskId).toBe(task.id);
   });
 
   test("creates an internal task with explicit lineage", () => {
@@ -249,37 +249,37 @@ describe("buildTaskItem", () => {
 
     expect(task.id).toBeDefined();
     expect(task.chainId).toBe("chain-1");
-    expect(task.parentId).toBe("parent-1");
+    expect(task.parentTaskId).toBe("parent-1");
     expect(task.source).toBe(TaskSource.INTERNAL);
     expect(task.state).toBe(TaskState.WAITING);
     expect(task.priority).toBe(1);
     expect(task.payload).toEqual([]);
     expect(task.eventTarget).toBeUndefined();
     expect(task.channel).toEqual({ domain: "tui" });
-    expect(task.chain_round).toBeUndefined();
+    expect(task.chainRound).toBeUndefined();
   });
 
   test("uses provided internal task parameters", () => {
     const task = createInternalTask({
       priority: 0,
-      chain_round: 2,
+      chainRound: 2,
       payload: [{ type: "text", data: "continue" }],
       channel: { domain: "gateway", source: "core" },
     });
 
     expect(task.priority).toBe(0);
-    expect(task.chain_round).toBe(2);
+    expect(task.chainRound).toBe(2);
     expect(task.payload).toEqual([{ type: "text", data: "continue" }]);
     expect(task.channel).toEqual({ domain: "gateway", source: "core" });
   });
 
-  test("throws error when modifying readonly property chain_round", () => {
+  test("throws error when modifying readonly property chainRound", () => {
     const task = createInternalTask({
-      chain_round: 1,
+      chainRound: 1,
     });
 
     expect(() => {
-      (task as any).chain_round = 2;
+      (task as any).chainRound = 2;
     }).toThrow("Attempted to assign to readonly property.");
   });
 });

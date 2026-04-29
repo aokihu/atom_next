@@ -3,7 +3,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import { EventEmitter } from "node:events";
 
 import { TaskQueue } from "@/core/queue/queue";
-import { buildTaskItem } from "@/core/queue/task";
+import { createTaskItem } from "@/libs/task";
 import resort from "@/core/queue/resort";
 import type { AppContext } from "@/types/app";
 import { ChatStatus } from "@/types/chat";
@@ -14,7 +14,7 @@ import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 const mockAppContext: AppContext = {};
 
 const createTask = (overrides = {}) =>
-  buildTaskItem({
+  createTaskItem({
     sessionId: "session-1",
     chatId: "chat-1",
     ...overrides,
@@ -29,7 +29,7 @@ const buildTestTask = (
   return {
     id,
     chainId: overrides.chainId ?? id,
-    parentId: overrides.parentId ?? id,
+    parentTaskId: overrides.parentTaskId ?? id,
     sessionId: overrides.sessionId ?? `session-${id}`,
     chatId: overrides.chatId ?? `chat-${id}`,
     source: overrides.source ?? TaskSource.EXTERNAL,
@@ -66,7 +66,7 @@ describe("TaskQueue", () => {
     });
 
     test("gets a normal workable task from queue", async () => {
-      const normalTask = buildTaskItem({
+      const normalTask = createTaskItem({
         sessionId: "session-normal",
         chatId: "chat-normal",
         priority: 2,
@@ -254,16 +254,16 @@ describe("TaskQueue", () => {
       });
 
       await taskQueue.addTask(task);
-      // 直接更新到 COMPLETE 只验证事件类型，不验证 message 结构。
+      // 直接更新到 COMPLETED 只验证事件类型，不验证 message 结构。
       // Core 在真实流程里会在发出 CHAT_COMPLETED 前补齐最终 message。
       task.message = {
         createdAt: Date.now(),
         data: "done",
       };
-      taskQueue.updateTask(task.id, { state: TaskState.COMPLETE });
+      taskQueue.updateTask(task.id, { state: TaskState.COMPLETED });
 
       expect(events).toEqual([
-        expect.objectContaining({ status: ChatStatus.COMPLETE }),
+        expect.objectContaining({ status: ChatStatus.COMPLETED }),
       ]);
     });
 
@@ -307,7 +307,7 @@ describe("TaskQueue", () => {
       };
       taskQueue.updateTask(
         task.id,
-        { state: TaskState.COMPLETE },
+        { state: TaskState.COMPLETED },
         { shouldSyncEvent: false },
       );
 
@@ -445,8 +445,8 @@ describe("TaskQueue", () => {
       }).toThrow();
     });
 
-    test("works with tasks created with buildTaskItem", async () => {
-      const customTask = buildTaskItem({
+    test("works with tasks created with createTaskItem", async () => {
+      const customTask = createTaskItem({
         sessionId: "session-custom",
         chatId: "chat-custom",
         priority: 1,
@@ -557,7 +557,7 @@ describe("resort function - priority and chainId tests", () => {
         }),
         buildTestTask("child", {
           chainId: "root",
-          parentId: "root",
+          parentTaskId: "root",
           priority: 2,
           createdAt: 150,
         }),
@@ -577,7 +577,7 @@ describe("resort function - priority and chainId tests", () => {
         }),
         buildTestTask("child", {
           chainId: "root",
-          parentId: "root",
+          parentTaskId: "root",
           priority: 2,
           createdAt: 150,
         }),
@@ -597,7 +597,7 @@ describe("resort function - priority and chainId tests", () => {
         }),
         buildTestTask("child", {
           chainId: "root",
-          parentId: "root",
+          parentTaskId: "root",
           priority: 3,
           createdAt: 150,
         }),
@@ -613,7 +613,7 @@ describe("resort function - priority and chainId tests", () => {
         buildTestTask("urgent", { chainId: "urgent", priority: 1 }),
         buildTestTask("child", {
           chainId: "root",
-          parentId: "root",
+          parentTaskId: "root",
           priority: 2,
         }),
       ];
@@ -630,13 +630,13 @@ describe("resort function - priority and chainId tests", () => {
       const items = [
         buildTestTask("child2", {
           chainId: "chain1",
-          parentId: "child1",
+          parentTaskId: "child1",
           priority: 2,
         }),
         buildTestTask("root", { chainId: "chain1", priority: 2 }),
         buildTestTask("child1", {
           chainId: "chain1",
-          parentId: "root",
+          parentTaskId: "root",
           priority: 2,
         }),
       ];
@@ -654,7 +654,7 @@ describe("resort function - priority and chainId tests", () => {
         buildTestTask("chain2-task", { chainId: "chain2", priority: 2 }),
         buildTestTask("chain1-task2", {
           chainId: "chain1",
-          parentId: "chain1-task1",
+          parentTaskId: "chain1-task1",
           priority: 2,
         }),
         buildTestTask("chain1-task1", { chainId: "chain1", priority: 2 }),
@@ -672,7 +672,7 @@ describe("resort function - priority and chainId tests", () => {
       const items = [
         buildTestTask("ID1", { chainId: "ID1", priority: 2 }),
         buildTestTask("ID2", { chainId: "ID2", priority: 2 }),
-        buildTestTask("ID3", { chainId: "ID1", parentId: "ID1", priority: 2 }),
+        buildTestTask("ID3", { chainId: "ID1", parentTaskId: "ID1", priority: 2 }),
       ];
 
       const result = await resort(items);
@@ -683,7 +683,7 @@ describe("resort function - priority and chainId tests", () => {
       const items = [
         buildTestTask("orphan", {
           chainId: "chain1",
-          parentId: "non-existent",
+          parentTaskId: "non-existent",
           priority: 2,
         }),
         buildTestTask("root", { chainId: "chain1", priority: 2 }),
@@ -723,7 +723,7 @@ describe("resort function - priority and chainId tests", () => {
         }),
         buildTestTask("chainA-task2", {
           chainId: "chainA",
-          parentId: "chainA-task1",
+          parentTaskId: "chainA-task1",
           priority: 2,
         }),
       ];

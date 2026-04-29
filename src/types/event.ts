@@ -46,7 +46,7 @@ export type ChatOutputUpdatedEventPayload = {
 export type ChatCompletedEventPayload = {
   sessionId: UUID;
   chatId: UUID;
-  status: ChatStatus.COMPLETE;
+  status: ChatStatus.COMPLETED;
   message: ChatMessage;
 };
 

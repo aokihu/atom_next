@@ -25,18 +25,18 @@ const buildChainItems = (items: SortableTask[]): SortableTask[] => {
   const roots: SortableTask[] = [];
 
   for (const item of items) {
-    const parentId = item.parentId;
+    const parentTaskId = item.parentTaskId;
     const hasParentInChain =
-      parentId !== undefined && parentId !== item.id && itemIds.has(parentId);
+      parentTaskId !== undefined && parentTaskId !== item.id && itemIds.has(parentTaskId);
 
     if (!hasParentInChain) {
       roots.push(item);
       continue;
     }
 
-    const children = childrenMap.get(parentId) ?? [];
+    const children = childrenMap.get(parentTaskId) ?? [];
     children.push(item);
-    childrenMap.set(parentId, children);
+    childrenMap.set(parentTaskId, children);
   }
 
   const ordered: SortableTask[] = [];
@@ -67,7 +67,7 @@ const buildChainItems = (items: SortableTask[]): SortableTask[] => {
  * @returns 返回重新排序后的任务队列数组
  * @description 排序按照以下优先级进行:
  *              1. priority 越小排序越靠前
- *              2. chainId相同的请款,按照parentId进行排序,子任务排在父任务之后
+ *              2. chainId相同的请款,按照parentTaskId进行排序,子任务排在父任务之后
  *              3. 如果相同chainId任务中间有优先级相同或者更低的任务,那么自动提升chainId相同的后续任务
  *
  *              比如按照优先级(左边为数组开始)

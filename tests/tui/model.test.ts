@@ -76,7 +76,7 @@ describe("tui model", () => {
           sessionId: "session-1",
           sessionStatus: SessionStatus.ACTIVE,
           chatId: "chat-1",
-          chatStatus: ChatStatus.COMPLETE,
+          chatStatus: ChatStatus.COMPLETED,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           message: {
@@ -171,7 +171,7 @@ describe("tui model", () => {
           sessionId: "session-1",
           sessionStatus: SessionStatus.ACTIVE,
           chatId: "chat-1",
-          chatStatus: ChatStatus.COMPLETE,
+          chatStatus: ChatStatus.COMPLETED,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           message: {
@@ -212,7 +212,7 @@ describe("tui model", () => {
     expect(state.isPolling).toBe(false);
     expect(state.activeChatId).toBeUndefined();
     expect(userMessage?.content).toBe("hello");
-    expect(assistantMessage?.status).toBe(ChatStatus.COMPLETE);
+    expect(assistantMessage?.status).toBe(ChatStatus.COMPLETED);
     expect(assistantMessage?.content).toBe("hello world");
   });
 
@@ -244,7 +244,7 @@ describe("tui model", () => {
         id: "message-4",
         role: "assistant",
         content: "done",
-        status: ChatStatus.COMPLETE,
+        status: ChatStatus.COMPLETED,
         createdAt: 4,
         updatedAt: 4,
       },
@@ -340,7 +340,7 @@ describe("tui model", () => {
 
     expect(
       parseShouldRenderConversationLoading(
-        ChatStatus.COMPLETE,
+        ChatStatus.COMPLETED,
         false,
         false,
       ),

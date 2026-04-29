@@ -6,7 +6,7 @@ import { createLogSystem } from "@/libs/log";
 import { resetLogSystem } from "@/libs/log/log-system";
 import { RuntimeService } from "@/services";
 import { DefaultConfig } from "@/types/config";
-import { buildTaskItem } from "@/libs/task";
+import { createTaskItem } from "@/libs/task";
 
 const createMemoryLog = () => {
   resetLogSystem();
@@ -93,7 +93,7 @@ describe("Runtime logging", () => {
   test("logs rejected and dispatched intent requests through logger", () => {
     const { entries, logger } = createMemoryLog();
     const runtime = new Runtime(createServiceManager(), { logger });
-    runtime.currentTask = buildTaskItem({
+    runtime.currentTask = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
     });

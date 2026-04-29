@@ -52,7 +52,7 @@ export const exportTaskUserInput = (task: TaskItem): string => {
  * 非法 round 一律按 null 处理，避免把异常值写入 follow-up 状态。
  */
 export const parseTaskChainRound = (task: TaskItem): number | null => {
-  const chainRound = task.chain_round;
+  const chainRound = task.chainRound;
 
   if (!isNumber(chainRound) || chainRound < 1) {
     return null;

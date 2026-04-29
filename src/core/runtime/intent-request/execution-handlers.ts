@@ -26,11 +26,11 @@ import { TaskState, type TaskItem } from "@/types/task";
 import { isEmpty } from "radashi";
 import { createRuntimeMemoryItem } from "../memory-item";
 import {
-  buildContinuationFormalConversationTask,
-  buildFollowUpTask,
-  buildFollowUpWithToolsTask,
-  buildFormalConversationTask,
-  buildRepeatedSearchClosureTask,
+  createContinuationFormalConversationTask,
+  createFollowUpTask,
+  createFollowUpWithToolsTask,
+  createFormalConversationTask,
+  createRepeatedSearchClosureTask,
   resolveMemoryScope,
 } from "./execution-helpers";
 import type {
@@ -250,7 +250,7 @@ const processPrepareConversationIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildFormalConversationTask(task),
+    nextTask: createFormalConversationTask(task),
   };
 };
 
@@ -261,7 +261,7 @@ const processFollowUpIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildFollowUpTask(task, request),
+    nextTask: createFollowUpTask(task, request),
   };
 };
 
@@ -277,7 +277,7 @@ const processFollowUpWithToolsIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildFollowUpWithToolsTask(task, request),
+    nextTask: createFollowUpWithToolsTask(task, request),
   };
 };
 
@@ -299,7 +299,7 @@ const processFollowUpWithToolsFinishedIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildContinuationFormalConversationTask(task),
+    nextTask: createContinuationFormalConversationTask(task),
   };
 };
 
@@ -329,7 +329,7 @@ export const processRepeatedSearchFollowUpIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildRepeatedSearchClosureTask(
+    nextTask: createRepeatedSearchClosureTask(
       task,
       searchRequest,
       memoryStatus,
@@ -351,7 +351,7 @@ export const processSearchMemoryWithoutFollowUpIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: buildRepeatedSearchClosureTask(
+    nextTask: createRepeatedSearchClosureTask(
       task,
       searchRequest,
       memoryStatus,

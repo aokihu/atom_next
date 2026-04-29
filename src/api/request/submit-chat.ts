@@ -6,10 +6,10 @@
 import type { ChatSubmissionBody } from "@/types/intent-request";
 import type { TaskChannel, TaskPayload } from "@/types/task";
 import { isPlainObject, isUndefined } from "radashi";
-import { buildError, ErrorCause } from "@/libs";
+import { createError, ErrorCause } from "@/libs";
 
 const buildBadRequestError = (message: string) =>
-  buildError(message, {
+  createError(message, {
     cause: ErrorCause.BadRequest,
   });
 

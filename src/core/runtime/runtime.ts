@@ -22,7 +22,7 @@ import {
   type IntentRequestExecutionResult,
 } from "./intent-request";
 import {
-  buildContinuationFormalConversationTask as runBuildContinuationFormalConversationTask,
+  createContinuationFormalConversationTask as runCreateContinuationFormalConversationTask,
 } from "./intent-request/execution-helpers";
 import {
   exportPredictionPrompt as runExportPredictionPrompt,
@@ -654,8 +654,8 @@ export class Runtime {
   /**
    * 构造一个只依赖 continuation 的 internal formal conversation 任务。
    */
-  public buildContinuationFormalConversationTask(task: TaskItem) {
-    return runBuildContinuationFormalConversationTask(task);
+  public createContinuationFormalConversationTask(task: TaskItem) {
+    return runCreateContinuationFormalConversationTask(task);
   }
 
   /**

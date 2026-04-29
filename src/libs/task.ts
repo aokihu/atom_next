@@ -48,11 +48,11 @@ const defineReadonlyTaskItem = (task: TaskItem): TaskItem => {
 type BuildTaskLineageInput = {
   id?: string;
   chainId: string;
-  parentId: string | undefined;
+  parentTaskId: string | undefined;
   source: TaskSource;
   workflow: TaskWorkflow;
   priority: number;
-  chain_round?: number;
+  chainRound?: number;
 };
 
 /**
@@ -61,11 +61,11 @@ type BuildTaskLineageInput = {
  * 外部任务和内部任务共享同一套只读冻结逻辑，
  * 差异只保留在 lineage/source/priority 的输入上。
  */
-const createTaskItem = (
+const assembleTaskItem = (
   params: Pick<TaskItemInput, "sessionId" | "chatId"> &
     Partial<
       Pick<TaskItemInput, "payload" | "eventTarget" | "channel"> &
-        Pick<BuildTaskLineageInput, "chain_round">
+        Pick<BuildTaskLineageInput, "chainRound">
     > &
     BuildTaskLineageInput,
 ): TaskItem => {
@@ -81,8 +81,8 @@ const createTaskItem = (
   const task: TaskItem = {
     id,
     chainId: params.chainId,
-    chain_round: params.chain_round ?? undefined,
-    parentId: params.parentId,
+    chainRound: params.chainRound ?? undefined,
+    parentTaskId: params.parentTaskId,
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: params.source,
@@ -104,7 +104,7 @@ const createTaskItem = (
  * @description 这里只接收创建外部任务所需的最小输入
  * @returns 返回构造好的任务对象
  */
-export const buildTaskItem = (params: TaskItemInput): TaskItem => {
+export const createTaskItem = (params: TaskItemInput): TaskItem => {
   if (isNullish(params.sessionId)) {
     throw new Error("sessionId is required");
   }
@@ -113,10 +113,10 @@ export const buildTaskItem = (params: TaskItemInput): TaskItem => {
   }
 
   const id = Bun.randomUUIDv7();
-  return createTaskItem({
+  return assembleTaskItem({
     id,
     chainId: id,
-    parentId: id,
+    parentTaskId: id,
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.EXTERNAL,
@@ -131,10 +131,10 @@ export const buildTaskItem = (params: TaskItemInput): TaskItem => {
 /**
  * 构造一个内部任务对象
  * @description
- * 内部任务必须显式传入 chainId 和 parentId，
+ * 内部任务必须显式传入 chainId 和 parentTaskId，
  * 避免在派生 follow-up 任务时丢失任务链路。
  */
-export const buildInternalTaskItem = (
+export const createInternalTaskItem = (
   params: InternalTaskItemInput,
 ): TaskItem => {
   if (isNullish(params.sessionId)) {
@@ -146,14 +146,14 @@ export const buildInternalTaskItem = (
   if (isNullish(params.chainId)) {
     throw new Error("chainId is required");
   }
-  if (isNullish(params.parentId)) {
-    throw new Error("parentId is required");
+  if (isNullish(params.parentTaskId)) {
+    throw new Error("parentTaskId is required");
   }
 
-  return createTaskItem({
+  return assembleTaskItem({
     chainId: params.chainId,
-    parentId: params.parentId,
-    chain_round: params.chain_round,
+    parentTaskId: params.parentTaskId,
+    chainRound: params.chainRound,
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.INTERNAL,

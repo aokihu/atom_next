@@ -39,7 +39,7 @@ export const parseConversationOutputMessages = (messages: TuiMessage[]) => {
 
     return message.role === "assistant" && (
       message.status === ChatStatus.PROCESSING ||
-      message.status === ChatStatus.COMPLETE
+      message.status === ChatStatus.COMPLETED
     );
   });
 };

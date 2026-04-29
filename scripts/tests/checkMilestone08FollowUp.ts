@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import { ServiceManager } from "@/libs/service-manage";
-import { buildTaskItem } from "@/libs/task";
+import { createTaskItem } from "@/libs/task";
 import { Core } from "@/core";
 import { Transport } from "@/core/transport";
 import { RuntimeService } from "@/services/runtime";
@@ -202,7 +202,7 @@ const main = async () => {
     const completionPromise = waitForCompletion(eventTarget);
 
     await core.addTask(
-      buildTaskItem({
+      createTaskItem({
         sessionId: "session-1",
         chatId: "chat-1",
         eventTarget,

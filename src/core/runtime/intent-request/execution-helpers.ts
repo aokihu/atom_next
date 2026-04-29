@@ -6,7 +6,7 @@
  * 这个文件只放执行阶段的共享 helper，
  * 不直接调度执行流程。
  */
-import { buildInternalTaskItem } from "@/libs";
+import { createInternalTaskItem } from "@/libs";
 import type {
   FollowUpIntentRequest,
   FollowUpWithToolsIntentRequest,
@@ -26,31 +26,32 @@ export const resolveMemoryScope = (scope?: string): MemoryScope => {
 };
 
 const parseTaskChainRound = (task: TaskItem) => {
-  const chainRound = task.chain_round;
+  const round = task.chainRound;
 
-  if (!isNumber(chainRound) || chainRound < 1) {
+  if (!isNumber(round) || round < 1) {
     return 0;
   }
 
-  return chainRound;
+  return round;
 };
 
 /* ==================== */
 /* Task Builders        */
 /* ==================== */
 
-export const buildFollowUpTask = (
+export const createFollowUpTask = (
   task: TaskItem,
   request: FollowUpIntentRequest,
 ) => {
   const nextChainRound = parseTaskChainRound(task) + 1;
 
-  return buildInternalTaskItem({
+  return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
     chainId: task.chainId,
-    parentId: task.id,
-    chain_round: nextChainRound,
+    parentTaskId: task.id,
+    chainRound: nextChainRound,
+
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
@@ -70,18 +71,18 @@ export const buildFollowUpTask = (
  * FOLLOW_UP_WITH_TOOLS 的续跑说明不再写入 payload，
  * 下一轮 formal conversation 只通过 Runtime Context 读取 continuation。
  */
-export const buildFollowUpWithToolsTask = (
+export const createFollowUpWithToolsTask = (
   task: TaskItem,
   request: FollowUpWithToolsIntentRequest,
 ) => {
   const nextChainRound = parseTaskChainRound(task) + 1;
 
-  return buildInternalTaskItem({
+  return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
     chainId: task.chainId,
-    parentId: task.id,
-    chain_round: nextChainRound,
+    parentTaskId: task.id,
+    chainRound: nextChainRound,
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
@@ -89,7 +90,7 @@ export const buildFollowUpWithToolsTask = (
   });
 };
 
-export const buildRepeatedSearchClosureTask = (
+export const createRepeatedSearchClosureTask = (
   task: TaskItem,
   searchRequest: SearchMemoryIntentRequest,
   memoryStatus: "loaded" | "empty",
@@ -103,12 +104,12 @@ export const buildRepeatedSearchClosureTask = (
     ? "重复搜索已被 Core 拦截。"
     : "本轮 SEARCH_MEMORY 已执行，但模型没有提交 FOLLOW_UP。";
 
-  return buildInternalTaskItem({
+  return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
     chainId: task.chainId,
-    parentId: task.id,
-    chain_round: nextChainRound,
+    parentTaskId: task.id,
+    chainRound: nextChainRound,
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
@@ -126,13 +127,13 @@ export const buildRepeatedSearchClosureTask = (
   });
 };
 
-export const buildFormalConversationTask = (task: TaskItem) => {
-  return buildInternalTaskItem({
+export const createFormalConversationTask = (task: TaskItem) => {
+  return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
     chainId: task.chainId,
-    parentId: task.id,
-    chain_round: task.chain_round,
+    parentTaskId: task.id,
+    chainRound: task.chainRound,
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
@@ -141,13 +142,13 @@ export const buildFormalConversationTask = (task: TaskItem) => {
   });
 };
 
-export const buildContinuationFormalConversationTask = (task: TaskItem) => {
-  return buildInternalTaskItem({
+export const createContinuationFormalConversationTask = (task: TaskItem) => {
+  return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
     chainId: task.chainId,
-    parentId: task.id,
-    chain_round: task.chain_round,
+    parentTaskId: task.id,
+    chainRound: task.chainRound,
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,

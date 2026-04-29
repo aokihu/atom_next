@@ -5,5 +5,5 @@
  * @description 核心消息队列对象，用于存储和管理消息
  */
 
-export { buildTaskItem } from "./task";
+export { createTaskItem, createInternalTaskItem } from "@/libs/task";
 export { TaskQueue } from "./queue";

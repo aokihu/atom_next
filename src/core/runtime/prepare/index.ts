@@ -38,7 +38,7 @@ import type { PrepareExecutionContext } from "./types";
  * prepare 子域只负责把预处理结果转成统一请求对象，
  * 真正的请求执行仍由 intent-request/execution 子域负责。
  */
-export function buildPrepareConversationIntentRequest(
+export function createPrepareConversationIntentRequest(
   policy: IntentExecutionPolicy,
 ): PrepareConversationIntentRequest {
   return {
@@ -140,5 +140,5 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
     shouldIsolateConversation: topicIsolation.shouldIsolateConversation,
   });
 
-  return buildPrepareConversationIntentRequest(policy);
+  return createPrepareConversationIntentRequest(policy);
 };

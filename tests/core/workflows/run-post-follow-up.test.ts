@@ -1,18 +1,18 @@
 // @ts-nocheck
 import { describe, expect, mock, test } from "bun:test";
-import { runPostFollowUpWorkflow } from "@/core/workflows/run-post-follow-up";
+import { runPostFollowUpWorkflow } from "@/core/workflows/runPostFollowUpWorkflow";
 import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
 
 const buildTask = (
   id: string,
-  overrides: Partial<TaskItem & { chain_round?: number }> = {},
+  overrides: Partial<TaskItem & { chainRound?: number }> = {},
 ): TaskItem => {
   const now = Date.now();
 
   return {
     id,
     chainId: overrides.chainId ?? id,
-    parentId: overrides.parentId ?? id,
+    parentTaskId: overrides.parentTaskId ?? id,
     sessionId: overrides.sessionId ?? "session-1",
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
@@ -24,8 +24,8 @@ const buildTask = (
     payload: overrides.payload ?? [{ type: "text", data: "继续后半部分" }],
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
-    ...(typeof overrides.chain_round === "number"
-      ? { chain_round: overrides.chain_round }
+    ...(typeof overrides.chainRound === "number"
+      ? { chainRound: overrides.chainRound }
       : {}),
   } as TaskItem;
 };
@@ -33,15 +33,15 @@ const buildTask = (
 describe("runPostFollowUpWorkflow", () => {
   test("writes continuation and schedules continuation-driven formal conversation", async () => {
     const task = buildTask("task-1", {
-      chain_round: 1,
+      chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续后半部分。" }],
     });
     const nextTask = buildTask("task-2", {
       chainId: "task-1",
-      parentId: "task-1",
+      parentTaskId: "task-1",
       workflow: TaskWorkflow.FORMAL_CONVERSATION,
       payload: [],
-      chain_round: 1,
+      chainRound: 1,
     });
 
     let currentTask;
@@ -51,7 +51,7 @@ describe("runPostFollowUpWorkflow", () => {
       avoidRepeat: "不要重复前文。",
       fallbackUsed: false,
     }));
-    const buildContinuationFormalConversationTask = mock(() => nextTask);
+    const createContinuationFormalConversationTask = mock(() => nextTask);
     const runtime = {
       set currentTask(next) {
         currentTask = next;
@@ -60,7 +60,7 @@ describe("runPostFollowUpWorkflow", () => {
         return currentTask;
       },
       preparePostFollowUpContinuation,
-      buildContinuationFormalConversationTask,
+      createContinuationFormalConversationTask,
     };
 
     const updateTask = mock(() => {});
@@ -78,10 +78,10 @@ describe("runPostFollowUpWorkflow", () => {
     );
 
     expect(preparePostFollowUpContinuation).toHaveBeenCalledTimes(1);
-    expect(buildContinuationFormalConversationTask).toHaveBeenCalledWith(task);
+    expect(createContinuationFormalConversationTask).toHaveBeenCalledWith(task);
     expect(updateTask).toHaveBeenCalledWith(
       task.id,
-      { state: TaskState.COMPLETE },
+      { state: TaskState.COMPLETED },
       { shouldSyncEvent: false },
     );
     expect(addTask).toHaveBeenCalledWith(nextTask);

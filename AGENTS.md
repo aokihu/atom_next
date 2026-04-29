@@ -30,6 +30,13 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - 优先补全现有职责边界，不额外发散新思路
 - 只有确认出现明确重复、冲突或扩展阻塞时，才做重构
 
+## Naming Convention
+
+- `create` — 从无到有创造新实体（如 `createTaskItem`、`createError`）
+- `build` — 组装现有部件（如 `buildRipgrepArgs`、`buildTuiRendererConfig`）
+- `parse` — 解析文本为结构化数据（如 `parseIntentRequest`）
+- `resolve` — 按条件查找或推导（如 `resolveIntentPolicy`）
+
 ## Core Concept
 
 `Core` 是一个抽象概念，不是单一模块，也不是单一类。

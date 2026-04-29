@@ -59,8 +59,8 @@ export class TaskQueue {
       return ChatStatus.PROCESSING;
     }
 
-    if (state === TaskState.COMPLETE) {
-      return ChatStatus.COMPLETE;
+    if (state === TaskState.COMPLETED) {
+      return ChatStatus.COMPLETED;
     }
 
     if (state === TaskState.FAILED) {
@@ -216,7 +216,7 @@ export class TaskQueue {
 
   /**
    * 添加新的任务到队列中
-   * @param task 新添加的任务,由buildTaskItem组装,这里不检查数据的安全和完整
+   * @param task 新添加的任务,由createTaskItem组装,这里不检查数据的安全和完整
    */
   public async addTask(task: TaskItem) {
     const { priority } = task;

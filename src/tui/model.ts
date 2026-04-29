@@ -160,7 +160,7 @@ const parseMessagePreviewText = (message?: ChatMessage) => {
 };
 
 export const parseChatPreviewText = (result: ChatPollResult) => {
-  if (result.chatStatus === ChatStatus.COMPLETE) {
+  if (result.chatStatus === ChatStatus.COMPLETED) {
     return parseMessagePreviewText(result.message);
   }
 
@@ -420,7 +420,7 @@ export const createTuiStore = (
           });
 
           if (
-            result.chatStatus === ChatStatus.COMPLETE ||
+            result.chatStatus === ChatStatus.COMPLETED ||
             result.chatStatus === ChatStatus.FAILED
           ) {
             set({

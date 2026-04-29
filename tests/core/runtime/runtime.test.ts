@@ -136,14 +136,14 @@ const buildRuntimeWithToolService = async (options: {
 
 const buildTask = (
   id: string,
-  overrides: Partial<TaskItem & { chain_round?: number }> = {},
+  overrides: Partial<TaskItem & { chainRound?: number }> = {},
 ): TaskItem => {
   const now = Date.now();
 
   return {
     id,
     chainId: overrides.chainId ?? id,
-    parentId: overrides.parentId ?? id,
+    parentTaskId: overrides.parentTaskId ?? id,
     sessionId: overrides.sessionId ?? "session-1",
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
@@ -154,8 +154,8 @@ const buildTask = (
     payload: overrides.payload ?? [{ type: "text", data: "hello runtime" }],
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
-    ...(typeof overrides.chain_round === "number"
-      ? { chain_round: overrides.chain_round }
+    ...(typeof overrides.chainRound === "number"
+      ? { chainRound: overrides.chainRound }
       : {}),
   } as TaskItem;
 };
@@ -518,7 +518,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
       workflow: "post_follow_up",
-      chain_round: 1,
+      chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
 
@@ -558,7 +558,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
       workflow: "post_follow_up",
-      chain_round: 1,
+      chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
 
@@ -698,7 +698,7 @@ describe("Runtime context", () => {
       sessionId: "session-1",
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
-      chain_round: 1,
+      chainRound: 1,
       payload: [],
     });
     runtime.currentTask = followUpTask;
@@ -774,13 +774,13 @@ describe("Runtime context", () => {
 
     runtime.currentTask = buildTask("task-2", {
       chainId: "task-1",
-      parentId: "task-1",
+      parentTaskId: "task-1",
       sessionId: "session-1",
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
       priority: 1,
       payload: [{ type: "text", data: "continue" }],
-      chain_round: 1,
+      chainRound: 1,
     });
 
     const prompt = await runtime.exportSystemPrompt({
@@ -816,13 +816,13 @@ describe("Runtime context", () => {
 
     runtime.currentTask = buildTask("task-2", {
       chainId: "task-1",
-      parentId: "task-1",
+      parentTaskId: "task-1",
       sessionId: "session-1",
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
       priority: 1,
       payload: [],
-      chain_round: 1,
+      chainRound: 1,
     });
 
     const prompt = await runtime.exportSystemPrompt({
@@ -1121,7 +1121,7 @@ describe("Runtime context", () => {
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
       payload: [{ type: "text", data: "continue" }],
-      chain_round: 1,
+      chainRound: 1,
     });
     runtime.currentTask = task;
 
@@ -1232,7 +1232,7 @@ describe("Runtime context", () => {
       chatId: "chat-2",
       source: TaskSource.INTERNAL,
       payload: [{ type: "text", data: "continue" }],
-      chain_round: 1,
+      chainRound: 1,
     });
     runtime.currentTask = internalTask;
     await runtime.prepareExecutionContext(internalTask, transport);

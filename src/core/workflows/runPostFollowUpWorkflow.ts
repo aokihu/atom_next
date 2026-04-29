@@ -14,7 +14,7 @@ type PostFollowUpWorkflowEnv = {
 
 type PreparedPostFollowUp = {
   env: PostFollowUpWorkflowEnv;
-  nextTask: ReturnType<Runtime["buildContinuationFormalConversationTask"]>;
+  nextTask: ReturnType<Runtime["createContinuationFormalConversationTask"]>;
 };
 
 function createPostFollowUpWorkflowEnv(
@@ -45,7 +45,7 @@ async function prepareContinuation(
 
   return {
     env,
-    nextTask: env.runtime.buildContinuationFormalConversationTask(env.task),
+    nextTask: env.runtime.createContinuationFormalConversationTask(env.task),
   };
 }
 
@@ -54,7 +54,7 @@ async function applyPostFollowUp(
 ): Promise<void> {
   input.env.taskQueue.updateTask(
     input.env.task.id,
-    { state: TaskState.COMPLETE },
+    { state: TaskState.COMPLETED },
     { shouldSyncEvent: false },
   );
   await input.env.taskQueue.addTask(input.nextTask);
