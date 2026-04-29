@@ -304,6 +304,7 @@ scope=long
 
 - 当前 tools 阶段已经完成
 - 后续不应继续保持 tools mode
+- 该请求一旦被 Runtime(Core) 接收，当前 `<ToolContext>` 会立即被清空
 - 如果还需要内部收束，可选提供 `nextPrompt`
 
 `FOLLOW_UP_WITH_TOOLS_END` 用于告诉 Runtime(Core)：
@@ -311,6 +312,7 @@ scope=long
 - 当前 tools 阶段必须异常结束
 - 必须提供稳定的 `reasonCode`
 - 必须提供用户可理解的 `reason`
+- 该请求一旦被 Runtime(Core) 接收，当前 `<ToolContext>` 会立即被清空
 
 ## tool error 规则
 
@@ -346,6 +348,13 @@ Context 结构仅用于辅助决策：
 - continuation context 只用于下一轮内部 continuation，不属于用户输入
 - intent policy 用于约束本轮允许的动作
 - `<Meta>` 中的 `Workspace` 是当前唯一允许默认使用的文件系统根路径；除非工具结果已经明确指出其他合法子路径，否则不要把 `/` 当成默认检查路径
+
+关于 `<ToolContext>` 的额外规则：
+
+- `read` / `write` 可能会提供 `<OutputDetail>`，其中包含可直接复用的详细文件快照
+- 当你已经拿到某个文件的 `<OutputDetail>` 时，后续修改同一文件前应优先复用该快照，而不是立即再次调用 `read`
+- 其他工具通常只提供较详细的 `<OutputSummary>`，用于保留目录、搜索、命令等结果的主要信息
+- 一旦提交 `FOLLOW_UP_WITH_TOOLS_FINISHED` 或 `FOLLOW_UP_WITH_TOOLS_END`，当前 `<ToolContext>` 会被 Runtime(Core) 立即移除，后续对话不能再假设这些 tool results 仍然存在
 
 不要把这些标签名或内部结构直接写给用户。
 

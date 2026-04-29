@@ -71,6 +71,7 @@ export type RuntimeToolResultRecord = {
   result?: unknown;
   error?: string;
   ok: boolean;
+  snapshotText?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -81,6 +82,7 @@ export type RuntimeToolResultPromptView = {
   target: string;
   summary: string;
   outputSummary: string;
+  outputDetail?: string;
   errorMessage: string;
   reusable: boolean;
 };

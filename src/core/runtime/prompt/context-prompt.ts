@@ -160,7 +160,9 @@ export const convertToolContextToPrompt = (
       `<Reusable>${item.promptView.reusable}</Reusable>`,
     );
 
-    if (item.promptView.outputSummary !== "") {
+    if (item.promptView.outputDetail) {
+      prompt.push("<OutputDetail>", item.promptView.outputDetail, "</OutputDetail>");
+    } else if (item.promptView.outputSummary !== "") {
       prompt.push("<OutputSummary>", item.promptView.outputSummary, "</OutputSummary>");
     }
 

@@ -87,6 +87,7 @@ const buildRuntimeWithServices = async () => {
     runtime: new Runtime(serviceManager),
     memoryService,
     transport: new Transport(serviceManager),
+    workspace,
   };
 };
 
@@ -383,14 +384,66 @@ describe("Runtime context", () => {
     expect(prompt).toContain("<Mode>active</Mode>");
     expect(prompt).toContain("<ToolName>read</ToolName>");
     expect(prompt).toContain(filepath);
+    expect(prompt).toContain("<OutputDetail>");
+    expect(prompt).toContain("0 | line-1");
+    expect(prompt).toContain("1 | line-2");
+  });
+
+  test("executeConversationToolCalls keeps one file snapshot across read and write", async () => {
+    const { runtime, workspace } = await buildRuntimeWithToolService();
+    const filepath = join(workspace, "tool-snapshot.txt");
+    await writeFile(filepath, "before\nstate");
+
+    runtime.currentTask = buildTask("task-tool-context-2");
+
+    await runtime.executeConversationToolCalls([
+      {
+        toolName: "read",
+        toolCallId: "call_read",
+        input: { filepath },
+      },
+    ]);
+
+    const writeResult = await runtime.executeConversationToolCalls([
+      {
+        toolName: "write",
+        toolCallId: "call_write",
+        input: {
+          filepath,
+          content: "after\nstate\nupdated",
+        },
+      },
+    ]);
+
+    expect(writeResult).toEqual({ ok: true });
+    expect(runtime.getToolContext().results).toHaveLength(1);
+
+    const prompt = await runtime.exportSystemPrompt({
+      ignoreWatchman: true,
+    });
+    expect(prompt).toContain("<ToolName>write</ToolName>");
+    expect(prompt).toContain("overwrite write");
+    expect(prompt).toContain("0 | after");
+    expect(prompt).toContain("1 | state");
+    expect(prompt).toContain("2 | updated");
+    expect(prompt).not.toContain("0 | before");
   });
 
   test("executeIntentRequests finishes tool mode and schedules plain continuation when nextPrompt is present", async () => {
-    const { runtime } = await buildRuntimeWithServices();
+    const { runtime, workspace } = await buildRuntimeWithServices();
     const task = buildTask("task-tool-finished-1");
+    const filepath = join(workspace, "tool-finished.txt");
+    await writeFile(filepath, "line-1");
 
     runtime.currentTask = task;
     runtime.activateToolContext();
+    await runtime.executeConversationToolCalls([
+      {
+        toolName: "read",
+        toolCallId: "call_read",
+        input: { filepath },
+      },
+    ]);
 
     const result = await runtime.executeIntentRequests(task, [
       {
@@ -407,12 +460,48 @@ describe("Runtime context", () => {
     expect(result.nextState).toBe(TaskState.FOLLOW_UP);
     expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
     expect(runtime.hasActiveToolContext()).toBe(false);
+    expect(runtime.getToolContext().updatedAt).toBeNull();
+    expect(runtime.getToolContext().results).toEqual([]);
     expect(runtime.getContinuationContext()).toEqual({
       summary: "已完成工具检查",
       nextPrompt: "基于当前结果整理最终回答",
       avoidRepeat: "",
       updatedAt: expect.any(Number),
     });
+  });
+
+  test("executeIntentRequests clears tool context immediately when tool phase ends", async () => {
+    const { runtime, workspace } = await buildRuntimeWithServices();
+    const task = buildTask("task-tool-ended-1");
+    const filepath = join(workspace, "tool-ended.txt");
+    await writeFile(filepath, "line-1");
+
+    runtime.currentTask = task;
+    runtime.activateToolContext();
+    await runtime.executeConversationToolCalls([
+      {
+        toolName: "read",
+        toolCallId: "call_read",
+        input: { filepath },
+      },
+    ]);
+
+    const result = await runtime.executeIntentRequests(task, [
+      {
+        request: "FOLLOW_UP_WITH_TOOLS_END",
+        intent: "异常结束工具阶段",
+        params: {
+          reasonCode: "tool_error",
+          reason: "read 工具结果不可继续使用",
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      status: "continue",
+    });
+    expect(runtime.getToolContext().updatedAt).toBeNull();
+    expect(runtime.getToolContext().results).toEqual([]);
   });
 
   test("preparePostFollowUpContinuation writes continuation from compressed follow up intent", async () => {

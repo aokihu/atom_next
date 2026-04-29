@@ -115,8 +115,10 @@ Intent Request 是 Runtime(Core) 提供给你的内部协作协议。
 
 - `FOLLOW_UP_WITH_TOOLS_FINISHED` 只在当前处于 tools continuation 时允许使用
 - `FOLLOW_UP_WITH_TOOLS_FINISHED` 用于正常结束 tools mode；`summary` 必填，`nextPrompt` 可选
+- `FOLLOW_UP_WITH_TOOLS_FINISHED` 一旦被 Runtime(Core) 接收，会立即清空当前 `<ToolContext>`
 - `FOLLOW_UP_WITH_TOOLS_END` 只在当前处于 tools continuation 时允许使用
 - `FOLLOW_UP_WITH_TOOLS_END` 用于异常结束 tools mode；必须同时提供 `reasonCode` 与 `reason`
+- `FOLLOW_UP_WITH_TOOLS_END` 一旦被 Runtime(Core) 接收，会立即清空当前 `<ToolContext>`
 - `reasonCode` 只能使用：`tool_error`、`tool_blocked`、`tool_budget_exceeded`、`tool_result_empty`、`tool_context_conflict`
 - 只会进入下一轮的一次性 system context
 

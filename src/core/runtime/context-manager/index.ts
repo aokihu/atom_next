@@ -74,19 +74,56 @@ export type {
   SessionMemoryClearPolicy,
 } from "./types";
 
-const summarizeContextValue = (value: unknown, maxLength = 240): string => {
+const TOOL_TARGET_MAX_LENGTH = 220;
+const TOOL_OUTPUT_SUMMARY_MAX_LENGTH = 1600;
+const TOOL_OUTPUT_DETAIL_MAX_LENGTH = 6000;
+
+const serializeContextValue = (
+  value: unknown,
+  options: {
+    pretty?: boolean;
+  } = {},
+): string => {
   let serialized = "";
 
   if (typeof value === "string") {
     serialized = value;
   } else {
     try {
-      serialized = JSON.stringify(value) ?? String(value);
+      serialized = options.pretty
+        ? JSON.stringify(value, null, 2) ?? String(value)
+        : JSON.stringify(value) ?? String(value);
     } catch {
       serialized = String(value);
     }
   }
 
+  return serialized.trim();
+};
+
+const truncateText = (text: string, maxLength: number) => {
+  if (text.length <= maxLength) {
+    return {
+      text,
+      truncated: false,
+    };
+  }
+
+  if (maxLength <= 3) {
+    return {
+      text: text.slice(0, maxLength),
+      truncated: true,
+    };
+  }
+
+  return {
+    text: `${text.slice(0, maxLength - 3)}...`,
+    truncated: true,
+  };
+};
+
+const summarizeContextValue = (value: unknown, maxLength = 320): string => {
+  const serialized = serializeContextValue(value);
   const normalized = serialized.replace(/\s+/g, " ").trim();
 
   if (normalized.length <= maxLength) {
@@ -100,7 +137,173 @@ const summarizeContextValue = (value: unknown, maxLength = 240): string => {
   return `${normalized.slice(0, maxLength - 3)}...`;
 };
 
+const formatContextSummary = (value: unknown, maxLength = TOOL_OUTPUT_SUMMARY_MAX_LENGTH): string => {
+  const serialized = serializeContextValue(value, {
+    pretty: true,
+  });
+  const nextText = truncateText(serialized, maxLength);
+  return nextText.text;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const extractFilepath = (input: unknown) => {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+
+  const filepath = input.filepath;
+  return typeof filepath === "string" && filepath.trim() !== ""
+    ? filepath
+    : undefined;
+};
+
+const extractWriteContent = (input: unknown) => {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+
+  const content = input.content;
+  return typeof content === "string" ? content : undefined;
+};
+
+const extractWriteAppendFlag = (input: unknown) => {
+  if (!isRecord(input)) {
+    return false;
+  }
+
+  return input.append === true;
+};
+
+const extractReadSnapshotText = (result: unknown) => {
+  if (!isRecord(result) || !Array.isArray(result.content)) {
+    return undefined;
+  }
+
+  const lines = result.content
+    .map((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        return "";
+      }
+
+      const [, line] = entry;
+      return typeof line === "string" ? line : String(line ?? "");
+    });
+
+  return lines.join("\n");
+};
+
+const formatLineNumberedText = (content: string) => {
+  return content
+    .split("\n")
+    .map((line, index) => `${index} | ${line}`)
+    .join("\n");
+};
+
+const buildFileOutputDetail = (input: {
+  filepath: string;
+  snapshotText: string;
+  toolName: string;
+  snapshotState: "full" | "partial";
+}) => {
+  const nextSnapshot = truncateText(input.snapshotText, TOOL_OUTPUT_DETAIL_MAX_LENGTH);
+  const detailLines = [
+    `FILEPATH=${input.filepath}`,
+    `SOURCE_TOOL=${input.toolName}`,
+    `SNAPSHOT_STATE=${input.snapshotState}`,
+    "CONTENT<<EOF",
+    formatLineNumberedText(nextSnapshot.text),
+    "EOF",
+  ];
+
+  if (nextSnapshot.truncated) {
+    detailLines.splice(3, 0, `NOTE=content truncated after ${TOOL_OUTPUT_DETAIL_MAX_LENGTH} chars`);
+  }
+
+  return detailLines.join("\n");
+};
+
+const buildDetailedToolOutput = (input: {
+  key: string;
+  toolName: string;
+  toolInput: unknown;
+  result?: unknown;
+  existingItem?: RuntimeToolResultItem;
+}) => {
+  const filepath = extractFilepath(input.toolInput);
+
+  if (!filepath) {
+    return {};
+  }
+
+  if (input.toolName === "read") {
+    const snapshotText = extractReadSnapshotText(input.result);
+
+    if (snapshotText === undefined) {
+      return {};
+    }
+
+    return {
+      summary: `File snapshot is loaded for ${filepath}`,
+      outputSummary: `Loaded full file content snapshot for ${filepath}. Reuse this snapshot before calling read again.`,
+      outputDetail: buildFileOutputDetail({
+        filepath,
+        snapshotText,
+        toolName: input.toolName,
+        snapshotState: "full",
+      }),
+      snapshotText,
+    };
+  }
+
+  if (input.toolName !== "write") {
+    return {};
+  }
+
+  const content = extractWriteContent(input.toolInput);
+
+  if (content === undefined) {
+    return {};
+  }
+
+  const append = extractWriteAppendFlag(input.toolInput);
+  const previousSnapshotText = input.existingItem?.record.snapshotText;
+  const snapshotText = append
+    ? previousSnapshotText === undefined
+      ? content
+      : `${previousSnapshotText}${content}`
+    : content;
+  const snapshotState = append && previousSnapshotText === undefined
+    ? "partial"
+    : "full";
+
+  return {
+    summary: append
+      ? `File snapshot is updated by append write for ${filepath}`
+      : `File snapshot is updated by overwrite write for ${filepath}`,
+    outputSummary: append
+      ? previousSnapshotText === undefined
+        ? `Appended content to ${filepath}, but only the appended fragment is cached because no previous full snapshot was available.`
+        : `Appended content to ${filepath} and refreshed the cached full file snapshot.`
+      : `Overwrote ${filepath} and refreshed the cached full file snapshot.`,
+    outputDetail: buildFileOutputDetail({
+      filepath,
+      snapshotText,
+      toolName: input.toolName,
+      snapshotState,
+    }),
+    snapshotText,
+  };
+};
+
 const buildToolResultKey = (toolName: string, input: unknown): string => {
+  const filepath = extractFilepath(input);
+
+  if ((toolName === "read" || toolName === "write") && filepath) {
+    return `file:${filepath}`;
+  }
+
   return `${toolName}:${summarizeContextValue(input, 160)}`;
 };
 
@@ -349,11 +552,21 @@ export class ContextManager {
   }) {
     const toolContext = this.#getOrCreateToolContext();
     const key = buildToolResultKey(input.toolName, input.toolInput);
+    const existingItem = toolContext.results.find((item) => item.record.key === key);
     const now = Date.now();
-    const outputSummary = input.result === undefined
+    const defaultOutputSummary = input.result === undefined
       ? ""
-      : summarizeContextValue(input.result);
+      : formatContextSummary(input.result);
     const errorMessage = input.error?.trim() ?? "";
+    const detailedOutput = input.ok
+      ? buildDetailedToolOutput({
+          key,
+          toolName: input.toolName,
+          toolInput: input.toolInput,
+          result: input.result,
+          existingItem,
+        })
+      : {};
     const nextItem: RuntimeToolResultItem = {
       record: {
         key,
@@ -364,6 +577,9 @@ export class ContextManager {
           ? { result: structuredClone(input.result) }
           : {}),
         ...(errorMessage !== "" ? { error: errorMessage } : {}),
+        ...(detailedOutput.snapshotText !== undefined
+          ? { snapshotText: detailedOutput.snapshotText }
+          : {}),
         ok: input.ok,
         createdAt: now,
         updatedAt: now,
@@ -371,19 +587,22 @@ export class ContextManager {
       promptView: {
         key,
         toolName: input.toolName,
-        target: summarizeContextValue(input.toolInput, 120),
+        target: summarizeContextValue(input.toolInput, TOOL_TARGET_MAX_LENGTH),
         summary: input.ok
-          ? `Tool ${input.toolName} executed successfully`
+          ? detailedOutput.summary ?? `Tool ${input.toolName} executed successfully`
           : `Tool ${input.toolName} failed`,
-        outputSummary,
+        outputSummary: detailedOutput.outputSummary ?? defaultOutputSummary,
+        ...(detailedOutput.outputDetail !== undefined
+          ? { outputDetail: detailedOutput.outputDetail }
+          : {}),
         errorMessage,
         reusable: input.reusable !== false,
       },
     };
 
-    const existingIndex = toolContext.results.findIndex((item) =>
-      item.record.key === key
-    );
+    const existingIndex = existingItem
+      ? toolContext.results.findIndex((item) => item.record.key === key)
+      : -1;
 
     if (existingIndex >= 0) {
       toolContext.results.splice(existingIndex, 1, nextItem);

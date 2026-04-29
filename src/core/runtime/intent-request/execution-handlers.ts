@@ -286,7 +286,7 @@ const processFollowUpWithToolsFinishedIntentRequest = (
   request: FollowUpWithToolsFinishedIntentRequest,
   context: RuntimeIntentRequestExecutionContext,
 ): IntentRequestExecutionResult => {
-  context.setToolContextMode("finished");
+  context.clearToolContext();
 
   if (!request.params.nextPrompt) {
     return {
@@ -309,7 +309,7 @@ const processFollowUpWithToolsEndIntentRequest = (
   context: RuntimeIntentRequestExecutionContext,
 ): IntentRequestExecutionResult => {
   context.recordToolEnd(request.params);
-  context.setToolContextMode("ended");
+  context.clearToolContext();
 
   return {
     status: "continue",
