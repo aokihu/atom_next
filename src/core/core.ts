@@ -1,10 +1,7 @@
 import type { TaskItem } from "@/types/task";
 import type { ServiceManager } from "@/libs/service-manage";
 import type { Logger } from "@/libs/log";
-import {
-  ChatEvents,
-  type ChatFailedEventPayload,
-} from "@/types/event";
+import { ChatEvents, type ChatFailedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types";
 import { TaskSource, TaskWorkflow } from "@/types/task";
@@ -24,6 +21,20 @@ type CoreOptions = {
   runtimeLogger?: Logger;
 };
 
+type WorkflowRunnerResult = { decision?: { type: string } };
+type WorkflowRunner = (
+  task: TaskItem,
+  taskQueue: TaskQueue,
+  runtime: Runtime,
+  transport: Transport,
+) => Promise<WorkflowRunnerResult | void>;
+
+const WorkflowRunners = new Map<TaskWorkflow, WorkflowRunner>([
+  [TaskWorkflow.PREDICT_USER_INTENT, runUserIntentPredictionWorkflow],
+  [TaskWorkflow.POST_FOLLOW_UP, runPostFollowUpWorkflow],
+  [TaskWorkflow.FORMAL_CONVERSATION, runFormalConversationWorkflow],
+]);
+
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
 
@@ -34,8 +45,7 @@ export class Core {
   #isRunning: boolean;
   #logger: Logger | undefined;
 
-  #activedTask: TaskItem | undefined = undefined; // 当前激活的任务
-  #activeTimer: NodeJS.Timeout | null = null; // 定时检查激活任务计时器
+  #activedTask: TaskItem | undefined = undefined;
 
   constructor(serviceManager: ServiceManager, options: CoreOptions = {}) {
     this.#serviceManager = serviceManager;
@@ -53,11 +63,48 @@ export class Core {
   /*        Private       */
   /* ==================== */
 
-  #parseTaskWorkflow(task: TaskItem) {
-    return task.workflow ??
-      (task.source === TaskSource.EXTERNAL
-        ? TaskWorkflow.PREDICT_USER_INTENT
-        : TaskWorkflow.FORMAL_CONVERSATION);
+  #parseTaskWorkflow(task: TaskItem): TaskWorkflow {
+    if (task.workflow) return task.workflow;
+    if (task.source === TaskSource.EXTERNAL)
+      return TaskWorkflow.PREDICT_USER_INTENT;
+    if (task.source === TaskSource.INTERNAL)
+      return TaskWorkflow.FORMAL_CONVERSATION;
+    throw new Error(
+      `Cannot determine workflow for task ${task.id}: unknown source ${task.source}`,
+    );
+  }
+
+  #pickWorkflowRunner(workflow: TaskWorkflow): WorkflowRunner | undefined {
+    return WorkflowRunners.get(workflow);
+  }
+
+  #handleWorkflowError(task: TaskItem, error: unknown, workflow: string) {
+    this.#logger?.error("Workflow failed", {
+      error,
+      data: {
+        taskId: task.id,
+        sessionId: task.sessionId,
+        chatId: task.chatId,
+        workflow,
+      },
+    });
+
+    this.#taskQueue.updateTask(
+      task.id,
+      { state: TaskState.FAILED },
+      { shouldSyncEvent: false },
+    );
+
+    const payload: ChatFailedEventPayload = {
+      sessionId: task.sessionId,
+      chatId: task.chatId,
+      status: ChatStatus.FAILED,
+      error: {
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+    };
+
+    task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
   }
 
   /**
@@ -65,10 +112,8 @@ export class Core {
    * @description
    * 这里串起一次完整的任务执行链路：
    * 1. 激活队列中的可执行任务
-   * 2. 导出 Runtime 生成的 system/user prompt
-   * 3. 处理模型输出，并把本轮可见文本累计到 Runtime
-   * 4. 解析 intentRequestText，必要时派生 FOLLOW_UP 内部任务
-   * 5. 在完成或失败时收束最终事件
+   * 2. 根据 workflow 类型分发给对应的 runner
+   * 3. 在完成或失败时收束最终事件
    */
   async #workflow() {
     const task = await this.#taskQueue.activateWorkableTask();
@@ -81,6 +126,12 @@ export class Core {
 
     try {
       const taskWorkflow = this.#parseTaskWorkflow(task);
+      const runner = this.#pickWorkflowRunner(taskWorkflow);
+
+      if (!runner) {
+        throw new Error(`Unknown workflow: ${taskWorkflow}`);
+      }
+
       this.#logger?.debug("Task activated", {
         data: {
           taskId: task.id,
@@ -90,138 +141,24 @@ export class Core {
         },
       });
 
-      if (taskWorkflow === TaskWorkflow.PREDICT_USER_INTENT) {
-        const [workflowError] = await toResult(
-          runUserIntentPredictionWorkflow(
-            task,
-            this.#taskQueue,
-            this.#runtime,
-            this.#transport,
-          ),
-        );
-
-        if (workflowError) {
-          this.#logger?.error("Workflow failed", {
-            error: workflowError,
-            data: {
-              taskId: task.id,
-              sessionId: task.sessionId,
-              chatId: task.chatId,
-              workflow: taskWorkflow,
-            },
-          });
-          this.#taskQueue.updateTask(
-            task.id,
-            { state: TaskState.FAILED },
-            { shouldSyncEvent: false },
-          );
-
-          const payload: ChatFailedEventPayload = {
-            sessionId: task.sessionId,
-            chatId: task.chatId,
-            status: ChatStatus.FAILED,
-            error: {
-              message:
-                workflowError instanceof Error
-                  ? workflowError.message
-                  : "Unknown error",
-            },
-          };
-
-          task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
-        }
-
-        return;
-      }
-
-      if (taskWorkflow === TaskWorkflow.POST_FOLLOW_UP) {
-        const [workflowError] = await toResult(
-          runPostFollowUpWorkflow(
-            task,
-            this.#taskQueue,
-            this.#runtime,
-            this.#transport,
-          ),
-        );
-
-        if (workflowError) {
-          this.#logger?.error("Workflow failed", {
-            error: workflowError,
-            data: {
-              taskId: task.id,
-              sessionId: task.sessionId,
-              chatId: task.chatId,
-              workflow: taskWorkflow,
-            },
-          });
-          this.#taskQueue.updateTask(
-            task.id,
-            { state: TaskState.FAILED },
-            { shouldSyncEvent: false },
-          );
-
-          const payload: ChatFailedEventPayload = {
-            sessionId: task.sessionId,
-            chatId: task.chatId,
-            status: ChatStatus.FAILED,
-            error: {
-              message:
-                workflowError instanceof Error
-                  ? workflowError.message
-                  : "Unknown error",
-            },
-          };
-
-          task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
-        }
-
-        return;
-      }
-
       const [workflowError, workflowResult] = await toResult(
-        runFormalConversationWorkflow(
-          task,
-          this.#taskQueue,
-          this.#runtime,
-          this.#transport,
-        ),
+        runner(task, this.#taskQueue, this.#runtime, this.#transport),
       );
 
       if (workflowError) {
-        this.#logger?.error("Workflow failed", {
-          error: workflowError,
-          data: {
-            taskId: task.id,
-            sessionId: task.sessionId,
-            chatId: task.chatId,
-            workflow: taskWorkflow,
-          },
-        });
-        this.#taskQueue.updateTask(
-          task.id,
-          { state: TaskState.FAILED },
-          { shouldSyncEvent: false },
-        );
-
-        const payload: ChatFailedEventPayload = {
-          sessionId: task.sessionId,
-          chatId: task.chatId,
-          status: ChatStatus.FAILED,
-          error: {
-            message:
-              workflowError instanceof Error
-                ? workflowError.message
-                : "Unknown error",
-          },
-        };
-
-        task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
+        this.#handleWorkflowError(task, workflowError, taskWorkflow);
         return;
       }
 
-      if (workflowResult?.decision.type === "defer_completion") {
+      if (workflowResult?.decision?.type === "defer_completion") {
         return;
       }
+    } catch (error) {
+      this.#handleWorkflowError(
+        task,
+        error instanceof Error ? error : new Error(String(error)),
+        "unknown",
+      );
     } finally {
       this.#activedTask = undefined;
     }
