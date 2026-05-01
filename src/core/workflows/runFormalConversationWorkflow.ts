@@ -11,12 +11,17 @@ import type {
   FormalConversationWorkflowEnv,
   RunFormalConversationWorkflowResult,
 } from "./formal-conversation/types";
-import { applyIntentRequestExecutionElement } from "./formal-conversation/elements/apply-intent-request-execution.element";
-import { executeIntentRequestsElement } from "./formal-conversation/elements/execute-intent-requests.element";
 import { finalizeConversationElement } from "./formal-conversation/elements/finalize-conversation.element";
-import { parseIntentRequestsElement } from "./formal-conversation/elements/parse-intent-requests.element";
-import { formalConversationPrepareAndTransportPipeline } from "./formal-conversation/pipeline";
+import {
+  formalConversationIntentRequestPipeline,
+  formalConversationPrepareAndTransportPipeline,
+} from "./formal-conversation/pipeline";
 export type { RunFormalConversationWorkflowResult } from "./formal-conversation/types";
+
+export type RunFormalConversationWorkflowOptions = {
+  eventBus?: RuntimeEventBus;
+  signal?: AbortSignal;
+};
 
 /* ==================== */
 /* Workflow Constructors */
@@ -54,14 +59,17 @@ export const runFormalConversationWorkflow = async (
   taskQueue: TaskQueue,
   runtime: Runtime,
   transport: Transport,
+  options: RunFormalConversationWorkflowOptions = {},
 ): Promise<RunFormalConversationWorkflowResult> => {
-  const eventBus = new RuntimeEventBus();
+  const eventBus = options.eventBus ?? new RuntimeEventBus();
   const runner = new PipelineRunner();
   const context: PipelineContext = {
-    task,
-    runtime,
-    transport,
+    run: {
+      taskId: task.id,
+      chainId: task.chainId,
+    },
     eventBus,
+    signal: options.signal,
   };
   const env = createFormalConversationWorkflowEnv(
     task,
@@ -79,14 +87,9 @@ export const runFormalConversationWorkflow = async (
     return finalizeConversationElement.process(toolBoundaryResult.applied, context);
   }
 
-  const parsed = await parseIntentRequestsElement.process(
+  return runner.run(
+    formalConversationIntentRequestPipeline,
     toolBoundaryResult.output,
     context,
   );
-  const executed = await executeIntentRequestsElement.process(parsed, context);
-  const applied = await applyIntentRequestExecutionElement.process(
-    executed,
-    context,
-  );
-  return finalizeConversationElement.process(applied, context);
 };

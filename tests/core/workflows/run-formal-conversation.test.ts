@@ -2,6 +2,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 
+import { RuntimeEventBus } from "@/core/pipeline";
 import { runFormalConversationWorkflow } from "@/core/workflows/runFormalConversationWorkflow";
 import { ChatEvents } from "@/types/event";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
@@ -40,6 +41,99 @@ const buildUsage = () => ({
 });
 
 describe("runFormalConversationWorkflow", () => {
+  test("uses external eventBus when provided", async () => {
+    const task = buildTask("task-bus");
+    const eventBus = new RuntimeEventBus();
+    const events = [];
+    let currentTask;
+    const runtime = {
+      set currentTask(nextTask) {
+        currentTask = nextTask;
+      },
+      get currentTask() {
+        return currentTask;
+      },
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 64,
+      getFormalConversationMaxToolSteps: () => 2,
+      createConversationToolRegistry: mock(() => ({})),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      finalizeChatTurn: mock(() => ({
+        finalMessage: "answer",
+        visibleChunk: "answer",
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "completed",
+          message: {
+            createdAt: Date.now(),
+            data: "answer",
+          },
+        },
+      })),
+    };
+    const taskQueue = {
+      updateTask: mock(() => {}),
+      addTask: mock(async () => {}),
+    };
+    const transport = {
+      send: mock(async () => ({
+        text: "answer",
+        intentRequestText: "",
+        finishReason: "stop",
+        usage: buildUsage(),
+        totalUsage: buildUsage(),
+        stepCount: 1,
+        toolCallCount: 0,
+        toolResultCount: 0,
+        responseMessageCount: 1,
+      })),
+    };
+
+    eventBus.onAny((event) => {
+      events.push(event);
+    });
+
+    await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+      { eventBus },
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "pipeline.started",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.completed",
+      "pipeline.started",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.completed",
+    ]);
+  });
+
   test("injects runtime tools into transport and keeps current processing/finalize flow", async () => {
     const eventTarget = new EventEmitter();
     const outputUpdated = mock(() => {});

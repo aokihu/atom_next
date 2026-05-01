@@ -8,30 +8,43 @@ const stringifyPipelineError = (error: unknown) => {
   return String(error);
 };
 
+const createPipelineAbortError = () =>
+  new DOMException("Pipeline aborted", "AbortError");
+
+const throwIfPipelineAborted = (context: PipelineContext) => {
+  if (context.signal?.aborted) {
+    throw createPipelineAbortError();
+  }
+};
+
 export class PipelineRunner {
   async run<I, O>(
     pipeline: Pipeline<I, O>,
     input: I,
     context: PipelineContext,
   ): Promise<O> {
-    context.eventBus.emit({
-      type: "pipeline.started",
-      pipeline: pipeline.name,
-      taskId: context.task.id,
-      chainId: context.task.chainId,
-      createdAt: Date.now(),
-    });
-
     let current: unknown = input;
 
     try {
+      throwIfPipelineAborted(context);
+
+      context.eventBus.emit({
+        type: "pipeline.started",
+        pipeline: pipeline.name,
+        taskId: context.run.taskId,
+        chainId: context.run.chainId,
+        createdAt: Date.now(),
+      });
+
       for (const element of pipeline.elements) {
+        throwIfPipelineAborted(context);
+
         context.eventBus.emit({
           type: "pipeline.element.started",
           pipeline: pipeline.name,
           element: element.name,
-          taskId: context.task.id,
-          chainId: context.task.chainId,
+          taskId: context.run.taskId,
+          chainId: context.run.chainId,
           createdAt: Date.now(),
         });
 
@@ -42,29 +55,33 @@ export class PipelineRunner {
             type: "pipeline.element.failed",
             pipeline: pipeline.name,
             element: element.name,
-            taskId: context.task.id,
-            chainId: context.task.chainId,
+            taskId: context.run.taskId,
+            chainId: context.run.chainId,
             error: stringifyPipelineError(error),
             createdAt: Date.now(),
           });
           throw error;
         }
 
+        throwIfPipelineAborted(context);
+
         context.eventBus.emit({
           type: "pipeline.element.completed",
           pipeline: pipeline.name,
           element: element.name,
-          taskId: context.task.id,
-          chainId: context.task.chainId,
+          taskId: context.run.taskId,
+          chainId: context.run.chainId,
           createdAt: Date.now(),
         });
       }
 
+      throwIfPipelineAborted(context);
+
       context.eventBus.emit({
         type: "pipeline.completed",
         pipeline: pipeline.name,
-        taskId: context.task.id,
-        chainId: context.task.chainId,
+        taskId: context.run.taskId,
+        chainId: context.run.chainId,
         createdAt: Date.now(),
       });
 
@@ -73,8 +90,8 @@ export class PipelineRunner {
       context.eventBus.emit({
         type: "pipeline.failed",
         pipeline: pipeline.name,
-        taskId: context.task.id,
-        chainId: context.task.chainId,
+        taskId: context.run.taskId,
+        chainId: context.run.chainId,
         error: stringifyPipelineError(error),
         createdAt: Date.now(),
       });
