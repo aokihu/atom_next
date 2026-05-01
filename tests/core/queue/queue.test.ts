@@ -244,7 +244,7 @@ describe("TaskQueue", () => {
       expect(events).toEqual([]);
     });
 
-    test("emits chat-completed when task state becomes complete", async () => {
+    test("does not emit queue lifecycle events when task state becomes complete", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("task-complete", { eventTarget });
@@ -262,12 +262,10 @@ describe("TaskQueue", () => {
       };
       taskQueue.updateTask(task.id, { state: TaskState.COMPLETED });
 
-      expect(events).toEqual([
-        expect.objectContaining({ status: ChatStatus.COMPLETED }),
-      ]);
+      expect(events).toEqual([]);
     });
 
-    test("emits chat-failed when task state becomes failed", async () => {
+    test("does not emit queue lifecycle events when task state becomes failed", async () => {
       const eventTarget = new EventEmitter();
       const events = [];
       const task = buildTestTask("task-failed", { eventTarget });
@@ -282,9 +280,7 @@ describe("TaskQueue", () => {
       };
       taskQueue.updateTask(task.id, { state: TaskState.FAILED });
 
-      expect(events).toEqual([
-        expect.objectContaining({ status: ChatStatus.FAILED }),
-      ]);
+      expect(events).toEqual([]);
     });
 
     test("does not emit events when shouldSyncEvent is false", async () => {

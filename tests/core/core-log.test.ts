@@ -3,10 +3,11 @@
  * core.ts 的 WorkflowRunners Map 在模块加载时捕获函数引用，
  * bun 的 mock.module 无法反向影响已解析的 import 绑定，
  * 导致 mock 无法生效。
- * 实际运行时 WorkflowRunners 行为正常，不影响功能。
+ *
+ * 这里不再执行顶层 mock.module，避免在全量测试并发执行时污染其他 workflow 测试。
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { ServiceManager } from "@/libs/service-manage";
 import { createTaskItem } from "@/libs/task";
 import { TaskWorkflow } from "@/types/task";
@@ -15,18 +16,11 @@ import { createLogSystem } from "@/libs/log";
 import { resetLogSystem } from "@/libs/log/log-system";
 import { RuntimeService } from "@/services";
 import { DefaultConfig } from "@/types/config";
+import { Core } from "@/core/core";
 
 const runFormalConversationWorkflow = mock();
 const runPostFollowUpWorkflow = mock();
 const runUserIntentPredictionWorkflow = mock();
-
-mock.module("@/core/workflows", () => ({
-  runFormalConversationWorkflow,
-  runPostFollowUpWorkflow,
-  runUserIntentPredictionWorkflow,
-}));
-
-const { Core } = await import("@/core/core");
 
 const createMemoryLog = () => {
   resetLogSystem();
@@ -72,12 +66,6 @@ const createServiceManager = () => {
 };
 
 describe("Core logging", () => {
-  beforeEach(() => {
-    runFormalConversationWorkflow.mockReset();
-    runPostFollowUpWorkflow.mockReset();
-    runUserIntentPredictionWorkflow.mockReset();
-  });
-
   test.skip("logs initialization and task activation", async () => {
     const { entries, logger } = createMemoryLog();
     const core = new Core(createServiceManager(), { logger });

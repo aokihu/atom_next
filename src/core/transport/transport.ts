@@ -144,6 +144,10 @@ const normalizePendingToolCalls = (steps: Array<{
 
   const lastStep = steps[steps.length - 1];
 
+  if (!lastStep) {
+    return [];
+  }
+
   return lastStep.toolCalls
     .map((toolCall) => {
       const toolName = toolCall.toolName;
@@ -152,15 +156,19 @@ const normalizePendingToolCalls = (steps: Array<{
         return null;
       }
 
-      return {
+      const pendingToolCall: TransportPendingToolCall = {
         toolName,
         ...(typeof toolCall.toolCallId === "string"
           ? { toolCallId: toolCall.toolCallId }
           : {}),
         input: toolCall.input ?? toolCall.args ?? {},
-      } satisfies TransportPendingToolCall;
+      };
+
+      return pendingToolCall;
     })
-    .filter((toolCall): toolCall is TransportPendingToolCall => toolCall !== null);
+    .filter(
+      (toolCall): toolCall is TransportPendingToolCall => toolCall !== null,
+    );
 };
 
 /**

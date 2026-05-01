@@ -51,6 +51,7 @@ import type {
   RuntimeSessionContext,
   RuntimeTaskSession,
   RuntimeToolContext,
+  RuntimeToolContextMode,
   RuntimeToolResultItem,
   SessionMemoryClearPolicy,
 } from "./types";

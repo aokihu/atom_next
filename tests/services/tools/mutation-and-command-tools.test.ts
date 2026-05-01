@@ -10,6 +10,19 @@ import {
   setGitAvailabilityCacheForTest,
 } from "@/services/tools/builtin";
 
+const executeTool = (
+  service: ToolService,
+  context: ReturnType<ToolService["createExecutionContext"]>,
+  toolName: string,
+  toolInput: unknown,
+) => {
+  return service.executeTool({
+    context,
+    toolName,
+    toolInput,
+  });
+};
+
 const createWorkspace = async () => {
   const workspace = await mkdtemp(join(tmpdir(), "atom-next-tools-mutate-"));
   await mkdir(join(workspace, "src"), { recursive: true });
@@ -30,14 +43,13 @@ describe("mutation and command tools", () => {
     try {
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
       const target = join(workspace, "src", "write.txt");
 
-      const firstResult = await registry.write.execute?.({
+      const firstResult = await executeTool(service, context, "write", {
         filepath: target,
         content: "first",
       });
-      const appendResult = await registry.write.execute?.({
+      const appendResult = await executeTool(service, context, "write", {
         filepath: target,
         content: "\nsecond",
         append: true,
@@ -68,9 +80,7 @@ describe("mutation and command tools", () => {
     try {
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
-
-      const result = await registry.write.execute?.({
+      const result = await executeTool(service, context, "write", {
         filepath: join(outside, "x.txt"),
         content: "blocked",
       });
@@ -90,14 +100,13 @@ describe("mutation and command tools", () => {
     try {
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
       const sourceFile = join(workspace, "src", "copy.txt");
       const destinationFile = join(workspace, "src", "copied.txt");
-      const directoryResult = await registry.cp.execute?.({
+      const directoryResult = await executeTool(service, context, "cp", {
         source: join(workspace, "src"),
         destination: join(workspace, "src-copy"),
       });
-      const fileResult = await registry.cp.execute?.({
+      const fileResult = await executeTool(service, context, "cp", {
         source: sourceFile,
         destination: destinationFile,
       });
@@ -126,15 +135,14 @@ describe("mutation and command tools", () => {
     try {
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
       const source = join(workspace, "src", "note.txt");
       const destination = join(workspace, "src", "moved.txt");
 
-      const moveResult = await registry.mv.execute?.({
+      const moveResult = await executeTool(service, context, "mv", {
         source,
         destination,
       });
-      const blockedResult = await registry.mv.execute?.({
+      const blockedResult = await executeTool(service, context, "mv", {
         source: destination,
         destination: join(outside, "moved.txt"),
       });
@@ -163,12 +171,10 @@ describe("mutation and command tools", () => {
     try {
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
-
-      const successResult = await registry.bash.execute?.({
+      const successResult = await executeTool(service, context, "bash", {
         command: "pwd",
       });
-      const blockedResult = await registry.bash.execute?.({
+      const blockedResult = await executeTool(service, context, "bash", {
         command: "rm -rf /",
       });
 
@@ -197,9 +203,7 @@ describe("mutation and command tools", () => {
 
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
-
-      const result = await registry.bash.execute?.({
+      const result = await executeTool(service, context, "bash", {
         command: "echo hello",
       });
 
@@ -224,14 +228,12 @@ describe("mutation and command tools", () => {
 
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
-
-      const successResult = await registry.git.execute?.({
+      const successResult = await executeTool(service, context, "git", {
         cwd: workspace,
         subcommand: "status",
         args: ["--short"],
       });
-      const blockedResult = await registry.git.execute?.({
+      const blockedResult = await executeTool(service, context, "git", {
         cwd: outside,
         subcommand: "status",
       });
@@ -261,9 +263,7 @@ describe("mutation and command tools", () => {
 
       const service = new ToolService();
       const context = service.createExecutionContext({ workspace });
-      const registry = service.createToolRegistry({ context });
-
-      const result = await registry.git.execute?.({
+      const result = await executeTool(service, context, "git", {
         cwd: workspace,
         subcommand: "status",
       });

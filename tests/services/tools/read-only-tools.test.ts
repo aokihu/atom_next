@@ -6,6 +6,19 @@ import { ToolService } from "@/services";
 
 const tempDirs: string[] = [];
 
+const executeTool = (
+  service: ToolService,
+  context: ReturnType<ToolService["createExecutionContext"]>,
+  toolName: string,
+  toolInput: unknown,
+) => {
+  return service.executeTool({
+    context,
+    toolName,
+    toolInput,
+  });
+};
+
 const createWorkspace = async () => {
   const workspace = await mkdtemp(join(tmpdir(), "atom-next-tools-"));
   const nestedDir = join(workspace, "src");
@@ -38,9 +51,7 @@ describe("read tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.read.execute?.({
+    const result = await executeTool(service, context, "read", {
       filepath: join(workspace, "README.md"),
     });
 
@@ -59,9 +70,7 @@ describe("read tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.read.execute?.({
+    const result = await executeTool(service, context, "read", {
       filepath: join(workspace, "missing.md"),
     });
 
@@ -78,9 +87,7 @@ describe("read tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.read.execute?.({
+    const result = await executeTool(service, context, "read", {
       filepath: join(outside, "secret.txt"),
     });
 
@@ -93,9 +100,7 @@ describe("read tool", () => {
     const { workspace, nestedDir } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.read.execute?.({
+    const result = await executeTool(service, context, "read", {
       filepath: nestedDir,
     });
 
@@ -110,9 +115,7 @@ describe("ls tool", () => {
     const { workspace, nestedDir } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ls.execute?.({
+    const result = await executeTool(service, context, "ls", {
       dirpath: nestedDir,
     });
 
@@ -130,9 +133,7 @@ describe("ls tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ls.execute?.({
+    const result = await executeTool(service, context, "ls", {
       dirpath: nestedDir,
       all: true,
       long: true,
@@ -155,9 +156,7 @@ describe("ls tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ls.execute?.({
+    const result = await executeTool(service, context, "ls", {
       dirpath: outside,
     });
 
@@ -172,9 +171,7 @@ describe("tree tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.tree.execute?.({
+    const result = await executeTool(service, context, "tree", {
       dirpath: workspace,
       level: 1,
     });
@@ -192,9 +189,7 @@ describe("tree tool", () => {
     const { workspace, emptyDir } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.tree.execute?.({
+    const result = await executeTool(service, context, "tree", {
       dirpath: emptyDir,
     });
 
@@ -213,9 +208,7 @@ describe("tree tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.tree.execute?.({
+    const result = await executeTool(service, context, "tree", {
       dirpath: outside,
     });
 
@@ -230,9 +223,7 @@ describe("ripgrep tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ripgrep.execute?.({
+    const result = await executeTool(service, context, "ripgrep", {
       dirpath: workspace,
       pattern: "answer",
     });
@@ -249,9 +240,7 @@ describe("ripgrep tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ripgrep.execute?.({
+    const result = await executeTool(service, context, "ripgrep", {
       dirpath: workspace,
       pattern: "definitely-not-found",
     });
@@ -268,7 +257,6 @@ describe("ripgrep tool", () => {
     const { workspace } = await createWorkspace();
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
     const originalSpawn = Bun.spawn;
 
     (Bun as { spawn: typeof Bun.spawn }).spawn = (() => {
@@ -278,7 +266,7 @@ describe("ripgrep tool", () => {
     }) as typeof Bun.spawn;
 
     try {
-      const result = await registry.ripgrep.execute?.({
+      const result = await executeTool(service, context, "ripgrep", {
         dirpath: workspace,
         pattern: "answer",
       });
@@ -299,9 +287,7 @@ describe("ripgrep tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ripgrep.execute?.({
+    const result = await executeTool(service, context, "ripgrep", {
       dirpath: outside,
       pattern: "answer",
     });
@@ -320,9 +306,7 @@ describe("ripgrep tool", () => {
 
     const service = new ToolService();
     const context = service.createExecutionContext({ workspace });
-    const registry = service.createToolRegistry({ context });
-
-    const result = await registry.ripgrep.execute?.({
+    const result = await executeTool(service, context, "ripgrep", {
       dirpath: join(workspace, "linked-outside"),
       pattern: "secret",
     });

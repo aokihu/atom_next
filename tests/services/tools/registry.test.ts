@@ -15,6 +15,19 @@ const createWorkspace = async () => {
   return workspace;
 };
 
+const executeTool = (
+  service: ToolService,
+  context: ReturnType<ToolService["createExecutionContext"]>,
+  toolName: string,
+  toolInput: unknown,
+) => {
+  return service.executeTool({
+    context,
+    toolName,
+    toolInput,
+  });
+};
+
 describe("ToolService registry", () => {
   test("blocks execution when budget is exceeded", async () => {
     const workspace = await createWorkspace();
@@ -33,10 +46,9 @@ describe("ToolService registry", () => {
           }),
         },
       });
-      const registry = service.createToolRegistry({ context });
 
       await expect(
-        registry.read.execute?.({
+        executeTool(service, context, "read", {
           filepath: join(workspace, "note.txt"),
         }),
       ).rejects.toBeInstanceOf(ToolBudgetExceededError);
@@ -61,10 +73,9 @@ describe("ToolService registry", () => {
           reason: "tool blocked",
         }),
       });
-      const registry = service.createToolRegistry({ context });
 
       await expect(
-        registry.read.execute?.({
+        executeTool(service, context, "read", {
           filepath: join(workspace, "note.txt"),
         }),
       ).rejects.toBeInstanceOf(ToolPolicyBlockedError);
@@ -108,12 +119,11 @@ describe("ToolService registry", () => {
           events.push(event);
         },
       });
-      const registry = service.createToolRegistry({ context });
 
-      await registry.read.execute?.({
+      await executeTool(service, context, "read", {
         filepath: join(workspace, "note.txt"),
       });
-      await registry.read.execute?.({
+      await executeTool(service, context, "read", {
         filepath: join(workspace, "missing.txt"),
       });
 

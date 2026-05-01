@@ -111,6 +111,11 @@ const main = async () => {
             reasoningTokens: undefined,
           },
         },
+        stepCount: 1,
+        toolCallCount: 0,
+        toolResultCount: 0,
+        responseMessageCount: 1,
+        pendingToolCalls: [],
         totalUsage: {
           inputTokens: 10,
           outputTokens: 10,
@@ -148,6 +153,11 @@ const main = async () => {
           reasoningTokens: undefined,
         },
       },
+      stepCount: 1,
+      toolCallCount: 0,
+      toolResultCount: 0,
+      responseMessageCount: 1,
+      pendingToolCalls: [],
       totalUsage: {
         inputTokens: 10,
         outputTokens: 10,
