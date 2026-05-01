@@ -1,8 +1,11 @@
-export { formalConversationPrepareAndTransportPipeline } from "./pipeline";
+export { createFormalConversationPrepareAndTransportPipeline } from "./pipeline";
 export type {
   AppliedIntentRequests,
   ExecutedIntentRequests,
+  FormalConversationPipelineState,
   FormalConversationPrompts,
+  FormalConversationTransportOutputSeed,
+  FormalConversationTransportPayload,
   FormalConversationTransportOutput,
   FormalConversationWorkflowDecision,
   FormalConversationWorkflowEnv,

@@ -120,6 +120,10 @@ describe("runFormalConversationWorkflow", () => {
       "pipeline.element.completed",
       "pipeline.element.started",
       "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
+      "pipeline.element.started",
+      "pipeline.element.completed",
       "pipeline.completed",
       "pipeline.started",
       "pipeline.element.started",
@@ -249,6 +253,90 @@ describe("runFormalConversationWorkflow", () => {
     ]);
     expect(outputUpdated).toHaveBeenCalledTimes(1);
     expect(completed).toHaveBeenCalledTimes(1);
+  });
+
+  test("emits transport events through external eventBus", async () => {
+    const task = buildTask("task-transport-events");
+    const eventBus = new RuntimeEventBus();
+    const events = [];
+    const runtime = {
+      exportPrompts: async () => ["system prompt", "user prompt"],
+      getFormalConversationMaxOutputTokens: () => 64,
+      getFormalConversationMaxToolSteps: () => 2,
+      createConversationToolRegistry: mock(() => ({})),
+      appendAssistantOutput: mock(() => {}),
+      clearContinuationContext: mock(() => {}),
+      reportConversationOutputAnalysis: mock(() => {}),
+      reportToolCallStarted: mock(() => {}),
+      reportToolCallFinished: mock(() => {}),
+      parseIntentRequest: mock(() => ({
+        safeRequests: [],
+      })),
+      executeIntentRequests: mock(async () => ({
+        status: "continue",
+      })),
+      finalizeChatTurn: mock(() => ({
+        finalMessage: "answer",
+        visibleChunk: "answer",
+        completedPayload: {
+          sessionId: task.sessionId,
+          chatId: task.chatId,
+          status: "completed",
+          message: {
+            createdAt: Date.now(),
+            data: "answer",
+          },
+        },
+      })),
+    };
+    const taskQueue = {
+      updateTask: mock(() => {}),
+      addTask: mock(async () => {}),
+    };
+    const transport = {
+      send: mock(async (_systemPrompt, _userPrompt, options) => {
+        await options.onTextDelta?.("delta");
+        await options.onToolCallStart?.({ toolName: "read", input: { path: "a" } });
+        await options.onToolCallFinish?.({
+          toolName: "read",
+          input: { path: "a" },
+          result: { ok: true },
+        });
+
+        return {
+          text: "answer",
+          intentRequestText: "",
+          finishReason: "stop",
+          usage: buildUsage(),
+          totalUsage: buildUsage(),
+          stepCount: 1,
+          toolCallCount: 1,
+          toolResultCount: 1,
+          responseMessageCount: 1,
+          pendingToolCalls: [],
+        };
+      }),
+    };
+
+    eventBus.onAny((event) => {
+      events.push(event);
+    });
+
+    await runFormalConversationWorkflow(
+      task,
+      taskQueue as any,
+      runtime as any,
+      transport as any,
+      { eventBus },
+    );
+
+    expect(events.some((event) => event.type === "transport.delta")).toBe(true);
+    expect(events.some((event) => event.type === "transport.tool.started")).toBe(
+      true,
+    );
+    expect(events.some((event) => event.type === "transport.tool.finished")).toBe(
+      true,
+    );
   });
 
   test("keeps visible text buffer and intentRequestText isolated when tool loop is present", async () => {

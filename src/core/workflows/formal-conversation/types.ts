@@ -1,7 +1,10 @@
+import type {
+  TransportOutput,
+  TransportPayload,
+} from "@/core/transport";
 import type { TaskItem } from "@/types/task";
 import type { TaskQueue } from "../../queue";
 import type { Runtime } from "../../runtime";
-import type { Transport } from "../../transport";
 
 export type FormalConversationWorkflowDecision =
   | { type: "finalize_chat" }
@@ -11,7 +14,6 @@ export type FormalConversationWorkflowEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
-  transport: Transport;
 };
 
 export type FormalConversationPrompts = {
@@ -20,9 +22,36 @@ export type FormalConversationPrompts = {
   userPrompt: string;
 };
 
+export type FormalConversationTransportPayload = {
+  env: FormalConversationWorkflowEnv;
+  payload: TransportPayload;
+};
+
+export type FormalConversationTransportOutputSeed = {
+  env: FormalConversationWorkflowEnv;
+  output: TransportOutput;
+};
+
+export type FormalConversationPipelineState = {
+  visibleTextBuffer: string;
+  hasStreamedVisibleOutput: boolean;
+  toolCallStartCount: number;
+  toolCallFinishCount: number;
+  toolFailureMessages: string[];
+};
+
+export const createFormalConversationPipelineState =
+  (): FormalConversationPipelineState => ({
+    visibleTextBuffer: "",
+    hasStreamedVisibleOutput: false,
+    toolCallStartCount: 0,
+    toolCallFinishCount: 0,
+    toolFailureMessages: [],
+  });
+
 export type FormalConversationTransportOutput = {
   env: FormalConversationWorkflowEnv;
-  transportResult: Awaited<ReturnType<Transport["send"]>>;
+  transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
   toolCallStartCount: number;
@@ -32,7 +61,7 @@ export type FormalConversationTransportOutput = {
 
 export type ParsedIntentRequests = {
   env: FormalConversationWorkflowEnv;
-  transportResult: Awaited<ReturnType<Transport["send"]>>;
+  transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
   toolCallStartCount: number;
@@ -43,7 +72,7 @@ export type ParsedIntentRequests = {
 
 export type ExecutedIntentRequests = {
   env: FormalConversationWorkflowEnv;
-  transportResult: Awaited<ReturnType<Transport["send"]>>;
+  transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
   toolCallStartCount: number;
@@ -56,7 +85,7 @@ export type ExecutedIntentRequests = {
 
 export type AppliedIntentRequests = {
   env: FormalConversationWorkflowEnv;
-  transportResult: Awaited<ReturnType<Transport["send"]>>;
+  transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
   decision: FormalConversationWorkflowDecision;

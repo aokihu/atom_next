@@ -1,6 +1,7 @@
 import type { UUID } from "@/types";
+import type { TransportEvent } from "@/core/transport";
 
-export type RuntimePipelineEvent =
+type PipelineLifecycleEvent =
   | {
       type: "pipeline.started";
       pipeline: string;
@@ -48,3 +49,5 @@ export type RuntimePipelineEvent =
       error: string;
       createdAt: number;
     };
+
+export type RuntimePipelineEvent = PipelineLifecycleEvent | TransportEvent;
