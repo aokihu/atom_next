@@ -131,7 +131,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "finalize_chat" },
+      type: "complete",
+      task,
     });
     expect(createConversationToolRegistry).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
@@ -340,7 +341,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "finalize_chat" },
+      type: "complete",
+      task,
     });
     expect(completed).toHaveBeenCalledTimes(1);
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用已完成");
@@ -542,7 +544,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "finalize_chat" },
+      type: "complete",
+      task,
     });
     expect(outputUpdated).toHaveBeenCalledTimes(1);
     expect(completed).toHaveBeenCalledTimes(1);
@@ -632,7 +635,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "finalize_chat" },
+      type: "complete",
+      task,
     });
     expect(completed).toHaveBeenCalledTimes(1);
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("没有实际执行任何工具");
@@ -712,7 +716,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "defer_completion" },
+      type: "enqueue",
+      nextTask,
     });
     expect(runtime.executeConversationToolCalls).toHaveBeenCalledWith([
       {
@@ -726,7 +731,7 @@ describe("runFormalConversationWorkflow", () => {
       { state: TaskState.FOLLOW_UP },
       { shouldSyncEvent: false },
     );
-    expect(addTask).toHaveBeenCalledWith(nextTask);
+    expect(addTask).not.toHaveBeenCalled();
   });
 
   test("finalizes with runtime tool execution failure message when pending tool call cannot be executed", async () => {
@@ -815,7 +820,8 @@ describe("runFormalConversationWorkflow", () => {
     );
 
     expect(result).toEqual({
-      decision: { type: "finalize_chat" },
+      type: "complete",
+      task,
     });
     expect(completed).toHaveBeenCalledTimes(1);
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用失败");

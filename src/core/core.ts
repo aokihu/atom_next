@@ -10,6 +10,7 @@ import { sleep, toResult } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
 import { Transport } from "./transport";
+import type { PipelineResult } from "./pipeline";
 import {
   runFormalConversationWorkflow,
   runPostFollowUpWorkflow,
@@ -22,18 +23,31 @@ type CoreOptions = {
 };
 
 type WorkflowRunnerResult = { decision?: { type: string } };
+type WorkflowRunResult = PipelineResult | WorkflowRunnerResult | void;
 type WorkflowRunner = (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
   transport: Transport,
-) => Promise<WorkflowRunnerResult | void>;
+) => Promise<WorkflowRunResult>;
 
 const WorkflowRunners = new Map<TaskWorkflow, WorkflowRunner>([
   [TaskWorkflow.PREDICT_USER_INTENT, runUserIntentPredictionWorkflow],
   [TaskWorkflow.POST_FOLLOW_UP, runPostFollowUpWorkflow],
   [TaskWorkflow.FORMAL_CONVERSATION, runFormalConversationWorkflow],
 ]);
+
+const isLegacyWorkflowRunnerResult = (
+  value: WorkflowRunResult,
+): value is WorkflowRunnerResult => {
+  return typeof value === "object" && value !== null && "decision" in value;
+};
+
+const isPipelineResult = (
+  value: WorkflowRunResult,
+): value is PipelineResult => {
+  return typeof value === "object" && value !== null && "type" in value;
+};
 
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
@@ -150,7 +164,19 @@ export class Core {
         return;
       }
 
-      if (workflowResult?.decision?.type === "defer_completion") {
+      if (
+        isLegacyWorkflowRunnerResult(workflowResult)
+        && workflowResult.decision?.type === "defer_completion"
+      ) {
+        return;
+      }
+
+      if (isPipelineResult(workflowResult) && workflowResult.type === "enqueue") {
+        await this.#taskQueue.addTask(workflowResult.nextTask);
+        return;
+      }
+
+      if (isPipelineResult(workflowResult) && workflowResult.type === "complete") {
         return;
       }
     } catch (error) {
