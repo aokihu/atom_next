@@ -6,7 +6,7 @@ import {
   type PipelineContext,
   type RuntimePipelineEvent,
 } from "@/core/pipeline";
-import type { TransportPort } from "@/core/transport";
+import type { TransportPayload, TransportPort } from "@/core/transport";
 
 const buildContext = (): PipelineContext => {
   const task = createTaskItem({
@@ -28,31 +28,28 @@ describe("createTransportElement", () => {
   test("calls transport.send and emits transport events", async () => {
     const context = buildContext();
     const events: RuntimePipelineEvent[] = [];
-    const onTextDelta = mock(() => {});
-    const onToolCallStart = mock(() => {});
-    const onToolCallFinish = mock(() => {});
     const send = mock(async (_systemPrompt, _userPrompt, options) => {
-        await options?.onTextDelta?.("delta");
-        await options?.onToolCallStart?.({ toolName: "read", input: { path: "a" } });
-        await options?.onToolCallFinish?.({
-          toolName: "read",
-          input: { path: "a" },
-          result: { ok: true },
-        });
-
-        return {
-          text: "answer",
-          intentRequestText: "",
-          finishReason: "stop" as const,
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          stepCount: 1,
-          toolCallCount: 1,
-          toolResultCount: 1,
-          responseMessageCount: 1,
-          pendingToolCalls: [],
-        };
+      await options?.onTextDelta?.("delta");
+      await options?.onToolCallStart?.({ toolName: "read", input: { path: "a" } });
+      await options?.onToolCallFinish?.({
+        toolName: "read",
+        input: { path: "a" },
+        result: { ok: true },
       });
+
+      return {
+        text: "answer",
+        intentRequestText: "",
+        finishReason: "stop" as const,
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        stepCount: 1,
+        toolCallCount: 1,
+        toolResultCount: 1,
+        responseMessageCount: 1,
+        pendingToolCalls: [],
+      };
+    });
     const transport = { send } as unknown as TransportPort;
 
     context.eventBus.onAny((event) => {
@@ -66,9 +63,6 @@ describe("createTransportElement", () => {
         userPrompt: "user",
         options: {
           maxOutputTokens: 32,
-          onTextDelta,
-          onToolCallStart,
-          onToolCallFinish,
         },
       },
       context,
@@ -81,16 +75,6 @@ describe("createTransportElement", () => {
       onToolCallFinish: expect.any(Function),
     }));
     expect(result.text).toBe("answer");
-    expect(onTextDelta).toHaveBeenCalledWith("delta");
-    expect(onToolCallStart).toHaveBeenCalledWith({
-      toolName: "read",
-      input: { path: "a" },
-    });
-    expect(onToolCallFinish).toHaveBeenCalledWith({
-      toolName: "read",
-      input: { path: "a" },
-      result: { ok: true },
-    });
     expect(events.map((event) => event.type)).toEqual([
       "transport.delta",
       "transport.tool.started",
@@ -129,5 +113,28 @@ describe("createTransportElement", () => {
       chainId: context.run.chainId,
       error: "boom",
     });
+  });
+
+  test("does not allow transport callbacks inside payload options", () => {
+    const payload: TransportPayload = {
+      systemPrompt: "system",
+      userPrompt: "user",
+      options: {
+        maxOutputTokens: 32,
+      },
+    };
+
+    expect(payload.options?.maxOutputTokens).toBe(32);
+
+    const invalidPayload: TransportPayload = {
+      systemPrompt: "system",
+      userPrompt: "user",
+      options: {
+        // @ts-expect-error transport callbacks are replaced by transport.* events
+        onTextDelta: () => {},
+      },
+    };
+
+    expect(invalidPayload).toBeDefined();
   });
 });

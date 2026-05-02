@@ -12,17 +12,11 @@ export const createTransportElement = (
 
   async process(input, context) {
     const options = input.options ?? {};
-    const {
-      onTextDelta,
-      onToolCallStart,
-      onToolCallFinish,
-      ...restOptions
-    } = options;
 
     try {
       return await transport.send(input.systemPrompt, input.userPrompt, {
-        ...restOptions,
-        onTextDelta: async (delta) => {
+        ...options,
+        onTextDelta: (delta) => {
           context.eventBus.emit({
             type: "transport.delta",
             taskId: context.run.taskId,
@@ -30,9 +24,8 @@ export const createTransportElement = (
             delta,
             createdAt: Date.now(),
           });
-          await onTextDelta?.(delta);
         },
-        onToolCallStart: async (event) => {
+        onToolCallStart: (event) => {
           context.eventBus.emit({
             type: "transport.tool.started",
             taskId: context.run.taskId,
@@ -40,9 +33,8 @@ export const createTransportElement = (
             event,
             createdAt: Date.now(),
           });
-          await onToolCallStart?.(event);
         },
-        onToolCallFinish: async (event) => {
+        onToolCallFinish: (event) => {
           context.eventBus.emit({
             type: "transport.tool.finished",
             taskId: context.run.taskId,
@@ -50,7 +42,6 @@ export const createTransportElement = (
             event,
             createdAt: Date.now(),
           });
-          await onToolCallFinish?.(event);
         },
       });
     } catch (error) {
