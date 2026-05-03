@@ -37,7 +37,6 @@ export const createTransportElement = <
             },
             onError: async (error) => {
               hasReportedFailure = true;
-              await transportPayload.options?.onError?.(error);
               await context.eventBus.emit("transport.failed", { error });
             },
           },

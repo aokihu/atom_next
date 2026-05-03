@@ -9,7 +9,7 @@ export type TransportPayload = {
   userPrompt: string;
   options?: Omit<
     TransportSendOptions,
-    "onTextDelta" | "onToolCallStart" | "onToolCallFinish"
+    "onTextDelta" | "onToolCallStart" | "onToolCallFinish" | "onError"
   >;
 };
 

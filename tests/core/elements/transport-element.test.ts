@@ -117,4 +117,52 @@ describe("createTransportElement", () => {
 
     expect(failed).toHaveBeenCalledWith({ error });
   });
+
+  test("does not call user-provided onError callback from transport payload options", async () => {
+    const error = new Error("provider failed");
+    const transport = {
+      send: mock(async (_systemPrompt, _userPrompt, options) => {
+        await options.onError?.(error);
+
+        return {
+          text: "",
+          intentRequestText: "",
+          finishReason: "stop",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          stepCount: 1,
+          toolCallCount: 0,
+          toolResultCount: 0,
+          responseMessageCount: 1,
+          pendingToolCalls: [],
+        };
+      }),
+    };
+    const eventBus = new PipelineEventBus<PipelineEventMap>();
+    const failed = mock(() => {});
+    const userOnError = mock(() => {});
+    eventBus.on("transport.failed", failed);
+
+    const element = createTransportElement(transport as any);
+
+    await element.process(
+      {
+        transportPayload: {
+          systemPrompt: "system",
+          userPrompt: "user",
+          options: {
+            maxOutputTokens: 128,
+            onError: userOnError,
+          } as any,
+        },
+      },
+      {
+        task: { id: "task-3" } as any,
+        eventBus,
+      },
+    );
+
+    expect(failed).toHaveBeenCalledWith({ error });
+    expect(userOnError).not.toHaveBeenCalled();
+  });
 });
