@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { describe, expect, mock, test } from "bun:test";
 import { postFollowUpPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
-import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
+import { PipelineRunner } from "@/core/pipeline";
+import { TaskPipeline, TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const buildTask = (
   id: string,
@@ -17,7 +18,7 @@ const buildTask = (
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
     source: overrides.source ?? TaskSource.INTERNAL,
-    workflow: overrides.workflow ?? TaskWorkflow.POST_FOLLOW_UP,
+    workflow: overrides.workflow ?? TaskPipeline.POST_FOLLOW_UP,
     priority: overrides.priority ?? 1,
     eventTarget: overrides.eventTarget ?? undefined,
     channel: overrides.channel ?? { domain: "tui" },
@@ -39,7 +40,7 @@ describe("postFollowUpPipeline", () => {
     const nextTask = buildTask("task-2", {
       chainId: "task-1",
       parentTaskId: "task-1",
-      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      workflow: TaskPipeline.FORMAL_CONVERSATION,
       payload: [],
       chainRound: 1,
     });
@@ -74,6 +75,7 @@ describe("postFollowUpPipeline", () => {
       postFollowUpPipeline,
       task,
       { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({

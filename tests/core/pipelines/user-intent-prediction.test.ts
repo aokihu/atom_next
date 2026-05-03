@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { userIntentPredictionPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
-import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
+import { PipelineRunner } from "@/core/pipeline";
+import { TaskPipeline, TaskSource, TaskState, type TaskItem } from "@/types/task";
 
 const buildTask = (
   id: string,
@@ -16,7 +17,7 @@ const buildTask = (
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
     source: overrides.source ?? TaskSource.EXTERNAL,
-    workflow: overrides.workflow ?? TaskWorkflow.PREDICT_USER_INTENT,
+    workflow: overrides.workflow ?? TaskPipeline.PREDICT_USER_INTENT,
     priority: overrides.priority ?? 1,
     eventTarget: overrides.eventTarget ?? undefined,
     channel: overrides.channel ?? { domain: "tui" },
@@ -56,6 +57,7 @@ describe("userIntentPredictionPipeline", () => {
       userIntentPredictionPipeline,
       task,
       { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -101,6 +103,7 @@ describe("userIntentPredictionPipeline", () => {
       userIntentPredictionPipeline,
       task,
       { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -123,7 +126,7 @@ describe("userIntentPredictionPipeline", () => {
     const task = buildTask("task-3");
     const nextTask = buildTask("task-3-next", {
       source: TaskSource.INTERNAL,
-      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      workflow: TaskPipeline.FORMAL_CONVERSATION,
       payload: [],
     });
     const predictionRequest = {
@@ -157,6 +160,7 @@ describe("userIntentPredictionPipeline", () => {
       userIntentPredictionPipeline,
       task,
       { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({

@@ -23,7 +23,7 @@ export type {
 export {
   TaskSource,
   TaskState,
-  TaskWorkflow,
+  TaskPipeline,
 } from "./task";
 
 export type {

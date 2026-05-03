@@ -13,7 +13,7 @@ import type {
   MemoryScope,
   SearchMemoryIntentRequest,
 } from "@/types";
-import { TaskSource, TaskWorkflow, type TaskItem } from "@/types/task";
+import { TaskPipeline, TaskSource, type TaskItem } from "@/types/task";
 import { isNumber } from "radashi";
 import type { RuntimeIntentRequestExecutionContext } from "./types";
 
@@ -55,7 +55,7 @@ export const createFollowUpTask = (
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
-    workflow: TaskWorkflow.POST_FOLLOW_UP,
+    pipeline: TaskPipeline.POST_FOLLOW_UP,
     payload: [
       {
         type: "text",
@@ -138,7 +138,7 @@ export const createFormalConversationTask = (task: TaskItem) => {
     eventTarget: task.eventTarget,
     channel: task.channel,
     payload: task.payload,
-    workflow: TaskWorkflow.FORMAL_CONVERSATION,
+    pipeline: TaskPipeline.FORMAL_CONVERSATION,
   });
 };
 
@@ -153,7 +153,7 @@ export const createContinuationFormalConversationTask = (task: TaskItem) => {
     eventTarget: task.eventTarget,
     channel: task.channel,
     payload: [],
-    workflow: TaskWorkflow.FORMAL_CONVERSATION,
+    pipeline: TaskPipeline.FORMAL_CONVERSATION,
   });
 };
 

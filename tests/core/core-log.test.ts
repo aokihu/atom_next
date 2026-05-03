@@ -9,7 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceManager } from "@/libs/service-manage";
 import { createTaskItem } from "@/libs/task";
-import { TaskWorkflow } from "@/types/task";
+import { TaskPipeline } from "@/types/task";
 import type { LogEntry, LogSink } from "@/libs/log";
 import { createLogSystem } from "@/libs/log";
 import { resetLogSystem } from "@/libs/log/log-system";
@@ -68,7 +68,7 @@ describe("Core logging", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
-      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      workflow: TaskPipeline.FORMAL_CONVERSATION,
     });
 
     await core.addTask(task);
@@ -85,7 +85,7 @@ describe("Core logging", () => {
         taskId: task.id,
         sessionId: "session-1",
         chatId: "chat-1",
-        workflow: TaskWorkflow.FORMAL_CONVERSATION,
+        workflow: TaskPipeline.FORMAL_CONVERSATION,
       },
     });
   });
@@ -96,7 +96,7 @@ describe("Core logging", () => {
     const task = createTaskItem({
       sessionId: "session-2",
       chatId: "chat-2",
-      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      workflow: TaskPipeline.FORMAL_CONVERSATION,
     });
 
     await core.addTask(task);
@@ -114,7 +114,7 @@ describe("Core logging", () => {
         taskId: task.id,
         sessionId: "session-2",
         chatId: "chat-2",
-        workflow: TaskWorkflow.FORMAL_CONVERSATION,
+        workflow: TaskPipeline.FORMAL_CONVERSATION,
       },
       error: {
         message: "workflow boom",

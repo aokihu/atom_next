@@ -25,6 +25,7 @@ mock.module("ai", () => ({
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
 import { formalConversationPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
+import { PipelineRunner } from "@/core/pipeline";
 import { ChatEvents } from "@/types/event";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
@@ -204,6 +205,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -323,6 +325,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
@@ -426,6 +429,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -531,6 +535,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(reportToolCallStarted).toHaveBeenCalledWith({
@@ -638,6 +643,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -729,6 +735,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -808,6 +815,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({
@@ -910,6 +918,7 @@ describe("formalConversationPipeline", () => {
       formalConversationPipeline,
       task,
       { taskQueue, runtime, serviceManager: buildServiceManager() },
+      new PipelineRunner(),
     );
 
     expect(result).toEqual({

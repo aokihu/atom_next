@@ -3,21 +3,7 @@ import type { ServiceManager } from "@/libs/service-manage";
 import type { TaskQueue } from "../queue";
 import type { Runtime } from "../runtime";
 import type { PipelineEventBus } from "./event-bus";
-import type {
-  TransportToolCallFinishEvent,
-  TransportToolCallStartEvent,
-} from "../elements/transport.element";
-
-export type PipelineEventMap = {
-  "transport.delta": {
-    textDelta: string;
-  };
-  "transport.tool.started": TransportToolCallStartEvent;
-  "transport.tool.finished": TransportToolCallFinishEvent;
-  "transport.failed": {
-    error: unknown;
-  };
-};
+import type { PipelineEventMap } from "./events";
 
 export type PipelineRunDeps = {
   taskQueue: TaskQueue;

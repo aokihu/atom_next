@@ -31,7 +31,7 @@ const { ServiceManager } = await import("@/libs/service-manage");
 const { ChatEvents } = await import("@/types/event");
 const { MemoryService, RuntimeService, ToolService } = await import("@/services");
 const { WatchmanPhase } = await import("@/services/watchman/types");
-const { TaskWorkflow } = await import("@/types/task");
+const { TaskPipeline } = await import("@/types/task");
 
 const buildStreamResult = ({
   chunks = [],
@@ -187,7 +187,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
-      workflow: TaskWorkflow.FORMAL_CONVERSATION,
+      workflow: TaskPipeline.FORMAL_CONVERSATION,
       payload: [{ type: "text", data: "继续处理当前问题" }],
       eventTarget,
       channel: { domain: "tui" },
@@ -242,7 +242,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-2",
-      workflow: TaskWorkflow.POST_FOLLOW_UP,
+      workflow: TaskPipeline.POST_FOLLOW_UP,
       source: "internal",
       chainRound: 1,
       payload: [{ type: "text", data: "继续后半部分" }],
@@ -301,7 +301,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-3",
-      workflow: TaskWorkflow.PREDICT_USER_INTENT,
+      workflow: TaskPipeline.PREDICT_USER_INTENT,
       payload: [{ type: "text", data: "请直接回答当前问题" }],
       eventTarget,
       channel: { domain: "tui" },

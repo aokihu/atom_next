@@ -16,11 +16,21 @@ export enum TaskSource {
   INTERNAL = "internal",
 }
 
-export enum TaskWorkflow {
+export enum TaskPipeline {
   PREDICT_USER_INTENT = "predict_user_intent",
   POST_FOLLOW_UP = "post_follow_up",
   FORMAL_CONVERSATION = "formal_conversation",
 }
+
+/**
+ * @deprecated Use TaskPipeline instead.
+ */
+export const TaskWorkflow = TaskPipeline;
+
+/**
+ * @deprecated Use TaskPipeline instead.
+ */
+export type TaskWorkflow = TaskPipeline;
 
 export enum TaskState {
   WAITING = "waiting", // 任务进入到队列排队
@@ -88,8 +98,12 @@ export type RawTaskItem = {
   state: TaskState;
   /* --- 任务元数据 --- */
   source: TaskSource; // 任务来源,区分内源任务还是外源任务
-  workflow: TaskWorkflow; // workflow 类型,用于让 Core 选择处理流程
-  pipeline?: TaskWorkflow; // pipeline 类型,优先于此字段; 待 workflow 字段完全移除后改为必填
+  pipeline: TaskPipeline; // pipeline 类型,用于让 Core 选择处理链路
+
+  /**
+   * @deprecated Use pipeline instead.
+   */
+  workflow?: TaskPipeline;
   priority: number; // 队列项目优先级,数字越小优先级越高,默认为2
   /* --- 用户输入 --- */
   eventTarget: EventEmitter | undefined; // HTTP API 的事件出发对象,通过这个对象当task发生变化,或者输出改变的时候触发

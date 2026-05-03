@@ -4,14 +4,13 @@ import type { Logger } from "@/libs/log";
 import { ChatEvents, type ChatFailedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types";
-import { TaskSource, TaskWorkflow } from "@/types/task";
+import { TaskSource, TaskPipeline } from "@/types/task";
 
 import { sleep, toResult } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
-import { PipelineEventBus, PipelineRunner, type PipelineResult } from "./pipeline";
-import type { PipelineEventMap } from "./pipeline";
-import { PipelineRegistry } from "./pipeline/definitions";
+import { PipelineRunner, type PipelineResult } from "./pipeline";
+import { PipelineRegistry, runPipelineDefinition } from "./pipeline/definitions";
 
 type CoreOptions = {
   logger?: Logger;
@@ -45,19 +44,24 @@ export class Core {
   /*        Private       */
   /* ==================== */
 
-  #parseTaskPipeline(task: TaskItem): TaskWorkflow {
+  #parseTaskPipeline(task: TaskItem): TaskPipeline {
     if (task.pipeline) return task.pipeline;
     if (task.workflow) return task.workflow;
-    if (task.source === TaskSource.EXTERNAL)
-      return TaskWorkflow.PREDICT_USER_INTENT;
-    if (task.source === TaskSource.INTERNAL)
-      return TaskWorkflow.FORMAL_CONVERSATION;
+
+    if (task.source === TaskSource.EXTERNAL) {
+      return TaskPipeline.PREDICT_USER_INTENT;
+    }
+
+    if (task.source === TaskSource.INTERNAL) {
+      return TaskPipeline.FORMAL_CONVERSATION;
+    }
+
     throw new Error(
       `Cannot determine pipeline for task ${task.id}: unknown source ${task.source}`,
     );
   }
 
-  #pickPipelineDefinition(pipeline: TaskWorkflow) {
+  #pickPipelineDefinition(pipeline: TaskPipeline) {
     return PipelineRegistry.get(pipeline);
   }
 
@@ -140,28 +144,21 @@ export class Core {
         serviceManager: this.#serviceManager,
       };
 
-      const eventBus = new PipelineEventBus<PipelineEventMap>();
-      const input = pipelineDefinition.createInput(task, deps);
-      const pipeline = pipelineDefinition.createPipeline(deps);
-      const cleanup = pipelineDefinition.setup?.(eventBus, input, deps);
-
       const [pipelineError, pipelineResult] = await toResult(
-        this.#pipelineRunner.run(pipeline, input, {
+        runPipelineDefinition(
+          pipelineDefinition,
           task,
-          eventBus,
-        }),
+          deps,
+          this.#pipelineRunner,
+        ),
       );
 
-      try {
-        if (pipelineError) {
-          this.#handlePipelineError(task, pipelineError, taskPipeline);
-          return;
-        }
-
-        await this.#handlePipelineResult(pipelineResult);
-      } finally {
-        cleanup?.();
+      if (pipelineError) {
+        this.#handlePipelineError(task, pipelineError, taskPipeline);
+        return;
       }
+
+      await this.#handlePipelineResult(pipelineResult);
     } catch (error) {
       this.#handlePipelineError(
         task,

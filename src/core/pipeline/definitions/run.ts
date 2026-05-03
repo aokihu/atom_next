@@ -11,13 +11,18 @@ export async function runPipelineDefinition<TInput, TOutput>(
   definition: PipelineDefinition<TInput, TOutput>,
   task: TaskItem,
   deps: PipelineRunDeps,
+  runner: PipelineRunner,
 ): Promise<TOutput> {
   const eventBus = new PipelineEventBus<PipelineEventMap>();
   const input = definition.createInput(task, deps);
   const pipeline = definition.createPipeline(deps);
   const cleanup = definition.setup?.(eventBus, input, deps);
+
   try {
-    return await new PipelineRunner().run(pipeline, input, { task, eventBus });
+    return await runner.run(pipeline, input, {
+      task,
+      eventBus,
+    });
   } finally {
     cleanup?.();
   }
