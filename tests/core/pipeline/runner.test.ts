@@ -3,7 +3,6 @@ import {
   PipelineEventBus,
   PipelineRunner,
   type Pipeline,
-  type PipelineElementKind,
   type PipelineEventMap,
 } from "@/core/pipeline";
 
@@ -103,11 +102,11 @@ describe("PipelineRunner", () => {
     const eventBus = new PipelineEventBus<PipelineEventMap>();
     const events: string[] = [];
 
-    eventBus.on("pipeline.lifecycle.element.started", (payload) => {
+    eventBus.on("pipeline.element.started", (payload) => {
       events.push(`started:${payload.elementName}:${payload.elementKind}`);
     });
 
-    eventBus.on("pipeline.lifecycle.element.finished", (payload) => {
+    eventBus.on("pipeline.element.finished", (payload) => {
       events.push(`finished:${payload.elementName}:${payload.elementKind}`);
       expect(payload.durationMs).toBeGreaterThanOrEqual(0);
     });
@@ -147,11 +146,11 @@ describe("PipelineRunner", () => {
     ]);
   });
 
-  test("emits element failed lifecycle event before rethrowing", async () => {
+  test("dispatches element failed lifecycle event when element throws", async () => {
     const eventBus = new PipelineEventBus<PipelineEventMap>();
     const failedEvents: string[] = [];
 
-    eventBus.on("pipeline.lifecycle.element.failed", (payload) => {
+    eventBus.on("pipeline.element.failed", (payload) => {
       failedEvents.push(`${payload.elementName}:${payload.elementKind}`);
       expect(payload.durationMs).toBeGreaterThanOrEqual(0);
       expect(payload.error).toBeInstanceOf(Error);
@@ -178,5 +177,69 @@ describe("PipelineRunner", () => {
     ).rejects.toThrow("boom");
 
     expect(failedEvents).toEqual(["FailingElement:transform"]);
+  });
+
+  test("event handler errors do not break pipeline execution", async () => {
+    const eventBus = new PipelineEventBus<PipelineEventMap>();
+    const runner = new PipelineRunner();
+
+    eventBus.on("pipeline.element.started", () => {
+      throw new Error("observer failed");
+    });
+
+    const pipeline: Pipeline<string, string> = {
+      name: "ObserverFailurePipeline",
+      elements: [
+        {
+          name: "Transform",
+          kind: "transform",
+          async process(input) {
+            return `${input}:ok`;
+          },
+        },
+      ],
+    };
+
+    const result = await runner.run(pipeline, "input", {
+      task: { id: "task-observer-failure" } as any,
+      eventBus,
+    });
+
+    expect(result).toBe("input:ok");
+  });
+
+  test("reports event handler errors through onHandlerError", async () => {
+    const errors: unknown[] = [];
+    const eventBus = new PipelineEventBus<PipelineEventMap>({
+      onHandlerError(error) {
+        errors.push(error);
+      },
+    });
+
+    eventBus.on("pipeline.element.started", () => {
+      throw new Error("observer failed");
+    });
+
+    const pipeline: Pipeline<string, string> = {
+      name: "ObserverFailurePipeline",
+      elements: [
+        {
+          name: "Transform",
+          kind: "transform",
+          async process(input) {
+            return `${input}:ok`;
+          },
+        },
+      ],
+    };
+
+    const result = await new PipelineRunner().run(pipeline, "input", {
+      task: { id: "task-observer-error" } as any,
+      eventBus,
+    });
+
+    expect(result).toBe("input:ok");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(Error);
   });
 });

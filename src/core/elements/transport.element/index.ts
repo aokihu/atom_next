@@ -69,7 +69,7 @@ export const createTransportElement = <
           transportOptions.modelProfile,
         );
       } catch (error) {
-        await context.eventBus.emit("transport.failed", { error });
+        context.eventBus.emit("transport.failed", { error });
         throw error;
       }
 
@@ -83,7 +83,7 @@ export const createTransportElement = <
 
           const textDelta = String(chunk);
           text += textDelta;
-          await context.eventBus.emit("transport.delta", { textDelta });
+          context.eventBus.emit("transport.delta", { textDelta });
         }
       };
 
@@ -97,14 +97,14 @@ export const createTransportElement = <
           ...(transportOptions.tools ? { tools: transportOptions.tools } : {}),
           ...(stopWhen ? { stopWhen } : {}),
           experimental_onToolCallStart: async (event: RawToolCallStartEvent) => {
-            await context.eventBus.emit("transport.tool.started", {
+            context.eventBus.emit("transport.tool.started", {
               toolName: event.toolCall.toolName,
               toolCallId: event.toolCall.toolCallId,
               input: event.toolCall.input,
             });
           },
           experimental_onToolCallFinish: async (event: RawToolCallFinishEvent) => {
-            await context.eventBus.emit("transport.tool.finished", {
+            context.eventBus.emit("transport.tool.finished", {
               toolName: event.toolCall.toolName,
               toolCallId: event.toolCall.toolCallId,
               input: event.toolCall.input,
@@ -123,14 +123,14 @@ export const createTransportElement = <
           },
           onError: async ({ error }) => {
             hasReportedFailure = true;
-            await context.eventBus.emit("transport.failed", { error });
+            context.eventBus.emit("transport.failed", { error });
           },
         });
 
         await result.consumeStream({
           onError: async (error) => {
             hasReportedFailure = true;
-            await context.eventBus.emit("transport.failed", { error });
+            context.eventBus.emit("transport.failed", { error });
           },
         });
 
@@ -179,7 +179,7 @@ export const createTransportElement = <
         };
       } catch (error) {
         if (!hasReportedFailure) {
-          await context.eventBus.emit("transport.failed", { error });
+          context.eventBus.emit("transport.failed", { error });
         }
         throw error;
       }

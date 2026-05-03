@@ -26,9 +26,9 @@ export type PipelineElementFailedEvent = {
 };
 
 export type PipelineEventMap = {
-  "pipeline.lifecycle.element.started": PipelineElementStartedEvent;
-  "pipeline.lifecycle.element.finished": PipelineElementFinishedEvent;
-  "pipeline.lifecycle.element.failed": PipelineElementFailedEvent;
+  "pipeline.element.started": PipelineElementStartedEvent;
+  "pipeline.element.finished": PipelineElementFinishedEvent;
+  "pipeline.element.failed": PipelineElementFailedEvent;
 
   "transport.delta": {
     textDelta: string;

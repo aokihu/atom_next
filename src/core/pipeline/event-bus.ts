@@ -1,11 +1,18 @@
-type PipelineEventHandler<TPayload> = (
-  payload: TPayload,
-) => void | Promise<void>;
+type PipelineEventHandler<TPayload> = (payload: TPayload) => void;
+
+type PipelineEventBusOptions = {
+  onHandlerError?: (error: unknown) => void;
+};
 
 export class PipelineEventBus<
   TEvents extends Record<string, any>,
 > {
   #handlers = new Map<keyof TEvents, Set<PipelineEventHandler<any>>>();
+  #options: PipelineEventBusOptions;
+
+  constructor(options: PipelineEventBusOptions = {}) {
+    this.#options = options;
+  }
 
   public on<TKey extends keyof TEvents>(
     event: TKey,
@@ -30,7 +37,7 @@ export class PipelineEventBus<
     };
   }
 
-  public async emit<TKey extends keyof TEvents>(
+  public emit<TKey extends keyof TEvents>(
     event: TKey,
     payload: TEvents[TKey],
   ) {
@@ -41,7 +48,11 @@ export class PipelineEventBus<
     }
 
     for (const handler of handlers) {
-      await handler(payload);
+      try {
+        handler(payload);
+      } catch (error) {
+        this.#options.onHandlerError?.(error);
+      }
     }
   }
 }

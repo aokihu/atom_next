@@ -15,7 +15,7 @@ export class PipelineRunner {
 
       const startedAt = performance.now();
 
-      context.eventBus.emit("pipeline.lifecycle.element.started", {
+      context.eventBus.emit("pipeline.element.started", {
         pipelineName: pipeline.name,
         elementName: element.name,
         elementKind: element.kind,
@@ -24,14 +24,14 @@ export class PipelineRunner {
       try {
         current = await element.process(current, context);
 
-        context.eventBus.emit("pipeline.lifecycle.element.finished", {
+        context.eventBus.emit("pipeline.element.finished", {
           pipelineName: pipeline.name,
           elementName: element.name,
           elementKind: element.kind,
           durationMs: performance.now() - startedAt,
         });
       } catch (error) {
-        context.eventBus.emit("pipeline.lifecycle.element.failed", {
+        context.eventBus.emit("pipeline.element.failed", {
           pipelineName: pipeline.name,
           elementName: element.name,
           elementKind: element.kind,
