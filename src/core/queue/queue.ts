@@ -149,7 +149,7 @@ export class TaskQueue {
    * @param state 任务状态
    * @returns 对应的事件名
    * @description 队列层只负责同步“任务状态切换”本身。
-   *              输出增量和完成/失败等业务事件由 workflow/core 显式发出。
+   *              输出增量和完成/失败等业务事件由 pipeline/Core 显式发出。
    */
   #parseTaskEvent(state: TaskState) {
     if (state === TaskState.WAITING) {

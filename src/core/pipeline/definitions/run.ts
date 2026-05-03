@@ -1,11 +1,40 @@
 import type { TaskItem } from "@/types/task";
+import { TaskPipeline } from "@/types/task";
 import {
   PipelineEventBus,
   PipelineRunner,
   type PipelineDefinition,
   type PipelineEventMap,
+  type PipelineResult,
   type PipelineRunDeps,
 } from "..";
+import { formalConversationPipeline } from "./formal-conversation";
+import { postFollowUpPipeline } from "./post-follow-up";
+import { userIntentPredictionPipeline } from "./user-intent-prediction";
+
+const pipelines: Record<
+  TaskPipeline,
+  PipelineDefinition<any, PipelineResult>
+> = {
+  [TaskPipeline.FORMAL_CONVERSATION]: formalConversationPipeline,
+  [TaskPipeline.POST_FOLLOW_UP]: postFollowUpPipeline,
+  [TaskPipeline.PREDICT_USER_INTENT]: userIntentPredictionPipeline,
+};
+
+export async function runPipeline(
+  pipeline: TaskPipeline,
+  task: TaskItem,
+  deps: PipelineRunDeps,
+  runner: PipelineRunner,
+): Promise<PipelineResult> {
+  const definition = pipelines[pipeline];
+
+  if (!definition) {
+    throw new Error(`Unknown pipeline: ${pipeline}`);
+  }
+
+  return runPipelineDefinition(definition, task, deps, runner);
+}
 
 export async function runPipelineDefinition<TInput, TOutput>(
   definition: PipelineDefinition<TInput, TOutput>,

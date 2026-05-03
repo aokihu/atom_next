@@ -18,7 +18,7 @@ const buildTask = (
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
     source: overrides.source ?? TaskSource.INTERNAL,
-    workflow: overrides.workflow ?? TaskPipeline.POST_FOLLOW_UP,
+    pipeline: overrides.pipeline ?? TaskPipeline.POST_FOLLOW_UP,
     priority: overrides.priority ?? 1,
     eventTarget: overrides.eventTarget ?? undefined,
     channel: overrides.channel ?? { domain: "tui" },
@@ -40,7 +40,7 @@ describe("postFollowUpPipeline", () => {
     const nextTask = buildTask("task-2", {
       chainId: "task-1",
       parentTaskId: "task-1",
-      workflow: TaskPipeline.FORMAL_CONVERSATION,
+      pipeline: TaskPipeline.FORMAL_CONVERSATION,
       payload: [],
       chainRound: 1,
     });

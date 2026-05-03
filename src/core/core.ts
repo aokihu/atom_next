@@ -4,13 +4,12 @@ import type { Logger } from "@/libs/log";
 import { ChatEvents, type ChatFailedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types";
-import { TaskSource, TaskPipeline } from "@/types/task";
 
 import { sleep, toResult } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
 import { PipelineRunner, type PipelineResult } from "./pipeline";
-import { PipelineRegistry, runPipelineDefinition } from "./pipeline/definitions";
+import { runPipeline } from "./pipeline/definitions";
 
 type CoreOptions = {
   logger?: Logger;
@@ -43,27 +42,6 @@ export class Core {
   /* ==================== */
   /*        Private       */
   /* ==================== */
-
-  #parseTaskPipeline(task: TaskItem): TaskPipeline {
-    if (task.pipeline) return task.pipeline;
-    if (task.workflow) return task.workflow;
-
-    if (task.source === TaskSource.EXTERNAL) {
-      return TaskPipeline.PREDICT_USER_INTENT;
-    }
-
-    if (task.source === TaskSource.INTERNAL) {
-      return TaskPipeline.FORMAL_CONVERSATION;
-    }
-
-    throw new Error(
-      `Cannot determine pipeline for task ${task.id}: unknown source ${task.source}`,
-    );
-  }
-
-  #pickPipelineDefinition(pipeline: TaskPipeline) {
-    return PipelineRegistry.get(pipeline);
-  }
 
   #handlePipelineError(task: TaskItem, error: unknown, pipeline: string) {
     this.#logger?.error("Pipeline failed", {
@@ -122,12 +100,7 @@ export class Core {
     this.#activedTask = task;
 
     try {
-      const taskPipeline = this.#parseTaskPipeline(task);
-      const pipelineDefinition = this.#pickPipelineDefinition(taskPipeline);
-
-      if (!pipelineDefinition) {
-        throw new Error(`Unknown pipeline: ${taskPipeline}`);
-      }
+      const taskPipeline = task.pipeline;
 
       this.#logger?.debug("Task activated", {
         data: {
@@ -145,12 +118,7 @@ export class Core {
       };
 
       const [pipelineError, pipelineResult] = await toResult(
-        runPipelineDefinition(
-          pipelineDefinition,
-          task,
-          deps,
-          this.#pipelineRunner,
-        ),
+        runPipeline(taskPipeline, task, deps, this.#pipelineRunner),
       );
 
       if (pipelineError) {

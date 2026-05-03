@@ -68,7 +68,7 @@ describe("Core logging", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
-      workflow: TaskPipeline.FORMAL_CONVERSATION,
+      pipeline: TaskPipeline.FORMAL_CONVERSATION,
     });
 
     await core.addTask(task);
@@ -85,18 +85,18 @@ describe("Core logging", () => {
         taskId: task.id,
         sessionId: "session-1",
         chatId: "chat-1",
-        workflow: TaskPipeline.FORMAL_CONVERSATION,
+        pipeline: TaskPipeline.FORMAL_CONVERSATION,
       },
     });
   });
 
-  test.skip("logs workflow failures with task context", async () => {
+  test.skip("logs pipeline failures with task context", async () => {
     const { entries, logger } = createMemoryLog();
     const core = new Core(createServiceManager(), { logger });
     const task = createTaskItem({
       sessionId: "session-2",
       chatId: "chat-2",
-      workflow: TaskPipeline.FORMAL_CONVERSATION,
+      pipeline: TaskPipeline.FORMAL_CONVERSATION,
     });
 
     await core.addTask(task);
@@ -114,10 +114,10 @@ describe("Core logging", () => {
         taskId: task.id,
         sessionId: "session-2",
         chatId: "chat-2",
-        workflow: TaskPipeline.FORMAL_CONVERSATION,
+        pipeline: TaskPipeline.FORMAL_CONVERSATION,
       },
       error: {
-        message: "workflow boom",
+        message: "pipeline boom",
       },
     });
   });

@@ -540,7 +540,7 @@ describe("Runtime context", () => {
       sessionId: "session-1",
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
-      workflow: "post_follow_up",
+      pipeline: "post_follow_up",
       chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
@@ -580,7 +580,7 @@ describe("Runtime context", () => {
       sessionId: "session-1",
       chatId: "chat-1",
       source: TaskSource.INTERNAL,
-      workflow: "post_follow_up",
+      pipeline: "post_follow_up",
       chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
@@ -1337,7 +1337,7 @@ describe("Runtime context", () => {
     expect(result.status).toBe("stop");
     expect(result.nextState).toBe(TaskState.FOLLOW_UP);
     expect(result.nextTask?.source).toBe(TaskSource.INTERNAL);
-    expect(result.nextTask?.workflow).toBe("post_follow_up");
+    expect(result.nextTask?.pipeline).toBe("post_follow_up");
     expect(result.nextTask?.payload).toEqual([
       { type: "text", data: "基于记忆继续回答" },
     ]);
@@ -1386,7 +1386,7 @@ describe("Runtime context", () => {
     ]);
 
     expect(result.status).toBe("stop");
-    expect(result.nextTask?.workflow).toBe("post_follow_up");
+    expect(result.nextTask?.pipeline).toBe("post_follow_up");
     expect(runtime.getMemoryContext("long").status).toBe("loaded");
     expect(runtime.getMemoryContext("long").outputs).toHaveLength(1);
     expect([code1.memory_key, code2.memory_key]).toContain(

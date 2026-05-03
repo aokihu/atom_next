@@ -187,7 +187,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-1",
-      workflow: TaskPipeline.FORMAL_CONVERSATION,
+      pipeline: TaskPipeline.FORMAL_CONVERSATION,
       payload: [{ type: "text", data: "继续处理当前问题" }],
       eventTarget,
       channel: { domain: "tui" },
@@ -242,7 +242,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-2",
-      workflow: TaskPipeline.POST_FOLLOW_UP,
+      pipeline: TaskPipeline.POST_FOLLOW_UP,
       source: "internal",
       chainRound: 1,
       payload: [{ type: "text", data: "继续后半部分" }],
@@ -301,7 +301,7 @@ describe("Core pipeline result compatibility", () => {
     const task = createTaskItem({
       sessionId: "session-1",
       chatId: "chat-3",
-      workflow: TaskPipeline.PREDICT_USER_INTENT,
+      pipeline: TaskPipeline.PREDICT_USER_INTENT,
       payload: [{ type: "text", data: "请直接回答当前问题" }],
       eventTarget,
       channel: { domain: "tui" },

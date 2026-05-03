@@ -687,7 +687,7 @@ export class Runtime {
   /**
    * 创建当前正式对话轮次可用的工具 registry。
    * @description
-   * workflow 只需要拿到当前轮可用 tools，
+   * pipeline 只需要拿到当前轮可用 tools，
    * 不应直接接触 ToolService 本体或工具执行上下文细节。
    */
   public createConversationToolRegistry(): ToolDefinitionMap {
@@ -893,10 +893,10 @@ export class Runtime {
    * - 记录本轮完整 assistant 输出
    * - 选择最终完成消息
    * - 提交 session continuity
-   * - 生成供 workflow/core 发射的 CHAT_COMPLETED 事件载荷
+   * - 生成供 pipeline/Core 发射的 CHAT_COMPLETED 事件载荷
    *
    * Queue 负责状态推进；
-   * 业务事件发射由 workflow/core 负责。
+   * 业务事件发射由 pipeline/Core 负责。
    */
   public finalizeChatTurn(
     task: TaskItem,

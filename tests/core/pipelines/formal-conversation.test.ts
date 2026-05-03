@@ -43,7 +43,7 @@ const buildTask = (
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
     source: overrides.source ?? TaskSource.EXTERNAL,
-    workflow: overrides.workflow ?? "formal_conversation",
+    pipeline: overrides.pipeline ?? "formal_conversation",
     priority: overrides.priority ?? 2,
     eventTarget: overrides.eventTarget ?? undefined,
     channel: overrides.channel ?? { domain: "tui" },

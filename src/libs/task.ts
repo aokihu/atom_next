@@ -51,7 +51,6 @@ type BuildTaskLineageInput = {
   parentTaskId: string | undefined;
   source: TaskSource;
   pipeline: TaskPipeline;
-  workflow?: TaskPipeline;
   priority: number;
   chainRound?: number;
 };
@@ -88,7 +87,6 @@ const assembleTaskItem = (
     chatId: params.chatId,
     source: params.source,
     pipeline: params.pipeline,
-    workflow: params.workflow ?? params.pipeline,
     state: TaskState.WAITING,
     priority: params.priority,
     payload,
@@ -122,11 +120,7 @@ export const createTaskItem = (params: TaskItemInput): TaskItem => {
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.EXTERNAL,
-    pipeline:
-      params.pipeline ??
-      params.workflow ??
-      TaskPipeline.PREDICT_USER_INTENT,
-    workflow: params.workflow,
+    pipeline: params.pipeline ?? TaskPipeline.PREDICT_USER_INTENT,
     priority: params.priority ?? 2,
     payload: params.payload,
     eventTarget: params.eventTarget,
@@ -163,11 +157,7 @@ export const createInternalTaskItem = (
     sessionId: params.sessionId,
     chatId: params.chatId,
     source: TaskSource.INTERNAL,
-    pipeline:
-      params.pipeline ??
-      params.workflow ??
-      TaskPipeline.FORMAL_CONVERSATION,
-    workflow: params.workflow,
+    pipeline: params.pipeline ?? TaskPipeline.FORMAL_CONVERSATION,
     priority: params.priority ?? 1,
     payload: params.payload,
     eventTarget: params.eventTarget,

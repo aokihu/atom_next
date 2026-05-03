@@ -22,16 +22,6 @@ export enum TaskPipeline {
   FORMAL_CONVERSATION = "formal_conversation",
 }
 
-/**
- * @deprecated Use TaskPipeline instead.
- */
-export const TaskWorkflow = TaskPipeline;
-
-/**
- * @deprecated Use TaskPipeline instead.
- */
-export type TaskWorkflow = TaskPipeline;
-
 export enum TaskState {
   WAITING = "waiting", // 任务进入到队列排队
   PENDING = "pending", // 任务正在被Core Runtime处理,准备数据提交等待上传
@@ -99,11 +89,6 @@ export type RawTaskItem = {
   /* --- 任务元数据 --- */
   source: TaskSource; // 任务来源,区分内源任务还是外源任务
   pipeline: TaskPipeline; // pipeline 类型,用于让 Core 选择处理链路
-
-  /**
-   * @deprecated Use pipeline instead.
-   */
-  workflow?: TaskPipeline;
   priority: number; // 队列项目优先级,数字越小优先级越高,默认为2
   /* --- 用户输入 --- */
   eventTarget: EventEmitter | undefined; // HTTP API 的事件出发对象,通过这个对象当task发生变化,或者输出改变的时候触发
@@ -123,7 +108,7 @@ export type TaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
   Partial<
     Pick<
       RawTaskItem,
-      "priority" | "payload" | "eventTarget" | "channel" | "workflow" | "pipeline"
+      "priority" | "payload" | "eventTarget" | "channel" | "pipeline"
     >
   >;
 
@@ -145,7 +130,6 @@ export type InternalTaskItemInput = Pick<
       | "payload"
       | "eventTarget"
       | "channel"
-      | "workflow"
       | "pipeline"
     >
   >;

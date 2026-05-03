@@ -22,9 +22,9 @@ type FinalizeChatTurnOptions = {
  * - 记录本轮完整 assistant 输出
  * - 选择最终完成消息
  * - 提交 session continuity
- * - 生成供 workflow/core 发射的完成事件载荷
+ * - 生成供 pipeline/Core 发射的完成事件载荷
  *
- * Queue 状态推进和业务事件发射仍由外层 workflow/core 负责。
+ * Queue 状态推进和业务事件发射仍由外层 pipeline/Core 负责。
  */
 export function finalizeChatTurn(
   contextManager: ContextManager,

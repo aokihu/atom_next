@@ -55,7 +55,7 @@ const checkSingleIntentRequestSafety = (
         : createRejectedIntentRequest(
             request,
             IntentRequestSafetyIssueCode.INVALID_REQUEST_SOURCE,
-            "PREPARE_CONVERSATION must come from prediction workflow",
+            "PREPARE_CONVERSATION must come from prediction pipeline",
           );
     case IntentRequestType.SEARCH_MEMORY:
       return checkSearchMemoryIntentRequestSafety(request);

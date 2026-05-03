@@ -17,7 +17,7 @@ const buildTask = (
     chatId: overrides.chatId ?? "chat-1",
     state: overrides.state ?? TaskState.WAITING,
     source: overrides.source ?? TaskSource.EXTERNAL,
-    workflow: overrides.workflow ?? TaskPipeline.PREDICT_USER_INTENT,
+    pipeline: overrides.pipeline ?? TaskPipeline.PREDICT_USER_INTENT,
     priority: overrides.priority ?? 1,
     eventTarget: overrides.eventTarget ?? undefined,
     channel: overrides.channel ?? { domain: "tui" },
@@ -126,7 +126,7 @@ describe("userIntentPredictionPipeline", () => {
     const task = buildTask("task-3");
     const nextTask = buildTask("task-3-next", {
       source: TaskSource.INTERNAL,
-      workflow: TaskPipeline.FORMAL_CONVERSATION,
+      pipeline: TaskPipeline.FORMAL_CONVERSATION,
       payload: [],
     });
     const predictionRequest = {
