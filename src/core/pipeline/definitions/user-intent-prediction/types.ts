@@ -3,14 +3,14 @@ import type { TaskQueue } from "@/core/queue";
 import type { Runtime } from "@/core/runtime";
 import type { TaskItem } from "@/types/task";
 
-export type UserIntentPredictionWorkflowEnv = {
+export type UserIntentPredictionPipelineEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
 };
 
 export type UserIntentPredictionPipelineInput = {
-  env: UserIntentPredictionWorkflowEnv;
+  env: UserIntentPredictionPipelineEnv;
 };
 
 export type PreparedPredictionRequest = UserIntentPredictionPipelineInput & {
@@ -23,11 +23,11 @@ export type PredictionExecution = UserIntentPredictionPipelineInput & {
   >;
 };
 
-export const createUserIntentPredictionWorkflowEnv = (
+export const createUserIntentPredictionPipelineEnv = (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-): UserIntentPredictionWorkflowEnv => {
+): UserIntentPredictionPipelineEnv => {
   return {
     task,
     taskQueue,
@@ -35,4 +35,4 @@ export const createUserIntentPredictionWorkflowEnv = (
   };
 };
 
-export type RunUserIntentPredictionWorkflowResult = PipelineResult;
+export type RunUserIntentPredictionPipelineResult = PipelineResult;

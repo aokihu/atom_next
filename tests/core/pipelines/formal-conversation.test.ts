@@ -24,7 +24,7 @@ mock.module("ai", () => ({
 
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
-import { runFormalConversationWorkflow } from "@/core/workflows/runFormalConversationWorkflow";
+import { formalConversationPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
 import { ChatEvents } from "@/types/event";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
 
@@ -111,7 +111,7 @@ const buildStreamResult = ({
   };
 };
 
-describe("runFormalConversationWorkflow", () => {
+describe("formalConversationPipeline", () => {
   beforeEach(() => {
     streamText.mockReset();
     generateText.mockReset();
@@ -200,11 +200,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({
@@ -320,11 +319,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    await runFormalConversationWorkflow(
+    await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
@@ -424,11 +422,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({
@@ -530,11 +527,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    await runFormalConversationWorkflow(
+    await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(reportToolCallStarted).toHaveBeenCalledWith({
@@ -638,11 +634,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({
@@ -730,11 +725,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({
@@ -810,11 +804,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({
@@ -913,11 +906,10 @@ describe("runFormalConversationWorkflow", () => {
       });
     });
 
-    const result = await runFormalConversationWorkflow(
+    const result = await runPipelineDefinition(
+      formalConversationPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      buildServiceManager(),
+      { taskQueue, runtime, serviceManager: buildServiceManager() },
     );
 
     expect(result).toEqual({

@@ -9,43 +9,13 @@ import { TaskSource, TaskWorkflow } from "@/types/task";
 import { sleep, toResult } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
-import type { PipelineResult } from "./pipeline";
-import {
-  runFormalConversationWorkflow,
-  runPostFollowUpWorkflow,
-  runUserIntentPredictionWorkflow,
-} from "./workflows";
+import { PipelineEventBus, PipelineRunner, type PipelineResult } from "./pipeline";
+import type { PipelineEventMap } from "./pipeline";
+import { PipelineRegistry } from "./pipeline/definitions";
 
 type CoreOptions = {
   logger?: Logger;
   runtimeLogger?: Logger;
-};
-
-type WorkflowRunnerResult = { decision?: { type: string } };
-type WorkflowRunResult = PipelineResult | WorkflowRunnerResult | void;
-type WorkflowRunner = (
-  task: TaskItem,
-  taskQueue: TaskQueue,
-  runtime: Runtime,
-  serviceManager: ServiceManager,
-) => Promise<WorkflowRunResult>;
-
-const WorkflowRunners = new Map<TaskWorkflow, WorkflowRunner>([
-  [TaskWorkflow.PREDICT_USER_INTENT, runUserIntentPredictionWorkflow],
-  [TaskWorkflow.POST_FOLLOW_UP, runPostFollowUpWorkflow],
-  [TaskWorkflow.FORMAL_CONVERSATION, runFormalConversationWorkflow],
-]);
-
-const isLegacyWorkflowRunnerResult = (
-  value: WorkflowRunResult,
-): value is WorkflowRunnerResult => {
-  return typeof value === "object" && value !== null && "decision" in value;
-};
-
-const isPipelineResult = (
-  value: WorkflowRunResult,
-): value is PipelineResult => {
-  return typeof value === "object" && value !== null && "type" in value;
 };
 
 export class Core {
@@ -58,6 +28,7 @@ export class Core {
   #logger: Logger | undefined;
 
   #activedTask: TaskItem | undefined = undefined;
+  #pipelineRunner = new PipelineRunner();
 
   constructor(serviceManager: ServiceManager, options: CoreOptions = {}) {
     this.#serviceManager = serviceManager;
@@ -74,29 +45,30 @@ export class Core {
   /*        Private       */
   /* ==================== */
 
-  #parseTaskWorkflow(task: TaskItem): TaskWorkflow {
+  #parseTaskPipeline(task: TaskItem): TaskWorkflow {
+    if (task.pipeline) return task.pipeline;
     if (task.workflow) return task.workflow;
     if (task.source === TaskSource.EXTERNAL)
       return TaskWorkflow.PREDICT_USER_INTENT;
     if (task.source === TaskSource.INTERNAL)
       return TaskWorkflow.FORMAL_CONVERSATION;
     throw new Error(
-      `Cannot determine workflow for task ${task.id}: unknown source ${task.source}`,
+      `Cannot determine pipeline for task ${task.id}: unknown source ${task.source}`,
     );
   }
 
-  #pickWorkflowRunner(workflow: TaskWorkflow): WorkflowRunner | undefined {
-    return WorkflowRunners.get(workflow);
+  #pickPipelineDefinition(pipeline: TaskWorkflow) {
+    return PipelineRegistry.get(pipeline);
   }
 
-  #handleWorkflowError(task: TaskItem, error: unknown, workflow: string) {
-    this.#logger?.error("Workflow failed", {
+  #handlePipelineError(task: TaskItem, error: unknown, pipeline: string) {
+    this.#logger?.error("Pipeline failed", {
       error,
       data: {
         taskId: task.id,
         sessionId: task.sessionId,
         chatId: task.chatId,
-        workflow,
+        pipeline,
       },
     });
 
@@ -118,15 +90,25 @@ export class Core {
     task.eventTarget?.emit(ChatEvents.CHAT_FAILED, payload);
   }
 
-  /**
-   * 执行任务流程
-   * @description
-   * 这里串起一次完整的任务执行链路：
-   * 1. 激活队列中的可执行任务
-   * 2. 根据 workflow 类型分发给对应的 runner
-   * 3. 在完成或失败时收束最终事件
-   */
-  async #workflow() {
+  async #handlePipelineResult(result: PipelineResult | void) {
+    if (!result) {
+      return;
+    }
+
+    if (result.type === "enqueue") {
+      await this.#taskQueue.addTask(result.nextTask);
+      return;
+    }
+
+    if (result.type === "complete") {
+      return;
+    }
+
+    const _exhaustive: never = result;
+    return _exhaustive;
+  }
+
+  async #runActivatedTask() {
     const task = await this.#taskQueue.activateWorkableTask();
 
     if (!task) {
@@ -136,11 +118,11 @@ export class Core {
     this.#activedTask = task;
 
     try {
-      const taskWorkflow = this.#parseTaskWorkflow(task);
-      const runner = this.#pickWorkflowRunner(taskWorkflow);
+      const taskPipeline = this.#parseTaskPipeline(task);
+      const pipelineDefinition = this.#pickPipelineDefinition(taskPipeline);
 
-      if (!runner) {
-        throw new Error(`Unknown workflow: ${taskWorkflow}`);
+      if (!pipelineDefinition) {
+        throw new Error(`Unknown pipeline: ${taskPipeline}`);
       }
 
       this.#logger?.debug("Task activated", {
@@ -148,36 +130,40 @@ export class Core {
           taskId: task.id,
           sessionId: task.sessionId,
           chatId: task.chatId,
-          workflow: taskWorkflow,
+          pipeline: taskPipeline,
         },
       });
 
-      const [workflowError, workflowResult] = await toResult(
-        runner(task, this.#taskQueue, this.#runtime, this.#serviceManager),
+      const deps = {
+        taskQueue: this.#taskQueue,
+        runtime: this.#runtime,
+        serviceManager: this.#serviceManager,
+      };
+
+      const eventBus = new PipelineEventBus<PipelineEventMap>();
+      const input = pipelineDefinition.createInput(task, deps);
+      const pipeline = pipelineDefinition.createPipeline(deps);
+      const cleanup = pipelineDefinition.setup?.(eventBus, input, deps);
+
+      const [pipelineError, pipelineResult] = await toResult(
+        this.#pipelineRunner.run(pipeline, input, {
+          task,
+          eventBus,
+        }),
       );
 
-      if (workflowError) {
-        this.#handleWorkflowError(task, workflowError, taskWorkflow);
-        return;
-      }
+      try {
+        if (pipelineError) {
+          this.#handlePipelineError(task, pipelineError, taskPipeline);
+          return;
+        }
 
-      if (
-        isLegacyWorkflowRunnerResult(workflowResult)
-        && workflowResult.decision?.type === "defer_completion"
-      ) {
-        return;
-      }
-
-      if (isPipelineResult(workflowResult) && workflowResult.type === "enqueue") {
-        await this.#taskQueue.addTask(workflowResult.nextTask);
-        return;
-      }
-
-      if (isPipelineResult(workflowResult) && workflowResult.type === "complete") {
-        return;
+        await this.#handlePipelineResult(pipelineResult);
+      } finally {
+        cleanup?.();
       }
     } catch (error) {
-      this.#handleWorkflowError(
+      this.#handlePipelineError(
         task,
         error instanceof Error ? error : new Error(String(error)),
         "unknown",
@@ -206,7 +192,7 @@ export class Core {
           continue;
         }
 
-        await this.#workflow();
+        await this.#runActivatedTask();
       }
     } finally {
       this.#isRunning = false;
@@ -223,7 +209,7 @@ export class Core {
       return;
     }
 
-    await this.#workflow();
+    await this.#runActivatedTask();
   }
 
   /**

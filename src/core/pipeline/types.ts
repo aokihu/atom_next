@@ -1,6 +1,50 @@
 import type { TaskItem } from "@/types/task";
+import type { ServiceManager } from "@/libs/service-manage";
+import type { TaskQueue } from "../queue";
+import type { Runtime } from "../runtime";
 import type { PipelineEventBus } from "./event-bus";
-import type { PipelineEventMap } from "./events";
+import type {
+  TransportToolCallFinishEvent,
+  TransportToolCallStartEvent,
+} from "../elements/transport.element";
+
+export type PipelineEventMap = {
+  "transport.delta": {
+    textDelta: string;
+  };
+  "transport.tool.started": TransportToolCallStartEvent;
+  "transport.tool.finished": TransportToolCallFinishEvent;
+  "transport.failed": {
+    error: unknown;
+  };
+};
+
+export type PipelineRunDeps = {
+  taskQueue: TaskQueue;
+  runtime: Runtime;
+  serviceManager: ServiceManager;
+};
+
+export type PipelineSetupCleanup = () => void;
+
+export type PipelineDefinition<TInput, TOutput> = {
+  name: string;
+
+  createInput(
+    task: TaskItem,
+    deps: PipelineRunDeps,
+  ): TInput;
+
+  createPipeline(
+    deps: PipelineRunDeps,
+  ): Pipeline<TInput, TOutput>;
+
+  setup?(
+    eventBus: PipelineEventBus<PipelineEventMap>,
+    input: TInput,
+    deps: PipelineRunDeps,
+  ): void | PipelineSetupCleanup;
+};
 
 export type PipelineResult =
   | {

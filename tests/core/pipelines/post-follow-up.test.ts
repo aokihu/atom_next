@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, mock, test } from "bun:test";
-import { runPostFollowUpWorkflow } from "@/core/workflows/runPostFollowUpWorkflow";
+import { postFollowUpPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
 import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
 
 const buildTask = (
@@ -30,7 +30,7 @@ const buildTask = (
   } as TaskItem;
 };
 
-describe("runPostFollowUpWorkflow", () => {
+describe("postFollowUpPipeline", () => {
   test("writes continuation and returns enqueue for continuation-driven formal conversation", async () => {
     const task = buildTask("task-1", {
       chainRound: 1,
@@ -70,11 +70,10 @@ describe("runPostFollowUpWorkflow", () => {
       addTask,
     };
 
-    const result = await runPostFollowUpWorkflow(
+    const result = await runPipelineDefinition(
+      postFollowUpPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      {} as any,
+      { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
     );
 
     expect(result).toEqual({

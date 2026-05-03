@@ -87,6 +87,7 @@ const assembleTaskItem = (
     chatId: params.chatId,
     source: params.source,
     workflow: params.workflow,
+    pipeline: params.workflow,
     state: TaskState.WAITING,
     priority: params.priority,
     payload,

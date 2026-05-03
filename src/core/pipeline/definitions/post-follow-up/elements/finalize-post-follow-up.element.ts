@@ -2,12 +2,12 @@ import type { PipelineElement } from "@/core/pipeline";
 import { TaskState } from "@/types";
 import type {
   PreparedPostFollowUp,
-  RunPostFollowUpWorkflowResult,
+  RunPostFollowUpPipelineResult,
 } from "../types";
 
 export const finalizePostFollowUpElement: PipelineElement<
   PreparedPostFollowUp,
-  RunPostFollowUpWorkflowResult
+  RunPostFollowUpPipelineResult
 > = {
   name: "FinalizePostFollowUp",
   async process(input) {

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { runUserIntentPredictionWorkflow } from "@/core/workflows/runUserIntentPredictionWorkflow";
+import { userIntentPredictionPipeline, runPipelineDefinition } from "@/core/pipeline/definitions";
 import { TaskSource, TaskState, TaskWorkflow, type TaskItem } from "@/types/task";
 
 const buildTask = (
@@ -29,7 +29,7 @@ const buildTask = (
   } as TaskItem;
 };
 
-describe("runUserIntentPredictionWorkflow", () => {
+describe("userIntentPredictionPipeline", () => {
   test("completes when no prediction request is produced", async () => {
     const task = buildTask("task-1");
 
@@ -52,11 +52,10 @@ describe("runUserIntentPredictionWorkflow", () => {
       addTask,
     };
 
-    const result = await runUserIntentPredictionWorkflow(
+    const result = await runPipelineDefinition(
+      userIntentPredictionPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      {} as any,
+      { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
     );
 
     expect(result).toEqual({
@@ -98,11 +97,10 @@ describe("runUserIntentPredictionWorkflow", () => {
       addTask,
     };
 
-    const result = await runUserIntentPredictionWorkflow(
+    const result = await runPipelineDefinition(
+      userIntentPredictionPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      {} as any,
+      { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
     );
 
     expect(result).toEqual({
@@ -155,11 +153,10 @@ describe("runUserIntentPredictionWorkflow", () => {
       addTask,
     };
 
-    const result = await runUserIntentPredictionWorkflow(
+    const result = await runPipelineDefinition(
+      userIntentPredictionPipeline,
       task,
-      taskQueue as any,
-      runtime as any,
-      {} as any,
+      { taskQueue: taskQueue as any, runtime: runtime as any, serviceManager: {} as any },
     );
 
     expect(result).toEqual({

@@ -3,25 +3,25 @@ import type { TaskQueue } from "@/core/queue";
 import type { Runtime } from "@/core/runtime";
 import type { TaskItem } from "@/types/task";
 
-export type PostFollowUpWorkflowEnv = {
+export type PostFollowUpPipelineEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
 };
 
 export type PostFollowUpPipelineInput = {
-  env: PostFollowUpWorkflowEnv;
+  env: PostFollowUpPipelineEnv;
 };
 
 export type PreparedPostFollowUp = PostFollowUpPipelineInput & {
   nextTask: ReturnType<Runtime["createContinuationFormalConversationTask"]>;
 };
 
-export const createPostFollowUpWorkflowEnv = (
+export const createPostFollowUpPipelineEnv = (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-): PostFollowUpWorkflowEnv => {
+): PostFollowUpPipelineEnv => {
   return {
     task,
     taskQueue,
@@ -29,4 +29,4 @@ export const createPostFollowUpWorkflowEnv = (
   };
 };
 
-export type RunPostFollowUpWorkflowResult = PipelineResult;
+export type RunPostFollowUpPipelineResult = PipelineResult;

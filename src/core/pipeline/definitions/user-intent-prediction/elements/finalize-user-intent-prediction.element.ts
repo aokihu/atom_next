@@ -2,12 +2,12 @@ import type { PipelineElement } from "@/core/pipeline";
 import { TaskState } from "@/types";
 import type {
   PredictionExecution,
-  RunUserIntentPredictionWorkflowResult,
+  RunUserIntentPredictionPipelineResult,
 } from "../types";
 
 export const finalizeUserIntentPredictionElement: PipelineElement<
   PredictionExecution,
-  RunUserIntentPredictionWorkflowResult
+  RunUserIntentPredictionPipelineResult
 > = {
   name: "FinalizeUserIntentPrediction",
   async process(input) {

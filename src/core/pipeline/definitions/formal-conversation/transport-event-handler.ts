@@ -2,10 +2,10 @@ import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types/task";
 import type { PipelineEventBus, PipelineEventMap } from "@/core/pipeline";
-import type { FormalConversationWorkflowEnv, FormalConversationPipelineState } from "./types";
+import type { FormalConversationPipelineEnv, FormalConversationPipelineState } from "./types";
 
 const emitChatOutputUpdatedEvent = (
-  env: FormalConversationWorkflowEnv,
+  env: FormalConversationPipelineEnv,
   delta: string,
 ): void => {
   const payload: ChatOutputUpdatedEventPayload = {
@@ -39,7 +39,7 @@ const stringifyToolError = (value: unknown) => {
 
 export const registerTransportEventHandler = (
   eventBus: PipelineEventBus<PipelineEventMap>,
-  env: FormalConversationWorkflowEnv,
+  env: FormalConversationPipelineEnv,
   state: FormalConversationPipelineState,
 ) => {
   let hasSyncedProcessingState = false;

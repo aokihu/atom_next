@@ -7,7 +7,7 @@ import type { TaskQueue } from "@/core/queue";
 import type { Runtime } from "@/core/runtime";
 import type { TaskItem } from "@/types/task";
 
-export type FormalConversationWorkflowEnv = {
+export type FormalConversationPipelineEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
@@ -22,7 +22,7 @@ export type FormalConversationPipelineState = {
 };
 
 export type FormalConversationPipelineInput = {
-  env: FormalConversationWorkflowEnv;
+  env: FormalConversationPipelineEnv;
   state: FormalConversationPipelineState;
 };
 
@@ -46,7 +46,7 @@ export type FormalConversationConversationOutput =
   };
 
 export type FormalConversationFinalizationInput = {
-  env: FormalConversationWorkflowEnv;
+  env: FormalConversationPipelineEnv;
   transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
@@ -68,11 +68,11 @@ export type FormalConversationFlowState =
       finalization: FormalConversationFinalizationInput;
     };
 
-export const createFormalConversationWorkflowEnv = (
+export const createFormalConversationPipelineEnv = (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-): FormalConversationWorkflowEnv => {
+): FormalConversationPipelineEnv => {
   return {
     task,
     taskQueue,
@@ -91,4 +91,4 @@ export const createFormalConversationPipelineState =
     };
   };
 
-export type RunFormalConversationWorkflowResult = PipelineResult;
+export type RunFormalConversationPipelineResult = PipelineResult;
