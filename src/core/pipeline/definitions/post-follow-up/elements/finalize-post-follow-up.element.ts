@@ -10,6 +10,7 @@ export const finalizePostFollowUpElement: PipelineElement<
   RunPostFollowUpPipelineResult
 > = {
   name: "FinalizePostFollowUp",
+  kind: "sink",
   async process(input) {
     input.env.taskQueue.updateTask(
       input.env.task.id,

@@ -9,6 +9,7 @@ export const exportPromptsElement: PipelineElement<
   FormalConversationPrompts
 > = {
   name: "ExportPrompts",
+  kind: "source",
   async process(input) {
     const [systemPrompt, userPrompt] = await input.env.runtime.exportPrompts();
 

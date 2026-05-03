@@ -9,6 +9,7 @@ export const preparePredictionRequestElement: PipelineElement<
   PreparedPredictionRequest
 > = {
   name: "PreparePredictionRequest",
+  kind: "source",
   async process(input) {
     return {
       ...input,

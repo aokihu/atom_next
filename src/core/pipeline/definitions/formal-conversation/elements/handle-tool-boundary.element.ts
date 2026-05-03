@@ -25,6 +25,7 @@ export const handleToolBoundaryElement: PipelineElement<
   FormalConversationFlowState
 > = {
   name: "HandleToolBoundary",
+  kind: "boundary",
   async process(input) {
     if (!shouldExecutePendingToolCalls(input)) {
       return {

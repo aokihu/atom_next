@@ -27,6 +27,7 @@ export const finalizeConversationElement: PipelineElement<
   PipelineResult
 > = {
   name: "FinalizeConversation",
+  kind: "sink",
   async process(input) {
     if (input.mode !== "ready_to_finalize") {
       throw new Error("Formal conversation pipeline did not reach finalize state");

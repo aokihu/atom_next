@@ -13,7 +13,34 @@ export class PipelineRunner {
         throw new DOMException("Pipeline aborted", "AbortError");
       }
 
-      current = await element.process(current, context);
+      const startedAt = performance.now();
+
+      context.eventBus.emit("pipeline.lifecycle.element.started", {
+        pipelineName: pipeline.name,
+        elementName: element.name,
+        elementKind: element.kind,
+      });
+
+      try {
+        current = await element.process(current, context);
+
+        context.eventBus.emit("pipeline.lifecycle.element.finished", {
+          pipelineName: pipeline.name,
+          elementName: element.name,
+          elementKind: element.kind,
+          durationMs: performance.now() - startedAt,
+        });
+      } catch (error) {
+        context.eventBus.emit("pipeline.lifecycle.element.failed", {
+          pipelineName: pipeline.name,
+          elementName: element.name,
+          elementKind: element.kind,
+          durationMs: performance.now() - startedAt,
+          error,
+        });
+
+        throw error;
+      }
     }
 
     return current as O;

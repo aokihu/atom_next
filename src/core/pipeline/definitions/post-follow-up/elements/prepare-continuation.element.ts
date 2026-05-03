@@ -9,6 +9,7 @@ export const prepareContinuationElement: PipelineElement<
   PreparedPostFollowUp
 > = {
   name: "PrepareContinuation",
+  kind: "transform",
   async process(input) {
     await input.env.runtime.preparePostFollowUpContinuation();
 

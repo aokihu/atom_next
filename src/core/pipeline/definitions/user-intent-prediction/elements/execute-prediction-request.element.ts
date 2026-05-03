@@ -9,6 +9,7 @@ export const executePredictionRequestElement: PipelineElement<
   PredictionExecution
 > = {
   name: "ExecutePredictionRequest",
+  kind: "transform",
   async process(input) {
     if (!input.predictionRequest) {
       return {

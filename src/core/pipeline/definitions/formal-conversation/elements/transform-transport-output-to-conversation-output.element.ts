@@ -9,6 +9,7 @@ export const transformTransportOutputToConversationOutputElement: PipelineElemen
   FormalConversationConversationOutput
 > = {
   name: "TransformTransportOutputToConversationOutput",
+  kind: "transform",
   async process(input) {
     input.env.runtime.clearContinuationContext();
 

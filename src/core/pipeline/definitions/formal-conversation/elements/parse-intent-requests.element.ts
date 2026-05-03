@@ -6,6 +6,7 @@ export const parseIntentRequestsElement: PipelineElement<
   FormalConversationFlowState
 > = {
   name: "ParseIntentRequests",
+  kind: "boundary",
   async process(input) {
     if (input.mode === "ready_to_finalize") {
       return input;

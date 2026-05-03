@@ -38,6 +38,7 @@ describe("runPipelineDefinition", () => {
         elements: [
           {
             name: "ThrowElement",
+            kind: "transform",
             async process() {
               throw new Error("boom");
             },
@@ -76,6 +77,7 @@ describe("runPipelineDefinition", () => {
         elements: [
           {
             name: "PassElement",
+            kind: "transform",
             async process() {
               return { type: "complete", task: buildTask("task-1") };
             },

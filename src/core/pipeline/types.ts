@@ -48,8 +48,11 @@ export type PipelineContext = {
   eventBus: PipelineEventBus<PipelineEventMap>;
 };
 
+export type PipelineElementKind = "source" | "transform" | "boundary" | "sink";
+
 export type PipelineElement<I, O> = {
   name: string;
+  kind: PipelineElementKind;
   process(input: I, context: PipelineContext): Promise<O>;
 };
 

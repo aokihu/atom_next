@@ -9,6 +9,7 @@ export const transformPromptsToTransportPayloadElement: PipelineElement<
   FormalConversationTransportInput
 > = {
   name: "TransformPromptsToTransportPayload",
+  kind: "transform",
   async process(input) {
     return {
       ...input,

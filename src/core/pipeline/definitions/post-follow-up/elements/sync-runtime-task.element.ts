@@ -6,6 +6,7 @@ export const syncRuntimeTaskElement: PipelineElement<
   PostFollowUpPipelineInput
 > = {
   name: "SyncRuntimeTask",
+  kind: "source",
   async process(input) {
     input.env.runtime.currentTask = input.env.task;
     return input;

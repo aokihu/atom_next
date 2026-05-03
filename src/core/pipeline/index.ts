@@ -3,6 +3,7 @@ export type {
   PipelineContext,
   PipelineDefinition,
   PipelineElement,
+  PipelineElementKind,
   PipelineResult,
   PipelineRunDeps,
   PipelineSetupCleanup,

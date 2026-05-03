@@ -52,6 +52,7 @@ export const createTransportElement = <
 ): PipelineElement<TInput, TransportElementOutput<TInput>> => {
   return {
     name: "Transport",
+    kind: "transform",
     async process(input, context) {
       const { transportPayload } = input;
       const transportOptions = transportPayload.options ?? {};

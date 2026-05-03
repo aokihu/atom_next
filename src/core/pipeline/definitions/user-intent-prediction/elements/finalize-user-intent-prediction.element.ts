@@ -10,6 +10,7 @@ export const finalizeUserIntentPredictionElement: PipelineElement<
   RunUserIntentPredictionPipelineResult
 > = {
   name: "FinalizeUserIntentPrediction",
+  kind: "sink",
   async process(input) {
     const result = input.requestExecutionResult;
 

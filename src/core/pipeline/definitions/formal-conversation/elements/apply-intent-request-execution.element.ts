@@ -41,6 +41,7 @@ export const applyIntentRequestExecutionElement: PipelineElement<
   FormalConversationFlowState
 > = {
   name: "ApplyIntentRequestExecution",
+  kind: "boundary",
   async process(input) {
     if (input.mode === "ready_to_finalize") {
       return input;
