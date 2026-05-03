@@ -58,7 +58,10 @@ import {
   shouldReportIntentRequestLogs,
 } from "./service-access";
 import type { RuntimeMemoryItem } from "./memory-item";
-import type { Transport, TransportModelProfile } from "../transport";
+import {
+  generateTransportObject,
+  type TransportModelProfile,
+} from "../transport";
 import {
   ContextManager,
   type SessionMemoryClearPolicy,
@@ -595,7 +598,7 @@ export class Runtime {
   /**
    * 执行 plain FOLLOW_UP 的内部预处理，并写入 continuation。
    */
-  public async preparePostFollowUpContinuation(transport: Transport): Promise<{
+  public async preparePostFollowUpContinuation(): Promise<{
     summary: string;
     nextPrompt: string;
     avoidRepeat: string;
@@ -614,14 +617,19 @@ export class Runtime {
 
     if (!isEmpty(rawFollowUpIntent)) {
       try {
-        const output = await transport.generateObject(systemPrompt, userPrompt, {
-          modelProfile: this.getTransportModelProfile("balanced"),
-          maxOutputTokens: POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
-          schema: PostFollowUpContinuationSchema,
-          schemaName: "post_follow_up_continuation",
-          schemaDescription:
-            "Structured continuation summary for internal follow-up preprocessing.",
-        });
+        const output = await generateTransportObject(
+          this.#serviceManager,
+          systemPrompt,
+          userPrompt,
+          {
+            modelProfile: this.getTransportModelProfile("balanced"),
+            maxOutputTokens: POST_FOLLOW_UP_MAX_OUTPUT_TOKENS,
+            schema: PostFollowUpContinuationSchema,
+            schemaName: "post_follow_up_continuation",
+            schemaDescription:
+              "Structured continuation summary for internal follow-up preprocessing.",
+          },
+        );
         const parsedContinuation = normalizePostFollowUpContinuation(output);
 
         if (parsedContinuation) {
@@ -805,10 +813,16 @@ export class Runtime {
    */
   public async prepareExecutionContext(
     task: TaskItem,
-    transport: Transport,
   ): Promise<PrepareConversationIntentRequest | null> {
     return runPrepareExecutionContext(task, {
-      transport,
+      generateObject: (systemPrompt, userPrompt, options) => {
+        return generateTransportObject(
+          this.#serviceManager,
+          systemPrompt,
+          userPrompt,
+          options,
+        );
+      },
       exportIntentPrompt: () => this.exportIntentPrompt(),
       exportUserPrompt: () => this.exportUserPrompt(),
       getTransportModelProfile: (level = "balanced") => {

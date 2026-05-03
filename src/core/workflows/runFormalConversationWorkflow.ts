@@ -1,7 +1,7 @@
 import type { TaskItem } from "@/types/task";
+import type { ServiceManager } from "@/libs/service-manage";
 import type { TaskQueue } from "../queue";
 import type { Runtime } from "../runtime";
-import type { Transport } from "../transport";
 import {
   PipelineEventBus,
   PipelineRunner,
@@ -27,7 +27,7 @@ import { applyIntentRequestExecutionElement } from "./formal-conversation/elemen
 import { finalizeConversationElement } from "./formal-conversation/elements/finalize-conversation.element";
 
 const createFormalConversationPipeline = (
-  transport: Transport,
+  serviceManager: ServiceManager,
 ): Pipeline<FormalConversationPipelineInput, RunFormalConversationWorkflowResult> => {
   return {
     name: "FormalConversation",
@@ -35,7 +35,7 @@ const createFormalConversationPipeline = (
       syncRuntimeTaskElement,
       exportPromptsElement,
       transformPromptsToTransportPayloadElement,
-      createTransportElement(transport),
+      createTransportElement({ serviceManager }),
       transformTransportOutputToConversationOutputElement,
       handleToolBoundaryElement,
       parseIntentRequestsElement,
@@ -50,7 +50,7 @@ export const runFormalConversationWorkflow = async (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
+  serviceManager: ServiceManager,
 ) => {
   const env = createFormalConversationWorkflowEnv(task, taskQueue, runtime);
   const state = createFormalConversationPipelineState();
@@ -61,7 +61,7 @@ export const runFormalConversationWorkflow = async (
 
   try {
     return await runner.run(
-      createFormalConversationPipeline(transport),
+      createFormalConversationPipeline(serviceManager),
       input,
       {
         task,

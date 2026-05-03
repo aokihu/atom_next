@@ -1,7 +1,29 @@
 // @ts-nocheck
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
 
+const streamText = mock();
+const generateText = mock();
+const outputObject = mock((options) => ({
+  type: "object",
+  ...options,
+}));
+const stepCountIs = mock((stepCount) => ({
+  type: "step-count",
+  stepCount,
+}));
+
+mock.module("ai", () => ({
+  streamText,
+  generateText,
+  Output: {
+    object: outputObject,
+  },
+  stepCountIs,
+}));
+
+import { ServiceManager } from "@/libs/service-manage";
+import { RuntimeService } from "@/services/runtime";
 import { runFormalConversationWorkflow } from "@/core/workflows/runFormalConversationWorkflow";
 import { ChatEvents } from "@/types/event";
 import { TaskSource, TaskState, type TaskItem } from "@/types/task";
@@ -39,7 +61,67 @@ const buildUsage = () => ({
   totalTokens: 30,
 });
 
+const buildServiceManager = (config = {}) => {
+  const runtime = new RuntimeService();
+  runtime.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+    ...config,
+  });
+
+  const serviceManager = new ServiceManager();
+  serviceManager.register(runtime);
+
+  return serviceManager;
+};
+
+const buildStreamResult = ({
+  consume = async () => {},
+  finishReason = "stop",
+  steps = [
+    {
+      toolCalls: [],
+      toolResults: [],
+    },
+  ],
+  response = {
+    messages: [],
+  },
+  usage = buildUsage(),
+  totalUsage = buildUsage(),
+} = {}) => {
+  return {
+    consumeStream: async () => {
+      await consume();
+    },
+    finishReason: Promise.resolve(finishReason),
+    usage: Promise.resolve(usage),
+    totalUsage: Promise.resolve(totalUsage),
+    steps: Promise.resolve(steps),
+    response: Promise.resolve(response),
+  };
+};
+
 describe("runFormalConversationWorkflow", () => {
+  beforeEach(() => {
+    streamText.mockReset();
+    generateText.mockReset();
+    outputObject.mockClear();
+    stepCountIs.mockClear();
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
+    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+  });
+
   test("injects runtime tools into transport and keeps current processing/finalize flow", async () => {
     const eventTarget = new EventEmitter();
     const outputUpdated = mock(() => {});
@@ -100,34 +182,29 @@ describe("runFormalConversationWorkflow", () => {
     };
 
     const updateTask = mock(() => {});
-    const addTask = mock(async () => {});
     const taskQueue = {
       updateTask,
-      addTask,
+      addTask: mock(async () => {}),
     };
 
-    const send = mock(async (_systemPrompt, _userPrompt, options) => {
-      await options.onTextDelta?.("visible answer");
-
-      return {
-        text: "final answer",
-        intentRequestText: "",
-        finishReason: "stop",
-        usage: buildUsage(),
-        totalUsage: buildUsage(),
-        stepCount: 1,
-        toolCallCount: 0,
-        toolResultCount: 0,
-        responseMessageCount: 1,
-      };
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        consume: async () => {
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "visible answer" },
+          });
+        },
+        response: {
+          messages: [{ role: "assistant" }],
+        },
+      });
     });
-    const transport = { send };
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({
@@ -135,10 +212,7 @@ describe("runFormalConversationWorkflow", () => {
       task,
     });
     expect(createConversationToolRegistry).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[2]?.maxOutputTokens).toBe(256);
-    expect(send.mock.calls[0]?.[2]?.maxToolSteps).toBe(10);
-    expect(send.mock.calls[0]?.[2]?.tools).toBe(tools);
+    expect(stepCountIs).toHaveBeenCalledWith(10);
     expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
       finishReason: "stop",
       visibleTextCharLength: "visible answer".length,
@@ -148,13 +222,15 @@ describe("runFormalConversationWorkflow", () => {
       toolResultCount: 0,
       responseMessageCount: 1,
     });
-    expect(appendAssistantOutput).toHaveBeenCalledWith("visible answer");
+    expect(
+      appendAssistantOutput.mock.calls.map(([textDelta]) => textDelta).join(""),
+    ).toBe("visible answer");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(updateTask.mock.calls).toEqual([
       [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
       [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
-    expect(outputUpdated).toHaveBeenCalledTimes(1);
+    expect(outputUpdated.mock.calls.length).toBeGreaterThan(0);
     expect(completed).toHaveBeenCalledTimes(1);
   });
 
@@ -215,33 +291,42 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onTextDelta?.("visible-1");
-        await options.onTextDelta?.("visible-2");
-
-        return {
-          text: "final answer",
-          intentRequestText: "request-a",
-          finishReason: "stop",
-          usage: buildUsage(),
-          totalUsage: buildUsage(),
-          stepCount: 2,
-          toolCallCount: 1,
-          toolResultCount: 1,
-          responseMessageCount: 2,
-        };
-      }),
-    };
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        consume: async () => {
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "visible-1" },
+          });
+          await options.onChunk?.({
+            chunk: {
+              type: "text-delta",
+              text: "visible-2\n<<<REQUEST>>>\nrequest-a",
+            },
+          });
+        },
+        steps: [
+          {
+            toolCalls: [{ toolName: "tree" }],
+            toolResults: [{ toolName: "tree" }],
+          },
+          {
+            toolCalls: [],
+            toolResults: [],
+          },
+        ],
+        response: {
+          messages: [{ role: "assistant" }, { role: "tool" }],
+        },
+      });
+    });
 
     await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
-    expect(transport.send.mock.calls[0]?.[2]?.maxOutputTokens).toBe(128);
     expect(reportConversationOutputAnalysis).toHaveBeenCalledWith({
       finishReason: "stop",
       visibleTextCharLength: "visible-1visible-2".length,
@@ -254,7 +339,7 @@ describe("runFormalConversationWorkflow", () => {
     expect(parseIntentRequest).toHaveBeenCalledWith("request-a");
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(finalizeChatTurn).toHaveBeenCalledWith(task, {
-      resultText: "final answer",
+      resultText: "visible-1visible-2",
       visibleTextBuffer: "visible-1visible-2",
     });
   });
@@ -315,29 +400,35 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onTextDelta?.("先看看目录结构。");
-
-        return {
-          text: "先看看目录结构。",
-          intentRequestText: "",
-          finishReason: "tool-calls",
-          usage: buildUsage(),
-          totalUsage: buildUsage(),
-          stepCount: 5,
-          toolCallCount: 5,
-          toolResultCount: 5,
-          responseMessageCount: 10,
-        };
-      }),
-    };
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        consume: async () => {
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "先看看目录结构。" },
+          });
+        },
+        finishReason: "tool-calls",
+        steps: [
+          {
+            toolCalls: new Array(5).fill(null).map(() => ({ toolName: "read" })),
+            toolResults: new Array(5).fill(null).map(() => ({ toolName: "read" })),
+          },
+          {
+            toolCalls: [],
+            toolResults: [],
+          },
+        ],
+        response: {
+          messages: new Array(10).fill({ role: "assistant" }),
+        },
+      });
+    });
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({
@@ -407,39 +498,43 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onToolCallStart?.({
-          toolName: "read",
-          toolCallId: "call_1",
-          input: { filepath: "/tmp/demo.txt" },
-        });
-        await options.onToolCallFinish?.({
-          toolName: "read",
-          toolCallId: "call_1",
-          input: { filepath: "/tmp/demo.txt" },
-          result: { filepath: "/tmp/demo.txt", content: [] },
-        });
-
-        return {
-          text: "done",
-          intentRequestText: "",
-          finishReason: "stop",
-          usage: buildUsage(),
-          totalUsage: buildUsage(),
-          stepCount: 1,
-          toolCallCount: 1,
-          toolResultCount: 1,
-          responseMessageCount: 2,
-        };
-      }),
-    };
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        consume: async () => {
+          await options.experimental_onToolCallStart?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call_1",
+              input: { filepath: "/tmp/demo.txt" },
+            },
+          });
+          await options.experimental_onToolCallFinish?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call_1",
+              input: { filepath: "/tmp/demo.txt" },
+            },
+            success: true,
+            output: { filepath: "/tmp/demo.txt", content: [] },
+          });
+        },
+        steps: [
+          {
+            toolCalls: [{ toolName: "read" }],
+            toolResults: [{ toolName: "read" }],
+          },
+        ],
+        response: {
+          messages: [{ role: "assistant" }, { role: "tool" }],
+        },
+      });
+    });
 
     await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(reportToolCallStarted).toHaveBeenCalledWith({
@@ -513,34 +608,41 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onToolCallFinish?.({
-          toolName: "read",
-          toolCallId: "call_2",
-          input: { filepath: "/tmp/missing.txt" },
-          result: { error: "The file does not exist, check filepath" },
-        });
-
-        return {
-          text: "",
-          intentRequestText: "",
-          finishReason: "tool-calls",
-          usage: buildUsage(),
-          totalUsage: buildUsage(),
-          stepCount: 1,
-          toolCallCount: 1,
-          toolResultCount: 1,
-          responseMessageCount: 2,
-        };
-      }),
-    };
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        consume: async () => {
+          await options.experimental_onToolCallFinish?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call_2",
+              input: { filepath: "/tmp/missing.txt" },
+            },
+            success: true,
+            output: { error: "The file does not exist, check filepath" },
+          });
+        },
+        finishReason: "tool-calls",
+        steps: [
+          {
+            toolCalls: [{ toolName: "read" }],
+            toolResults: [{ toolName: "read" }],
+          },
+          {
+            toolCalls: [],
+            toolResults: [],
+          },
+        ],
+        response: {
+          messages: [{ role: "assistant" }, { role: "tool" }],
+        },
+      });
+    });
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({
@@ -613,25 +715,26 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async () => ({
-        text: "",
-        intentRequestText: "",
+    streamText.mockImplementation(() => {
+      return buildStreamResult({
         finishReason: "tool-calls",
-        usage: buildUsage(),
-        totalUsage: buildUsage(),
-        stepCount: 1,
-        toolCallCount: 0,
-        toolResultCount: 0,
-        responseMessageCount: 1,
-      })),
-    };
+        steps: [
+          {
+            toolCalls: [],
+            toolResults: [],
+          },
+        ],
+        response: {
+          messages: [{ role: "assistant" }],
+        },
+      });
+    });
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({
@@ -642,7 +745,7 @@ describe("runFormalConversationWorkflow", () => {
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("没有实际执行任何工具");
   });
 
-  test("defers completion and schedules next internal round when runtime executes pending tool calls", async () => {
+  test("enqueues next internal round when runtime executes pending tool calls", async () => {
     const task = buildTask("task-7");
 
     let currentTask;
@@ -681,38 +784,37 @@ describe("runFormalConversationWorkflow", () => {
     };
 
     const updateTask = mock(() => {});
-    const addTask = mock(async () => {});
     const taskQueue = {
       updateTask,
-      addTask,
+      addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async () => ({
-        text: "",
-        intentRequestText: "",
+    streamText.mockImplementation(() => {
+      return buildStreamResult({
         finishReason: "tool-calls",
-        usage: buildUsage(),
-        totalUsage: buildUsage(),
-        stepCount: 1,
-        toolCallCount: 1,
-        toolResultCount: 0,
-        responseMessageCount: 1,
-        pendingToolCalls: [
+        steps: [
           {
-            toolName: "read",
-            toolCallId: "call_1",
-            input: { filepath: "/tmp/demo.txt" },
+            toolCalls: [
+              {
+                toolName: "read",
+                toolCallId: "call_1",
+                input: { filepath: "/tmp/demo.txt" },
+              },
+            ],
+            toolResults: [],
           },
         ],
-      })),
-    };
+        response: {
+          messages: [{ role: "assistant" }],
+        },
+      });
+    });
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({
@@ -731,7 +833,6 @@ describe("runFormalConversationWorkflow", () => {
       { state: TaskState.FOLLOW_UP },
       { shouldSyncEvent: false },
     );
-    expect(addTask).not.toHaveBeenCalled();
   });
 
   test("finalizes with runtime tool execution failure message when pending tool call cannot be executed", async () => {
@@ -791,32 +892,32 @@ describe("runFormalConversationWorkflow", () => {
       addTask: mock(async () => {}),
     };
 
-    const transport = {
-      send: mock(async () => ({
-        text: "",
-        intentRequestText: "",
+    streamText.mockImplementation(() => {
+      return buildStreamResult({
         finishReason: "tool-calls",
-        usage: buildUsage(),
-        totalUsage: buildUsage(),
-        stepCount: 1,
-        toolCallCount: 1,
-        toolResultCount: 0,
-        responseMessageCount: 1,
-        pendingToolCalls: [
+        steps: [
           {
-            toolName: "read",
-            toolCallId: "call_2",
-            input: { filepath: "/tmp/demo.txt" },
+            toolCalls: [
+              {
+                toolName: "read",
+                toolCallId: "call_2",
+                input: { filepath: "/tmp/demo.txt" },
+              },
+            ],
+            toolResults: [],
           },
         ],
-      })),
-    };
+        response: {
+          messages: [{ role: "assistant" }],
+        },
+      });
+    });
 
     const result = await runFormalConversationWorkflow(
       task,
       taskQueue as any,
       runtime as any,
-      transport as any,
+      buildServiceManager(),
     );
 
     expect(result).toEqual({

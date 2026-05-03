@@ -1,7 +1,17 @@
-export { Transport } from "./transport";
-export type { TransportModelProfile } from "./transport";
+export {
+  generateTransportObject,
+  generateTransportText,
+} from "./helpers";
 export type {
+  TransportGenerateObjectOptions,
+  TransportGenerateTextOptions,
+  TransportModelProfile,
   TransportOutput,
   TransportPayload,
-  TransportPort,
+  TransportPayloadOptions,
+  TransportPendingToolCall,
+  TransportSendOptions,
+  TransportTextPort,
+  TransportToolCallFinishEvent,
+  TransportToolCallStartEvent,
 } from "./types";

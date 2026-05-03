@@ -17,7 +17,10 @@ import type {
 } from "@/types";
 import type { RuntimeOutputBudget } from "@/services/runtime";
 import type { TaskItem } from "@/types/task";
-import type { Transport, TransportModelProfile } from "../../transport";
+import type {
+  TransportGenerateObjectOptions,
+  TransportModelProfile,
+} from "../../transport";
 import type {
   IntentControlInput,
   IntentExecutionPolicy,
@@ -40,7 +43,11 @@ export type PrepareMemoryState = {
 /* ==================== */
 
 export type PrepareExecutionContextDeps = {
-  transport: Transport;
+  generateObject: <TOutput>(
+    systemPrompt: string,
+    userPrompt: string,
+    options: TransportGenerateObjectOptions<TOutput>,
+  ) => Promise<TOutput>;
   exportIntentPrompt: () => string;
   exportUserPrompt: () => string;
   getTransportModelProfile: (

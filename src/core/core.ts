@@ -9,7 +9,6 @@ import { TaskSource, TaskWorkflow } from "@/types/task";
 import { sleep, toResult } from "radashi";
 import { TaskQueue } from "./queue";
 import { Runtime } from "./runtime";
-import { Transport } from "./transport";
 import type { PipelineResult } from "./pipeline";
 import {
   runFormalConversationWorkflow,
@@ -28,7 +27,7 @@ type WorkflowRunner = (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
+  serviceManager: ServiceManager,
 ) => Promise<WorkflowRunResult>;
 
 const WorkflowRunners = new Map<TaskWorkflow, WorkflowRunner>([
@@ -55,7 +54,6 @@ export class Core {
   #serviceManager: ServiceManager;
   #taskQueue: TaskQueue;
   #runtime: Runtime;
-  #transport: Transport;
   #isRunning: boolean;
   #logger: Logger | undefined;
 
@@ -67,7 +65,6 @@ export class Core {
     this.#runtime = new Runtime(this.#serviceManager, {
       logger: options.runtimeLogger,
     });
-    this.#transport = new Transport(this.#serviceManager);
     this.#isRunning = false;
     this.#logger = options.logger;
     this.#logger?.info("Core initialized");
@@ -156,7 +153,7 @@ export class Core {
       });
 
       const [workflowError, workflowResult] = await toResult(
-        runner(task, this.#taskQueue, this.#runtime, this.#transport),
+        runner(task, this.#taskQueue, this.#runtime, this.#serviceManager),
       );
 
       if (workflowError) {

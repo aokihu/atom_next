@@ -1,15 +1,14 @@
 import type { TaskItem } from "@/types/task";
+import type { ServiceManager } from "@/libs/service-manage";
 import { TaskState } from "@/types";
 import { promiseChain } from "radashi";
 import type { TaskQueue } from "../queue";
 import type { Runtime } from "../runtime";
-import type { Transport } from "../transport";
 
 type PostFollowUpWorkflowEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
-  transport: Transport;
 };
 
 type PreparedPostFollowUp = {
@@ -21,13 +20,11 @@ function createPostFollowUpWorkflowEnv(
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
 ): PostFollowUpWorkflowEnv {
   return {
     task,
     taskQueue,
     runtime,
-    transport,
   };
 }
 
@@ -41,7 +38,7 @@ async function syncRuntimeTask(
 async function prepareContinuation(
   env: PostFollowUpWorkflowEnv,
 ): Promise<PreparedPostFollowUp> {
-  await env.runtime.preparePostFollowUpContinuation(env.transport);
+  await env.runtime.preparePostFollowUpContinuation();
 
   return {
     env,
@@ -64,7 +61,7 @@ export const runPostFollowUpWorkflow = async (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
+  _serviceManager: ServiceManager,
 ) => {
   return promiseChain(
     syncRuntimeTask,
@@ -75,7 +72,6 @@ export const runPostFollowUpWorkflow = async (
       task,
       taskQueue,
       runtime,
-      transport,
     ),
   ).then(() => undefined);
 };

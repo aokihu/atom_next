@@ -1,7 +1,7 @@
 import type {
   TransportToolCallFinishEvent,
   TransportToolCallStartEvent,
-} from "@/core/transport/transport";
+} from "@/core/transport/types";
 
 export type PipelineEventMap = {
   "transport.delta": {

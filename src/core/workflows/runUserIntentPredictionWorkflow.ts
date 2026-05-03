@@ -1,9 +1,9 @@
 import type { TaskItem } from "@/types/task";
+import type { ServiceManager } from "@/libs/service-manage";
 import { TaskState } from "@/types";
 import { promiseChain } from "radashi";
 import type { TaskQueue } from "../queue";
 import type { Runtime } from "../runtime";
-import type { Transport } from "../transport";
 
 /* ==================== */
 /* Workflow Types       */
@@ -13,7 +13,6 @@ type UserIntentPredictionWorkflowEnv = {
   task: TaskItem;
   taskQueue: TaskQueue;
   runtime: Runtime;
-  transport: Transport;
 };
 
 type PreparedPredictionRequest = {
@@ -45,13 +44,11 @@ function createUserIntentPredictionWorkflowEnv(
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
 ): UserIntentPredictionWorkflowEnv {
   return {
     task,
     taskQueue,
     runtime,
-    transport,
   };
 }
 
@@ -89,10 +86,7 @@ async function preparePredictionRequest(
 ): Promise<PreparedPredictionRequest> {
   return {
     env,
-    predictionRequest: await env.runtime.prepareExecutionContext(
-      env.task,
-      env.transport,
-    ),
+    predictionRequest: await env.runtime.prepareExecutionContext(env.task),
   };
 }
 
@@ -169,7 +163,7 @@ export const runUserIntentPredictionWorkflow = async (
   task: TaskItem,
   taskQueue: TaskQueue,
   runtime: Runtime,
-  transport: Transport,
+  _serviceManager: ServiceManager,
 ) => {
   /**
    * 保留 promiseChain 的原因：
@@ -187,7 +181,6 @@ export const runUserIntentPredictionWorkflow = async (
       task,
       taskQueue,
       runtime,
-      transport,
     ),
   ).then(() => undefined);
 };

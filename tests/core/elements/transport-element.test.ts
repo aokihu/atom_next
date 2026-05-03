@@ -1,41 +1,155 @@
-import { describe, expect, mock, test } from "bun:test";
+// @ts-nocheck
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ServiceManager } from "@/libs/service-manage";
+import { RuntimeService } from "@/services/runtime";
 import {
   PipelineEventBus,
   type PipelineEventMap,
 } from "@/core/pipeline";
 import { createTransportElement } from "@/core/elements";
 
-describe("createTransportElement", () => {
-  test("calls transport.send and forwards callbacks through pipeline events", async () => {
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onTextDelta?.("visible");
-        await options.onToolCallStart?.({
-          toolName: "read",
-          toolCallId: "call-1",
-          input: { filepath: "/tmp/demo.txt" },
-        });
-        await options.onToolCallFinish?.({
-          toolName: "read",
-          toolCallId: "call-1",
-          input: { filepath: "/tmp/demo.txt" },
-          result: { ok: true },
-        });
+const streamText = mock();
+const stepCountIs = mock((stepCount) => ({
+  type: "step-count",
+  stepCount,
+}));
 
-        return {
-          text: "visible",
-          intentRequestText: "",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          stepCount: 1,
-          toolCallCount: 1,
-          toolResultCount: 1,
-          responseMessageCount: 1,
-          pendingToolCalls: [],
-        };
-      }),
-    };
+mock.module("ai", () => ({
+  streamText,
+  stepCountIs,
+  generateText: mock(),
+  Output: {
+    object: mock(),
+  },
+}));
+
+const buildServiceManager = (config = {}) => {
+  const runtime = new RuntimeService();
+  runtime.loadConfig({
+    version: 2,
+    providerProfiles: {
+      advanced: "deepseek/deepseek-chat",
+      balanced: "deepseek/deepseek-chat",
+      basic: "deepseek/deepseek-chat",
+    },
+    providers: {},
+    gateway: {
+      enable: false,
+      channels: [],
+    },
+    ...config,
+  });
+
+  const serviceManager = new ServiceManager();
+  serviceManager.register(runtime);
+
+  return serviceManager;
+};
+
+const buildStreamResult = ({
+  chunks = [],
+  consumeErrors = [],
+  finishReason = "stop",
+  steps = [
+    {
+      toolCalls: [],
+      toolResults: [],
+    },
+  ],
+  response = {
+    messages: [],
+  },
+  usage = {
+    inputTokens: 10,
+    outputTokens: 20,
+    totalTokens: 30,
+  },
+  totalUsage = {
+    inputTokens: 10,
+    outputTokens: 20,
+    totalTokens: 30,
+  },
+} = {}) => {
+  return {
+    consumeStream: async (options = {}) => {
+      for (const chunk of chunks) {
+        await currentCallOptions?.onChunk?.({ chunk });
+      }
+
+      for (const error of consumeErrors) {
+        await options.onError?.(error);
+      }
+    },
+    finishReason: Promise.resolve(finishReason),
+    usage: Promise.resolve(usage),
+    totalUsage: Promise.resolve(totalUsage),
+    steps: Promise.resolve(steps),
+    response: Promise.resolve(response),
+  };
+};
+
+let currentCallOptions;
+
+describe("createTransportElement", () => {
+  beforeEach(() => {
+    currentCallOptions = undefined;
+    streamText.mockReset();
+    stepCountIs.mockClear();
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
+    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+  });
+
+  test("runs transport directly and forwards stream callbacks through pipeline events", async () => {
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+
+      return {
+        consumeStream: async () => {
+          await options.experimental_onToolCallStart?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call-1",
+              input: { filepath: "/tmp/demo.txt" },
+            },
+          });
+
+          await options.onChunk?.({
+            chunk: { type: "text-delta", text: "visible" },
+          });
+
+          await options.experimental_onToolCallFinish?.({
+            toolCall: {
+              toolName: "read",
+              toolCallId: "call-1",
+              input: { filepath: "/tmp/demo.txt" },
+            },
+            success: true,
+            output: { ok: true },
+          });
+        },
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 2,
+        }),
+        totalUsage: Promise.resolve({
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 2,
+        }),
+        steps: Promise.resolve([
+          {
+            toolCalls: [{ toolName: "read" }],
+            toolResults: [{ toolName: "read" }],
+          },
+        ]),
+        response: Promise.resolve({
+          messages: [{ role: "assistant" }],
+        }),
+      };
+    });
 
     const eventBus = new PipelineEventBus<PipelineEventMap>();
     const delta = mock(() => {});
@@ -45,7 +159,9 @@ describe("createTransportElement", () => {
     eventBus.on("transport.tool.started", toolStarted);
     eventBus.on("transport.tool.finished", toolFinished);
 
-    const element = createTransportElement(transport as any);
+    const element = createTransportElement({
+      serviceManager: buildServiceManager(),
+    });
     const result = await element.process(
       {
         transportPayload: {
@@ -53,6 +169,13 @@ describe("createTransportElement", () => {
           userPrompt: "user",
           options: {
             maxOutputTokens: 128,
+            tools: {
+              read: {
+                description: "read file",
+                inputSchema: {},
+              },
+            },
+            maxToolSteps: 7,
           },
         },
       },
@@ -62,16 +185,10 @@ describe("createTransportElement", () => {
       },
     );
 
-    expect(transport.send).toHaveBeenCalledWith(
-      "system",
-      "user",
-      expect.objectContaining({
-        maxOutputTokens: 128,
-        onTextDelta: expect.any(Function),
-        onToolCallStart: expect.any(Function),
-        onToolCallFinish: expect.any(Function),
-      }),
-    );
+    expect(stepCountIs).toHaveBeenCalledWith(7);
+    expect(currentCallOptions.system).toBe("system");
+    expect(currentCallOptions.prompt).toBe("user");
+    expect(currentCallOptions.maxOutputTokens).toBe(128);
     expect(result.transportOutput.text).toBe("visible");
     expect(delta).toHaveBeenCalledWith({ textDelta: "visible" });
     expect(toolStarted).toHaveBeenCalledWith({
@@ -87,18 +204,19 @@ describe("createTransportElement", () => {
     });
   });
 
-  test("emits transport.failed and rethrows on send failure", async () => {
+  test("emits transport.failed and rethrows when streamText fails", async () => {
     const error = new Error("send failed");
-    const transport = {
-      send: mock(async () => {
-        throw error;
-      }),
-    };
+    streamText.mockImplementation(() => {
+      throw error;
+    });
+
     const eventBus = new PipelineEventBus<PipelineEventMap>();
     const failed = mock(() => {});
     eventBus.on("transport.failed", failed);
 
-    const element = createTransportElement(transport as any);
+    const element = createTransportElement({
+      serviceManager: buildServiceManager(),
+    });
 
     await expect(
       element.process(
@@ -118,32 +236,27 @@ describe("createTransportElement", () => {
     expect(failed).toHaveBeenCalledWith({ error });
   });
 
-  test("does not call user-provided onError callback from transport payload options", async () => {
-    const error = new Error("provider failed");
-    const transport = {
-      send: mock(async (_systemPrompt, _userPrompt, options) => {
-        await options.onError?.(error);
+  test("emits transport.failed for provider and consumeStream errors without calling user callbacks", async () => {
+    const providerError = new Error("provider failed");
+    const streamError = new Error("stream failed");
+    const userOnError = mock(() => {});
 
-        return {
-          text: "",
-          intentRequestText: "",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-          stepCount: 1,
-          toolCallCount: 0,
-          toolResultCount: 0,
-          responseMessageCount: 1,
-          pendingToolCalls: [],
-        };
-      }),
-    };
+    streamText.mockImplementation((options) => {
+      currentCallOptions = options;
+      options.onError?.({ error: providerError });
+
+      return buildStreamResult({
+        consumeErrors: [streamError],
+      });
+    });
+
     const eventBus = new PipelineEventBus<PipelineEventMap>();
     const failed = mock(() => {});
-    const userOnError = mock(() => {});
     eventBus.on("transport.failed", failed);
 
-    const element = createTransportElement(transport as any);
+    const element = createTransportElement({
+      serviceManager: buildServiceManager(),
+    });
 
     await element.process(
       {
@@ -162,7 +275,10 @@ describe("createTransportElement", () => {
       },
     );
 
-    expect(failed).toHaveBeenCalledWith({ error });
+    expect(failed.mock.calls).toEqual([
+      [{ error: providerError }],
+      [{ error: streamError }],
+    ]);
     expect(userOnError).not.toHaveBeenCalled();
   });
 });

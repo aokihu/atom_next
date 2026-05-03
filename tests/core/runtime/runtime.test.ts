@@ -1,11 +1,26 @@
 // @ts-nocheck
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+const streamText = mock();
+const generateText = mock();
+const outputObject = mock((options) => ({
+  type: "object",
+  ...options,
+}));
+
+mock.module("ai", () => ({
+  streamText,
+  generateText,
+  Output: {
+    object: outputObject,
+  },
+  stepCountIs: mock(),
+}));
+
 import { Runtime } from "@/core/runtime";
-import { Transport } from "@/core/transport";
 import { ServiceManager } from "@/libs/service-manage";
 import { MemoryService, ToolService } from "@/services";
 import { RuntimeService } from "@/services/runtime";
@@ -39,6 +54,15 @@ const buildRuntime = () => {
 
 const workspaces: string[] = [];
 const memoryServices: MemoryService[] = [];
+
+beforeEach(() => {
+  streamText.mockReset();
+  generateText.mockReset();
+  outputObject.mockClear();
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
+  process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
+});
 
 const buildRuntimeWithServices = async () => {
   const workspace = await mkdtemp(join(tmpdir(), "atom-next-runtime-step1-"));
@@ -86,7 +110,6 @@ const buildRuntimeWithServices = async () => {
   return {
     runtime: new Runtime(serviceManager),
     memoryService,
-    transport: new Transport(serviceManager),
     workspace,
   };
 };
@@ -522,15 +545,15 @@ describe("Runtime context", () => {
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
 
-    const result = await runtime.preparePostFollowUpContinuation({
-      generateObject: async () => {
-        return {
-          summary: "已完成前半部分。",
-          nextPrompt: "继续补充剩余分析，不要重复前文。",
-          avoidRepeat: "不要重复第一段和第二段。",
-        };
+    generateText.mockResolvedValue({
+      output: {
+        summary: "已完成前半部分。",
+        nextPrompt: "继续补充剩余分析，不要重复前文。",
+        avoidRepeat: "不要重复第一段和第二段。",
       },
-    } as any);
+    });
+
+    const result = await runtime.preparePostFollowUpContinuation();
 
     expect(result).toEqual({
       summary: "已完成前半部分。",
@@ -562,13 +585,15 @@ describe("Runtime context", () => {
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续剩余分析。" }],
     });
 
-    const result = await runtime.preparePostFollowUpContinuation({
-      generateObject: async () => ({
+    generateText.mockResolvedValue({
+      output: {
         summary: "",
         nextPrompt: "",
         avoidRepeat: "",
-      }),
-    } as any);
+      },
+    });
+
+    const result = await runtime.preparePostFollowUpContinuation();
 
     expect(result.fallbackUsed).toBe(true);
     expect(result.summary).toContain("已完成前半部分");
@@ -1012,7 +1037,7 @@ describe("Runtime context", () => {
   });
 
   test("prepareExecutionContext predicts intent and preloads long memory for external task", async () => {
-    const { runtime, memoryService, transport } = await buildRuntimeWithServices();
+    const { runtime, memoryService } = await buildRuntimeWithServices();
 
     memoryService.saveMemory({
       text: "Watchman 服务负责 AGENTS.md 的编译缓存，不负责 Memory 持久化。",
@@ -1027,18 +1052,18 @@ describe("Runtime context", () => {
     });
     runtime.currentTask = task;
 
-    transport.generateObject = async () => {
-      return {
+    generateText.mockResolvedValue({
+      output: {
         type: "memory_lookup",
         topicRelation: "related",
         needsMemory: true,
         needsMemorySave: false,
         memoryQuery: "AGENTS md",
         confidence: 0.95,
-      };
-    };
+      },
+    });
 
-    const request = await runtime.prepareExecutionContext(task, transport);
+    const request = await runtime.prepareExecutionContext(task);
 
     expect(request?.source).toBe("prediction");
     expect(request?.request).toBe("PREPARE_CONVERSATION");
@@ -1114,7 +1139,7 @@ describe("Runtime context", () => {
   });
 
   test("prepareExecutionContext skips prediction for internal task", async () => {
-    const { runtime, transport } = await buildRuntimeWithServices();
+    const { runtime } = await buildRuntimeWithServices();
 
     const task = buildTask("task-1", {
       sessionId: "session-1",
@@ -1126,15 +1151,17 @@ describe("Runtime context", () => {
     runtime.currentTask = task;
 
     let called = false;
-    transport.generateObject = async () => {
+    generateText.mockImplementation(async () => {
       called = true;
       return {
-        type: "memory_lookup",
-        topicRelation: "related",
+        output: {
+          type: "memory_lookup",
+          topicRelation: "related",
+        },
       };
-    };
+    });
 
-    const policy = await runtime.prepareExecutionContext(task, transport);
+    const policy = await runtime.prepareExecutionContext(task);
 
     expect(called).toBe(false);
     expect(policy).toBeNull();
@@ -1142,7 +1169,7 @@ describe("Runtime context", () => {
   });
 
   test("prepareExecutionContext archives previous conversation into short memory for unrelated topic", async () => {
-    const { runtime, transport } = await buildRuntimeWithServices();
+    const { runtime } = await buildRuntimeWithServices();
 
     runtime.currentTask = buildTask("task-1", {
       sessionId: "session-1",
@@ -1161,18 +1188,18 @@ describe("Runtime context", () => {
     });
     runtime.currentTask = task;
 
-    transport.generateObject = async () => {
-      return {
+    generateText.mockResolvedValue({
+      output: {
         type: "direct_answer",
         topicRelation: "unrelated",
         needsMemory: false,
         needsMemorySave: false,
         memoryQuery: "",
         confidence: 0.91,
-      };
-    };
+      },
+    });
 
-    const request = await runtime.prepareExecutionContext(task, transport);
+    const request = await runtime.prepareExecutionContext(task);
     const shortMemory = runtime.getMemoryContext("short");
     const prompt = await runtime.exportSystemPrompt({
       ignoreWatchman: true,
@@ -1194,7 +1221,7 @@ describe("Runtime context", () => {
   });
 
   test("topic archive ttl decreases only on later external chats and clears at zero", async () => {
-    const { runtime, transport } = await buildRuntimeWithServices();
+    const { runtime } = await buildRuntimeWithServices();
 
     runtime.currentTask = buildTask("task-1", {
       sessionId: "session-1",
@@ -1213,18 +1240,18 @@ describe("Runtime context", () => {
     });
     runtime.currentTask = isolateTask;
 
-    transport.generateObject = async () => {
-      return {
+    generateText.mockResolvedValue({
+      output: {
         type: "direct_answer",
         topicRelation: "unrelated",
         needsMemory: false,
         needsMemorySave: false,
         memoryQuery: "",
         confidence: 0.9,
-      };
-    };
+      },
+    });
 
-    await runtime.prepareExecutionContext(isolateTask, transport);
+    await runtime.prepareExecutionContext(isolateTask);
     expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(5);
 
     const internalTask = buildTask("task-3", {
@@ -1235,7 +1262,7 @@ describe("Runtime context", () => {
       chainRound: 1,
     });
     runtime.currentTask = internalTask;
-    await runtime.prepareExecutionContext(internalTask, transport);
+    await runtime.prepareExecutionContext(internalTask);
     expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(5);
 
     for (let index = 0; index < 4; index += 1) {
@@ -1246,18 +1273,18 @@ describe("Runtime context", () => {
       });
       runtime.currentTask = externalTask;
 
-      transport.generateObject = async () => {
-        return {
+      generateText.mockResolvedValue({
+        output: {
           type: "direct_answer",
           topicRelation: "related",
           needsMemory: false,
           needsMemorySave: false,
           memoryQuery: "",
           confidence: 0.9,
-        };
-      };
+        },
+      });
 
-      await runtime.prepareExecutionContext(externalTask, transport);
+      await runtime.prepareExecutionContext(externalTask);
       expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBe(4 - index);
     }
 
@@ -1267,7 +1294,7 @@ describe("Runtime context", () => {
       payload: [{ type: "text", data: "最后一个新问题" }],
     });
     runtime.currentTask = clearTask;
-    await runtime.prepareExecutionContext(clearTask, transport);
+    await runtime.prepareExecutionContext(clearTask);
 
     expect(runtime.getMemoryContext("short").status).toBe("idle");
     expect(runtime.getMemoryContext("short").ttlTurnsRemaining).toBeNull();

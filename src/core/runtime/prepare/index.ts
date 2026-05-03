@@ -103,7 +103,7 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
   };
 
   try {
-    const parsedIntent = await deps.transport.generateObject(
+    const parsedIntent = await deps.generateObject(
       deps.exportIntentPrompt(),
       deps.exportUserPrompt(),
       {
