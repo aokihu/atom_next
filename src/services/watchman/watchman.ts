@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { isPlainObject, isString, retry, tryit } from "radashi";
-import { createModelWithProvider } from "@/core/transport/model";
+import { createModelWithProvider } from "@/core/elements/transport.element";
 import type { RuntimeService } from "@/services/runtime";
 import type { Logger } from "@/libs/log";
 import { BaseService } from "../base";

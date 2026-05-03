@@ -6,9 +6,9 @@ import {
   normalizePendingToolCalls,
   resolveTransportModel,
   resolveTransportToolStopCondition,
-} from "@/core/transport/helpers";
-import { createRequestStreamParser } from "@/core/transport/request-stream";
-import type { TransportPayload, TransportOutput } from "@/core/transport/types";
+} from "./helpers";
+import { createRequestStreamParser } from "./request-stream";
+import type { TransportPayload, TransportOutput } from "./types";
 
 type TransportElementDeps = {
   serviceManager: ServiceManager;
@@ -185,3 +185,27 @@ export const createTransportElement = <
     },
   };
 };
+
+export {
+  DEFAULT_MAX_TOOL_STEPS,
+  generateTransportObject,
+  generateTransportText,
+  normalizePendingToolCalls,
+  resolveTransportModel,
+  resolveTransportToolStopCondition,
+} from "./helpers";
+export { createModelWithProvider } from "./model";
+export { REQUEST_MARKER, createRequestStreamParser } from "./request-stream";
+export type {
+  TransportGenerateObjectOptions,
+  TransportGenerateTextOptions,
+  TransportModelProfile,
+  TransportOutput,
+  TransportPayload,
+  TransportPayloadOptions,
+  TransportPendingToolCall,
+  TransportSendOptions,
+  TransportTextPort,
+  TransportToolCallFinishEvent,
+  TransportToolCallStartEvent,
+} from "./types";

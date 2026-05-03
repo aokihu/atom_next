@@ -206,4 +206,117 @@ describe("Core pipeline result compatibility", () => {
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].message.data).toBe("我先继续处理。这是续跑后的最终答案。");
   });
+
+  test("enqueues next task returned by post follow up pipeline", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-post-follow-up-enqueue-"));
+    workspaces.push(workspace);
+
+    const { memory, serviceManager } = await buildServiceManager(workspace);
+    memoryServices.push(memory);
+
+    generateText.mockResolvedValue({
+      output: {
+        summary: "已完成前半部分。",
+        nextPrompt: "继续后半部分。",
+        avoidRepeat: "不要重复前文。",
+      },
+    });
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        chunks: [
+          {
+            type: "text-delta",
+            text: "这是 PostFollowUp 续跑后的最终答案。",
+            options,
+          },
+        ],
+      });
+    });
+
+    const completedEvents = [];
+    const eventTarget = new EventEmitter();
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+      completedEvents.push(payload);
+    });
+
+    const task = createTaskItem({
+      sessionId: "session-1",
+      chatId: "chat-2",
+      workflow: TaskWorkflow.POST_FOLLOW_UP,
+      source: "internal",
+      chainRound: 1,
+      payload: [{ type: "text", data: "继续后半部分" }],
+      eventTarget,
+      channel: { domain: "tui" },
+    });
+
+    const core = new Core(serviceManager);
+    await core.addTask(task);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0].message.data).toBe(
+      "这是 PostFollowUp 续跑后的最终答案。",
+    );
+  });
+
+  test("enqueues next task returned by user intent prediction pipeline", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "atom-next-core-predict-enqueue-"));
+    workspaces.push(workspace);
+
+    const { memory, serviceManager } = await buildServiceManager(workspace);
+    memoryServices.push(memory);
+
+    generateText.mockResolvedValue({
+      output: {
+        type: "direct_answer",
+        topicRelation: "related",
+        needsMemory: false,
+        needsMemorySave: false,
+        memoryQuery: "",
+        confidence: 0.92,
+      },
+    });
+    streamText.mockImplementation((options) => {
+      return buildStreamResult({
+        chunks: [
+          {
+            type: "text-delta",
+            text: "这是预测后 formal conversation 的最终答案。",
+            options,
+          },
+        ],
+      });
+    });
+
+    const completedEvents = [];
+    const eventTarget = new EventEmitter();
+    eventTarget.on(ChatEvents.CHAT_COMPLETED, (payload) => {
+      completedEvents.push(payload);
+    });
+
+    const task = createTaskItem({
+      sessionId: "session-1",
+      chatId: "chat-3",
+      workflow: TaskWorkflow.PREDICT_USER_INTENT,
+      payload: [{ type: "text", data: "请直接回答当前问题" }],
+      eventTarget,
+      channel: { domain: "tui" },
+    });
+
+    const core = new Core(serviceManager);
+    await core.addTask(task);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(0);
+
+    await core.runOnce();
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0].message.data).toBe(
+      "这是预测后 formal conversation 的最终答案。",
+    );
+  });
 });

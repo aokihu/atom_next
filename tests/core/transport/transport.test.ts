@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ServiceManager } from "@/libs/service-manage";
 import { RuntimeService } from "@/services/runtime";
 
-const streamText = mock();
 const generateText = mock();
 const outputObject = mock((options) => ({
   type: "object",
@@ -15,15 +14,22 @@ const stepCountIs = mock((stepCount) => ({
 }));
 
 mock.module("ai", () => ({
-  streamText,
   generateText,
   Output: {
     object: outputObject,
   },
   stepCountIs,
+  streamText: mock(),
 }));
 
-const { Transport } = await import("@/core/transport/transport");
+const {
+  DEFAULT_MAX_TOOL_STEPS,
+  generateTransportObject,
+  generateTransportText,
+  normalizePendingToolCalls,
+  resolveTransportModel,
+  resolveTransportToolStopCondition,
+} = await import("@/core/elements/transport.element");
 
 const buildServiceManager = (config = {}) => {
   const runtime = new RuntimeService();
@@ -48,695 +54,31 @@ const buildServiceManager = (config = {}) => {
   return serviceManager;
 };
 
-const buildStreamResult = ({
-  chunks = [],
-  consumeErrors = [],
-  finishReason = "stop",
-  steps = [
-    {
-      toolCalls: [],
-      toolResults: [],
-    },
-  ],
-  response = {
-    messages: [],
-  },
-  usage = {
-    inputTokens: 10,
-    outputTokens: 20,
-    totalTokens: 30,
-  },
-  totalUsage = {
-    inputTokens: 10,
-    outputTokens: 20,
-    totalTokens: 30,
-  },
-} = {}) => {
-  return {
-    consumeStream: async (options = {}) => {
-      for (const chunk of chunks) {
-        await currentCallOptions?.onChunk?.({ chunk });
-      }
-
-      for (const error of consumeErrors) {
-        await options.onError?.(error);
-      }
-    },
-    finishReason: Promise.resolve(finishReason),
-    usage: Promise.resolve(usage),
-    totalUsage: Promise.resolve(totalUsage),
-    steps: Promise.resolve(steps),
-    response: Promise.resolve(response),
-  };
-};
-
-let currentCallOptions;
-
-describe("Transport.send", () => {
+describe("transport helpers", () => {
   beforeEach(() => {
-    currentCallOptions = undefined;
-    streamText.mockReset();
     generateText.mockReset();
+    outputObject.mockClear();
     stepCountIs.mockClear();
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
     process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
   });
 
-  test("passes prompt options to streamText and aggregates visible text deltas", async () => {
-    const onTextDelta = mock(async () => {});
-    const abortController = new AbortController();
-    const usage = {
-      inputTokens: 12,
-      outputTokens: 18,
-      totalTokens: 30,
-    };
-    const totalUsage = {
-      inputTokens: 15,
-      outputTokens: 25,
-      totalTokens: 40,
-    };
-
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return buildStreamResult({
-        chunks: [
-          { type: "text-delta", text: "Hello\n<<<REQ" },
-          { type: "reasoning-delta", text: "ignore" },
-          { type: "text-delta", text: "UEST>>>\nrequest-a" },
-          { type: "text-delta", text: "\nrequest-b" },
-        ],
-        usage,
-        totalUsage,
-      });
-    });
-
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.send("system prompt", "user prompt", {
-      abortSignal: abortController.signal,
-      maxOutputTokens: 128,
-      onTextDelta,
-    });
-
-    expect(streamText).toHaveBeenCalledTimes(1);
-    expect(currentCallOptions.system).toBe("system prompt");
-    expect(currentCallOptions.prompt).toBe("user prompt");
-    expect(currentCallOptions.abortSignal).toBe(abortController.signal);
-    expect(currentCallOptions.maxOutputTokens).toBe(128);
-    expect(currentCallOptions.tools).toBeUndefined();
-    expect(currentCallOptions.stopWhen).toBeUndefined();
-    expect(onTextDelta.mock.calls.map(([textDelta]) => textDelta).join("")).toBe(
-      "Hello",
-    );
-    expect(result).toEqual({
-      text: "Hello",
-      intentRequestText: "request-a\nrequest-b",
-      finishReason: "stop",
-      usage,
-      totalUsage,
-      stepCount: 1,
-      toolCallCount: 0,
-      toolResultCount: 0,
-      responseMessageCount: 0,
-      pendingToolCalls: [],
-    });
-  });
-
-  test("returns empty intentRequestText when request marker is absent", async () => {
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return buildStreamResult({
-        chunks: [
-          { type: "text-delta", text: "Hello" },
-          { type: "text-delta", text: " World" },
-        ],
-      });
-    });
-
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.send("system prompt", "user prompt");
-
-    expect(result.text).toBe("Hello World");
-    expect(result.intentRequestText).toBe("");
-  });
-
-  test("forwards provider errors through onError", async () => {
-    const providerError = new Error("provider error");
-    const onError = mock(async () => {});
-
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-      options.onError?.({ error: providerError });
-      return buildStreamResult();
-    });
-
-    const transport = new Transport(buildServiceManager());
-    await transport.send("system prompt", "user prompt", {
-      onError,
-    });
-
-    expect(onError).toHaveBeenCalledWith(providerError);
-  });
-
-  test("forwards consumeStream errors through onError", async () => {
-    const streamError = new Error("stream error");
-    const onError = mock(async () => {});
-
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-      return buildStreamResult({
-        consumeErrors: [streamError],
-      });
-    });
-
-    const transport = new Transport(buildServiceManager());
-    await transport.send("system prompt", "user prompt", {
-      onError,
-    });
-
-    expect(onError).toHaveBeenCalledWith(streamError);
-  });
-
-  test("passes tools and maxToolSteps to streamText and forwards tool hooks", async () => {
-    const onToolCallStart = mock(async () => {});
-    const onToolCallFinish = mock(async () => {});
-    const tools = {
-      read: {
-        description: "read file",
-        inputSchema: {},
-      },
-    };
-
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return {
-        consumeStream: async () => {
-          await options.experimental_onToolCallStart?.({
-            toolCall: {
-              toolName: "read",
-              toolCallId: "call_1",
-              input: { filepath: "/tmp/readme.md" },
-            },
-          });
-
-          await options.onChunk?.({
-            chunk: { type: "text-delta", text: "Looked up file. " },
-          });
-
-          await options.experimental_onToolCallFinish?.({
-            toolCall: {
-              toolName: "read",
-              toolCallId: "call_1",
-              input: { filepath: "/tmp/readme.md" },
-            },
-            success: true,
-            output: {
-              filepath: "/tmp/readme.md",
-              size: 12,
-            },
-          });
-
-          await options.onChunk?.({
-            chunk: { type: "text-delta", text: "Done." },
-          });
-        },
-        finishReason: Promise.resolve("stop"),
-        usage: Promise.resolve({
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-        }),
-        totalUsage: Promise.resolve({
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-        }),
-        steps: Promise.resolve([
-          {
-            toolCalls: [
-              {
-                toolName: "read",
-              },
-            ],
-            toolResults: [
-              {
-                toolName: "read",
-              },
-            ],
-          },
-        ]),
-        response: Promise.resolve({
-          messages: [{ role: "assistant" }, { role: "tool" }],
-        }),
-      };
-    });
-
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.send("system prompt", "user prompt", {
-      tools,
-      maxToolSteps: 7,
-      onToolCallStart,
-      onToolCallFinish,
-    });
-
-    expect(stepCountIs).toHaveBeenCalledTimes(1);
-    expect(stepCountIs).toHaveBeenCalledWith(7);
-    expect(currentCallOptions.tools).toBe(tools);
-    expect(currentCallOptions.stopWhen).toEqual({
-      type: "step-count",
-      stepCount: 7,
-    });
-    expect(onToolCallStart).toHaveBeenCalledWith({
-      toolName: "read",
-      toolCallId: "call_1",
-      input: { filepath: "/tmp/readme.md" },
-    });
-    expect(onToolCallFinish).toHaveBeenCalledWith({
-      toolName: "read",
-      toolCallId: "call_1",
-      input: { filepath: "/tmp/readme.md" },
-      result: {
-        filepath: "/tmp/readme.md",
-        size: 12,
-      },
-    });
-    expect(result.text).toBe("Looked up file. Done.");
-    expect(result.intentRequestText).toBe("");
-    expect(result.stepCount).toBe(1);
-    expect(result.toolCallCount).toBe(1);
-    expect(result.toolResultCount).toBe(1);
-    expect(result.responseMessageCount).toBe(2);
-  });
-
-  test("uses default maxToolSteps when tools are present and keeps text parsing isolated from tool events", async () => {
-    const onTextDelta = mock(async () => {});
-    const onToolCallFinish = mock(async () => {});
-    const tools = {
-      tree: {
-        description: "list tree",
-        inputSchema: {},
-      },
-    };
-
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return {
-        consumeStream: async () => {
-          await options.experimental_onToolCallStart?.({
-            toolCall: {
-              toolName: "tree",
-              toolCallId: "call_2",
-              input: { dirpath: "/tmp/project" },
-            },
-          });
-
-          await options.onChunk?.({
-            chunk: { type: "text-delta", text: "Summary\n<<<REQ" },
-          });
-
-          await options.experimental_onToolCallFinish?.({
-            toolCall: {
-              toolName: "tree",
-              toolCallId: "call_2",
-              input: { dirpath: "/tmp/project" },
-            },
-            success: false,
-            error: new Error("tree failed"),
-          });
-
-          await options.onChunk?.({
-            chunk: { type: "text-delta", text: "UEST>>>\nrequest-a" },
-          });
-        },
-        finishReason: Promise.resolve("stop"),
-        usage: Promise.resolve({
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-        }),
-        totalUsage: Promise.resolve({
-          inputTokens: 10,
-          outputTokens: 20,
-          totalTokens: 30,
-        }),
-        steps: Promise.resolve([
-          {
-            toolCalls: [
-              {
-                toolName: "tree",
-              },
-            ],
-            toolResults: [],
-          },
-        ]),
-        response: Promise.resolve({
-          messages: [{ role: "assistant" }],
-        }),
-      };
-    });
-
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.send("system prompt", "user prompt", {
-      tools,
-      onTextDelta,
-      onToolCallFinish,
-    });
-
-    expect(stepCountIs).toHaveBeenCalledTimes(1);
-    expect(stepCountIs).toHaveBeenCalledWith(5);
-    expect(currentCallOptions.stopWhen).toEqual({
-      type: "step-count",
-      stepCount: 5,
-    });
-    expect(onTextDelta.mock.calls.map(([textDelta]) => textDelta).join("")).toBe(
-      "Summary",
-    );
-    expect(onToolCallFinish).toHaveBeenCalledWith({
-      toolName: "tree",
-      toolCallId: "call_2",
-      input: { dirpath: "/tmp/project" },
-      error: expect.any(Error),
-    });
-    expect(result.text).toBe("Summary");
-    expect(result.intentRequestText).toBe("request-a");
-    expect(result.toolCallCount).toBe(1);
-    expect(result.toolResultCount).toBe(0);
-  });
-
-  test("throws when runtime service is missing", () => {
-    expect(() => {
-      new Transport(new ServiceManager());
-    }).toThrow("Runtime service not found");
-  });
-
-  test("supports openai provider when provider config is present", () => {
-    expect(() => {
-      new Transport(
-        buildServiceManager({
-          providerProfiles: {
-            advanced: "deepseek/deepseek-chat",
-            balanced: "openai/gpt-5",
-            basic: "deepseek/deepseek-chat",
-          },
-          providers: {
-            openai: {
-              apiKeyEnv: "OPENAI_API_KEY",
-              models: ["gpt-5"],
-            },
-          },
-        }),
-      );
-    }).not.toThrow();
-  });
-
-  test("supports openaiCompatible provider when provider config is present", () => {
-    expect(() => {
-      new Transport(
-        buildServiceManager({
-          providerProfiles: {
-            advanced: "deepseek/deepseek-chat",
-            balanced: "openaiCompatible/custom-model",
-            basic: "deepseek/deepseek-chat",
-          },
-          providers: {
-            openaiCompatible: {
-              apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
-              baseUrl: "https://example.com/v1",
-              models: ["custom-model"],
-            },
-          },
-        }),
-      );
-    }).not.toThrow();
-  });
-
-  test("defers provider validation until send", () => {
-    expect(() => {
-      new Transport(
-        buildServiceManager({
-          providerProfiles: {
-            advanced: "deepseek/deepseek-chat",
-            balanced: "openaiCompatible/custom-model",
-            basic: "deepseek/deepseek-chat",
-          },
-        }),
-      );
-    }).not.toThrow();
-  });
-
-  test("throws when openaiCompatible provider config is missing during send", async () => {
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openaiCompatible/custom-model",
-          basic: "deepseek/deepseek-chat",
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt"),
-    ).rejects.toThrow(
-      "Invalid transport provider config: missing config.providers.openaiCompatible",
-    );
-    expect(streamText).not.toHaveBeenCalled();
-  });
-
-  test("throws when provider profile provider is unsupported during send", async () => {
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "custom/model-x",
-          basic: "deepseek/deepseek-chat",
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt"),
-    ).rejects.toThrow(
-      "Invalid transport model config: config.providerProfiles.balanced contains unsupported provider (custom)",
-    );
-    expect(streamText).not.toHaveBeenCalled();
-  });
-
-  test("supports forward-compatible openai model on default provider path during send", async () => {
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return buildStreamResult({
-        chunks: [{ type: "text-delta", text: "ok" }],
-      });
-    });
-
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openai/future-model",
-          basic: "deepseek/deepseek-chat",
-        },
-      }),
-    );
-
-    const result = await transport.send("system prompt", "user prompt");
-
-    expect(result.text).toBe("ok");
-    expect(streamText).toHaveBeenCalledTimes(1);
-  });
-
-  test("throws when providerConfig models does not include selected model", async () => {
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openai/gpt-5",
-          basic: "deepseek/deepseek-chat",
-        },
-        providers: {
-          openai: {
-            apiKeyEnv: "OPENAI_API_KEY",
-            models: ["gpt-4o"],
-          },
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt"),
-    ).rejects.toThrow(
-      "config.providers.openai.models does not include gpt-5",
-    );
-    expect(streamText).not.toHaveBeenCalled();
-  });
-
-  test("throws when provider apiKey env is missing during send", async () => {
-    delete process.env.OPENAI_API_KEY;
-
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openai/gpt-5",
-          basic: "deepseek/deepseek-chat",
-        },
-        providers: {
-          openai: {
-            apiKeyEnv: "OPENAI_API_KEY",
-            models: ["gpt-5"],
-          },
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt"),
-    ).rejects.toThrow(
-      "Invalid transport provider config: config.providers.openai.apiKeyEnv points to missing env OPENAI_API_KEY",
-    );
-    expect(streamText).not.toHaveBeenCalled();
-  });
-
-  test("throws when openaiCompatible baseUrl is missing during send", async () => {
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openaiCompatible/custom-model",
-          basic: "deepseek/deepseek-chat",
-        },
-        providers: {
-          openaiCompatible: {
-            apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
-            models: ["custom-model"],
-          },
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt"),
-    ).rejects.toThrow(
-      "Invalid transport provider config: missing config.providers.openaiCompatible.baseUrl for openaiCompatible",
-    );
-    expect(streamText).not.toHaveBeenCalled();
-  });
-
-  test("supports configured forward-compatible openai model during send", async () => {
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return buildStreamResult({
-        chunks: [{ type: "text-delta", text: "ok" }],
-      });
-    });
-
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openai/gpt-5.1",
-          basic: "deepseek/deepseek-chat",
-        },
-        providers: {
-          openai: {
-            apiKeyEnv: "OPENAI_API_KEY",
-            models: ["gpt-5.1"],
-          },
-        },
-      }),
-    );
-
-    const result = await transport.send("system prompt", "user prompt");
-
-    expect(result.text).toBe("ok");
-    expect(streamText).toHaveBeenCalledTimes(1);
-  });
-
-  test("supports openaiCompatible model ids with extra slashes during send", async () => {
-    streamText.mockImplementation((options) => {
-      currentCallOptions = options;
-
-      return buildStreamResult({
-        chunks: [{ type: "text-delta", text: "ok" }],
-      });
-    });
-
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "openaiCompatible/meta-llama/Llama-3.3-70B-Instruct",
-          basic: "deepseek/deepseek-chat",
-        },
-        providers: {
-          openaiCompatible: {
-            apiKeyEnv: "OPENAI_COMPATIBLE_API_KEY",
-            baseUrl: "https://example.com/v1",
-            models: ["meta-llama/Llama-3.3-70B-Instruct"],
-          },
-        },
-      }),
-    );
-
-    const result = await transport.send("system prompt", "user prompt");
-
-    expect(result.text).toBe("ok");
-    expect(streamText).toHaveBeenCalledTimes(1);
-  });
-
-  test("forwards preflight model validation errors through onError", async () => {
-    const onError = mock(async () => {});
-    const transport = new Transport(
-      buildServiceManager({
-        providerProfiles: {
-          advanced: "deepseek/deepseek-chat",
-          balanced: "custom/model-x",
-          basic: "deepseek/deepseek-chat",
-        },
-      }),
-    );
-
-    await expect(
-      transport.send("system prompt", "user prompt", {
-        onError,
-      }),
-    ).rejects.toThrow(
-      "Invalid transport model config: config.providerProfiles.balanced contains unsupported provider (custom)",
-    );
-
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
-  });
-});
-
-describe("Transport.generateText", () => {
-  beforeEach(() => {
-    generateText.mockReset();
-    outputObject.mockClear();
-    streamText.mockReset();
-    process.env.OPENAI_API_KEY = "test-openai-key";
-    process.env.OPENAI_COMPATIBLE_API_KEY = "test-openai-compatible-key";
-    process.env.DEEPSEEK_API_KEY = "test-deepseek-key";
-  });
-
-  test("passes prompt options to generateText and returns full text", async () => {
+  test("generateTransportText passes prompt options to generateText and returns text", async () => {
     const abortController = new AbortController();
     generateText.mockResolvedValue({
       text: "TYPE=unknown\nNEEDS_MEMORY=false",
     });
 
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.generateText("system prompt", "user prompt", {
-      abortSignal: abortController.signal,
-      maxOutputTokens: 64,
-    });
+    const result = await generateTransportText(
+      buildServiceManager(),
+      "system prompt",
+      "user prompt",
+      {
+        abortSignal: abortController.signal,
+        maxOutputTokens: 64,
+      },
+    );
 
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]?.system).toBe("system prompt");
@@ -748,29 +90,33 @@ describe("Transport.generateText", () => {
     expect(result).toBe("TYPE=unknown\nNEEDS_MEMORY=false");
   });
 
-  test("supports explicit model profile overrides", async () => {
+  test("generateTransportText supports explicit model profile overrides", async () => {
     generateText.mockResolvedValue({
       text: "TYPE=memory_lookup",
     });
 
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.generateText("system prompt", "user prompt", {
-      modelProfile: {
-        level: "basic",
-        selectedModel: {
-          id: "deepseek/deepseek-chat",
-          provider: "deepseek",
-          model: "deepseek-chat",
+    const result = await generateTransportText(
+      buildServiceManager(),
+      "system prompt",
+      "user prompt",
+      {
+        modelProfile: {
+          level: "basic",
+          selectedModel: {
+            id: "deepseek/deepseek-chat",
+            provider: "deepseek",
+            model: "deepseek-chat",
+          },
         },
       },
-    });
+    );
 
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]?.model).toBeDefined();
     expect(result).toBe("TYPE=memory_lookup");
   });
 
-  test("passes schema options to generateText and returns structured output", async () => {
+  test("generateTransportObject passes schema options to generateText and returns structured output", async () => {
     const abortController = new AbortController();
     const schema = {
       safeParse: () => ({ success: true }),
@@ -783,8 +129,8 @@ describe("Transport.generateText", () => {
       },
     });
 
-    const transport = new Transport(buildServiceManager());
-    const result = await transport.generateObject(
+    const result = await generateTransportObject(
+      buildServiceManager(),
       "system prompt",
       "user prompt",
       {
@@ -812,5 +158,133 @@ describe("Transport.generateText", () => {
       type: "memory_lookup",
       topicRelation: "related",
     });
+  });
+
+  test("resolveTransportToolStopCondition returns undefined without tools", () => {
+    expect(
+      resolveTransportToolStopCondition({
+        maxToolSteps: 7,
+      }),
+    ).toBeUndefined();
+    expect(stepCountIs).not.toHaveBeenCalled();
+  });
+
+  test("resolveTransportToolStopCondition uses default and explicit maxToolSteps", () => {
+    const tools = {
+      read: {
+        description: "read file",
+        inputSchema: {},
+      },
+    };
+
+    expect(
+      resolveTransportToolStopCondition({
+        tools,
+      }),
+    ).toEqual({
+      type: "step-count",
+      stepCount: DEFAULT_MAX_TOOL_STEPS,
+    });
+    expect(
+      resolveTransportToolStopCondition({
+        tools,
+        maxToolSteps: 9,
+      }),
+    ).toEqual({
+      type: "step-count",
+      stepCount: 9,
+    });
+  });
+
+  test("normalizePendingToolCalls returns last-step tool calls only for tool-calls finish reason", () => {
+    expect(
+      normalizePendingToolCalls(
+        [
+          {
+            toolCalls: [
+              {
+                toolName: "read",
+                toolCallId: "call-1",
+                input: { filepath: "/tmp/a" },
+              },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                toolName: "write",
+                toolCallId: "call-2",
+                args: { filepath: "/tmp/b" },
+              },
+              {
+                toolName: "",
+                toolCallId: "call-3",
+                input: {},
+              },
+            ],
+          },
+        ],
+        "tool-calls",
+      ),
+    ).toEqual([
+      {
+        toolName: "write",
+        toolCallId: "call-2",
+        input: { filepath: "/tmp/b" },
+      },
+    ]);
+
+    expect(
+      normalizePendingToolCalls(
+        [
+          {
+            toolCalls: [
+              {
+                toolName: "read",
+                input: {},
+              },
+            ],
+          },
+        ],
+        "stop",
+      ),
+    ).toEqual([]);
+  });
+
+  test("resolveTransportModel caches by serviceManager", () => {
+    const serviceManager = buildServiceManager();
+
+    const firstModel = resolveTransportModel(serviceManager, "text");
+    const secondModel = resolveTransportModel(serviceManager, "text");
+
+    expect(firstModel).toBe(secondModel);
+  });
+
+  test("generateTransportText throws when runtime service is missing", async () => {
+    await expect(
+      generateTransportText(
+        new ServiceManager(),
+        "system prompt",
+        "user prompt",
+      ),
+    ).rejects.toThrow("Runtime service not found");
+  });
+
+  test("generateTransportText throws when provider profile provider is unsupported", async () => {
+    await expect(
+      generateTransportText(
+        buildServiceManager({
+          providerProfiles: {
+            advanced: "deepseek/deepseek-chat",
+            balanced: "custom/model-x",
+            basic: "deepseek/deepseek-chat",
+          },
+        }),
+        "system prompt",
+        "user prompt",
+      ),
+    ).rejects.toThrow(
+      "Invalid transport model config: config.providerProfiles.balanced contains unsupported provider (custom)",
+    );
   });
 });

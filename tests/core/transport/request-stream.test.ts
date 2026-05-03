@@ -5,7 +5,7 @@ import { finished } from "node:stream/promises";
 import {
   createRequestStreamParser,
   REQUEST_MARKER,
-} from "@/core/transport/request-stream";
+} from "@/core/elements/transport.element";
 
 const runParser = async (chunks: string[]) => {
   const parser = createRequestStreamParser();

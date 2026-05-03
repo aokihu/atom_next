@@ -1,5 +1,8 @@
 import type { PipelineResult } from "@/core/pipeline";
-import type { TransportOutput, TransportPayload } from "@/core/transport";
+import type {
+  TransportOutput,
+  TransportPayload,
+} from "@/core/elements/transport.element";
 import type { TaskQueue } from "@/core/queue";
 import type { Runtime } from "@/core/runtime";
 import type { TaskItem } from "@/types/task";

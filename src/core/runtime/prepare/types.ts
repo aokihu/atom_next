@@ -20,7 +20,7 @@ import type { TaskItem } from "@/types/task";
 import type {
   TransportGenerateObjectOptions,
   TransportModelProfile,
-} from "../../transport";
+} from "../../elements/transport.element";
 import type {
   IntentControlInput,
   IntentExecutionPolicy,

@@ -32,6 +32,11 @@ type RawStepToolCall = {
   args?: unknown;
 };
 
+/**
+ * Transport model cache is scoped by ServiceManager.
+ * This helper-level cache replaces the old Transport instance cache without
+ * reintroducing Transport as a runtime component.
+ */
 const modelCacheRegistry = new WeakMap<ServiceManager, TransportModelCacheState>();
 
 const getRuntimeService = (serviceManager: ServiceManager): RuntimeService => {

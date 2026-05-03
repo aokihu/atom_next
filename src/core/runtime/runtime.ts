@@ -61,7 +61,7 @@ import type { RuntimeMemoryItem } from "./memory-item";
 import {
   generateTransportObject,
   type TransportModelProfile,
-} from "../transport";
+} from "../elements/transport.element";
 import {
   ContextManager,
   type SessionMemoryClearPolicy,

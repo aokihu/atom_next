@@ -16,7 +16,7 @@ import type { MemoryService } from "@/services";
 import type { ToolService } from "@/services";
 import type { RuntimeService } from "@/services/runtime";
 import type { ProviderProfileLevel } from "@/types/config";
-import type { TransportModelProfile } from "../transport";
+import type { TransportModelProfile } from "../elements/transport.element";
 
 /* ==================== */
 /* Base Service Access  */

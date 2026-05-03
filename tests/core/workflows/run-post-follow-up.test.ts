@@ -31,7 +31,7 @@ const buildTask = (
 };
 
 describe("runPostFollowUpWorkflow", () => {
-  test("writes continuation and schedules continuation-driven formal conversation", async () => {
+  test("writes continuation and returns enqueue for continuation-driven formal conversation", async () => {
     const task = buildTask("task-1", {
       chainRound: 1,
       payload: [{ type: "text", data: "已完成前半部分，下一轮继续后半部分。" }],
@@ -70,13 +70,17 @@ describe("runPostFollowUpWorkflow", () => {
       addTask,
     };
 
-    await runPostFollowUpWorkflow(
+    const result = await runPostFollowUpWorkflow(
       task,
       taskQueue as any,
       runtime as any,
       {} as any,
     );
 
+    expect(result).toEqual({
+      type: "enqueue",
+      nextTask,
+    });
     expect(preparePostFollowUpContinuation).toHaveBeenCalledTimes(1);
     expect(createContinuationFormalConversationTask).toHaveBeenCalledWith(task);
     expect(updateTask).toHaveBeenCalledWith(
@@ -84,6 +88,6 @@ describe("runPostFollowUpWorkflow", () => {
       { state: TaskState.COMPLETED },
       { shouldSyncEvent: false },
     );
-    expect(addTask).toHaveBeenCalledWith(nextTask);
+    expect(addTask).not.toHaveBeenCalled();
   });
 });

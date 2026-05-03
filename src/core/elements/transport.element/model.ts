@@ -21,10 +21,6 @@ import {
   isProviderID,
 } from "@/types/config";
 
-/* ==================== */
-/*       Private        */
-/* ==================== */
-
 const withDeepseek: (
   model: "deepseek-chat" | "deepseek-reasoner",
 ) => LanguageModelV3 = (model) => {
@@ -186,15 +182,6 @@ const modelFactories: ModelFactoryMap = {
   openaiCompatible: withConfiguredOpenAICompatible,
 };
 
-/* ==================== */
-/*       Public         */
-/* ==================== */
-
-/**
- * 根据供应商创建模型
- * @param selectedModel RuntimeService 提供的选中模型
- * @param providerConfig RuntimeService 提供的 provider 详细配置
- */
 export const createModelWithProvider = (
   selectedModel: ParsedProviderModel,
   providerConfig?: ProviderDefinition,
@@ -220,6 +207,6 @@ export const createModelWithProvider = (
   }
 
   throw buildModelConfigError(
-    `${profilePath} contains unsupported provider (${parsedModel.provider})`,
+    `${profilePath} resolved unsupported provider (${parsedModel.provider})`,
   );
 };
