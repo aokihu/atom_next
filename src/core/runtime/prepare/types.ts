@@ -15,6 +15,7 @@
 import type {
   PrepareConversationIntentRequest,
 } from "@/types";
+import type { Logger } from "@/libs/log";
 import type { RuntimeOutputBudget } from "@/services/runtime";
 import type { TaskItem } from "@/types/task";
 import type {
@@ -48,6 +49,7 @@ export type PrepareExecutionContextDeps = {
     userPrompt: string,
     options: TransportGenerateObjectOptions<TOutput>,
   ) => Promise<TOutput>;
+  logger?: Logger;
   exportIntentPrompt: () => string;
   exportUserPrompt: () => string;
   getTransportModelProfile: (

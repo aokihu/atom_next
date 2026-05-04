@@ -1,4 +1,4 @@
-import type { PipelineResult } from "@/core/pipeline";
+import type { PipelineEnqueueTransition, PipelineResult } from "@/core/pipeline";
 import type {
   TransportOutput,
   TransportPayload,
@@ -45,14 +45,22 @@ export type FormalConversationConversationOutput =
     transportResult: TransportOutput;
   };
 
-export type FormalConversationFinalizationInput = {
+type FormalConversationFinalizationBase = {
   env: FormalConversationPipelineEnv;
   transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
-  shouldComplete: boolean;
-  nextTask?: TaskItem;
 };
+
+export type FormalConversationFinalizationInput =
+  | (FormalConversationFinalizationBase & {
+      type: "complete";
+    })
+  | (FormalConversationFinalizationBase & {
+      type: "enqueue";
+      transition: PipelineEnqueueTransition;
+      nextTask: TaskItem;
+    });
 
 export type FormalConversationFlowState =
   | {

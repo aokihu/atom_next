@@ -4,6 +4,7 @@ export type {
   PipelineDefinition,
   PipelineElement,
   PipelineElementKind,
+  PipelineEnqueueTransition,
   PipelineResult,
   PipelineRunDeps,
   PipelineSetupCleanup,

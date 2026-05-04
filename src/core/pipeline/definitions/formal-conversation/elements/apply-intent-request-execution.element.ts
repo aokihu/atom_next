@@ -1,4 +1,4 @@
-import type { PipelineElement } from "@/core/pipeline";
+import type { PipelineElement, PipelineEnqueueTransition } from "@/core/pipeline";
 import type { FormalConversationFlowState } from "../types";
 
 const buildToolFailureVisibleMessage = (messages: string[]) => {
@@ -36,6 +36,13 @@ const shouldFinalizeToolCallBoundary = (
   );
 };
 
+const resolveEnqueueTransition = (
+  currentTask: { chainId: string },
+  nextTask: { chainId: string },
+): PipelineEnqueueTransition => {
+  return nextTask.chainId === currentTask.chainId ? "follow_up" : "dispatch";
+};
+
 export const applyIntentRequestExecutionElement: PipelineElement<
   FormalConversationFlowState,
   FormalConversationFlowState
@@ -57,6 +64,7 @@ export const applyIntentRequestExecutionElement: PipelineElement<
       return {
         mode: "ready_to_finalize",
         finalization: {
+          type: "complete",
           env: input.output.env,
           transportResult: {
             ...input.output.transportResult,
@@ -64,7 +72,6 @@ export const applyIntentRequestExecutionElement: PipelineElement<
           },
           visibleTextBuffer,
           hasStreamedVisibleOutput: false,
-          shouldComplete: true,
         },
       };
     }
@@ -73,32 +80,40 @@ export const applyIntentRequestExecutionElement: PipelineElement<
       return {
         mode: "ready_to_finalize",
         finalization: {
+          type: "complete",
           env: input.output.env,
           transportResult: input.output.transportResult,
           visibleTextBuffer: input.output.state.visibleTextBuffer,
           hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
-          shouldComplete: true,
         },
       };
     }
 
-    if (input.requestExecutionResult.nextState) {
-      input.output.env.taskQueue.updateTask(
-        input.output.env.task.id,
-        { state: input.requestExecutionResult.nextState },
-        { shouldSyncEvent: false },
-      );
+    const nextTask = input.requestExecutionResult.nextTask;
+
+    if (!nextTask) {
+      return {
+        mode: "ready_to_finalize",
+        finalization: {
+          type: "complete",
+          env: input.output.env,
+          transportResult: input.output.transportResult,
+          visibleTextBuffer: input.output.state.visibleTextBuffer,
+          hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
+        },
+      };
     }
 
     return {
       mode: "ready_to_finalize",
       finalization: {
+        type: "enqueue",
+        transition: resolveEnqueueTransition(input.output.env.task, nextTask),
         env: input.output.env,
         transportResult: input.output.transportResult,
         visibleTextBuffer: input.output.state.visibleTextBuffer,
         hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
-        shouldComplete: false,
-        nextTask: input.requestExecutionResult.nextTask,
+        nextTask,
       },
     };
   },

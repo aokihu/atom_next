@@ -140,6 +140,7 @@ export type PrepareConversationIntentRequestParams = {
   topicRelation: "related" | "unrelated" | "uncertain";
   shouldIsolateConversation: boolean;
   responseStrategyText: string;
+  followUpPolicy?: import("./task").TaskFollowUpPolicy;
 };
 
 export type SearchMemoryIntentRequestParams = {

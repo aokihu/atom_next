@@ -9,6 +9,7 @@ import {
   TaskSource,
   TaskState,
   type TaskChannel,
+  type TaskFollowUpPolicy,
   type InternalTaskItemInput,
   type TaskItemInput,
   type TaskItem,
@@ -64,7 +65,7 @@ type BuildTaskLineageInput = {
 const assembleTaskItem = (
   params: Pick<TaskItemInput, "sessionId" | "chatId"> &
     Partial<
-      Pick<TaskItemInput, "payload" | "eventTarget" | "channel"> &
+      Pick<TaskItemInput, "payload" | "eventTarget" | "channel" | "followUpPolicy"> &
         Pick<BuildTaskLineageInput, "chainRound">
     > &
     BuildTaskLineageInput,
@@ -94,6 +95,7 @@ const assembleTaskItem = (
     channel,
     createdAt: now,
     updatedAt: now,
+    followUpPolicy: params.followUpPolicy,
   };
 
   return defineReadonlyTaskItem(task);

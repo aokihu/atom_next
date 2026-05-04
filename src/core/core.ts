@@ -16,6 +16,30 @@ type CoreOptions = {
   runtimeLogger?: Logger;
 };
 
+const resolveTaskStateFromPipelineResult = (
+  result: PipelineResult,
+): TaskState => {
+  switch (result.type) {
+    case "complete":
+      return TaskState.COMPLETED;
+    case "enqueue":
+      switch (result.transition) {
+        case "follow_up":
+          return TaskState.FOLLOW_UP;
+        case "dispatch":
+          return TaskState.DISPATCHED;
+        default: {
+          const _exhaustive: never = result.transition;
+          return _exhaustive;
+        }
+      }
+    default: {
+      const _exhaustive: never = result;
+      return _exhaustive;
+    }
+  }
+};
+
 export class Core {
   static readonly ACTIVATE_TASK_DELAY = 1000;
 
@@ -77,17 +101,17 @@ export class Core {
       return;
     }
 
+    const state = resolveTaskStateFromPipelineResult(result);
+
+    this.#taskQueue.updateTask(
+      result.task.id,
+      { state },
+      { shouldSyncEvent: false },
+    );
+
     if (result.type === "enqueue") {
       await this.#taskQueue.addTask(result.nextTask);
-      return;
     }
-
-    if (result.type === "complete") {
-      return;
-    }
-
-    const _exhaustive: never = result;
-    return _exhaustive;
   }
 
   async #runActivatedTask() {

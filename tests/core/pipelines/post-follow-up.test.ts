@@ -80,15 +80,12 @@ describe("postFollowUpPipeline", () => {
 
     expect(result).toEqual({
       type: "enqueue",
+      transition: "dispatch",
+      task,
       nextTask,
     });
     expect(preparePostFollowUpContinuation).toHaveBeenCalledTimes(1);
     expect(createContinuationFormalConversationTask).toHaveBeenCalledWith(task);
-    expect(updateTask).toHaveBeenCalledWith(
-      task.id,
-      { state: TaskState.COMPLETED },
-      { shouldSyncEvent: false },
-    );
     expect(addTask).not.toHaveBeenCalled();
   });
 });

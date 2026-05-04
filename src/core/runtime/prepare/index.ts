@@ -20,7 +20,7 @@ import {
 import type {
   PrepareConversationIntentRequest,
 } from "@/types";
-import { TaskSource } from "@/types/task";
+import { TaskSource, type TaskFollowUpPolicy } from "@/types/task";
 import type { IntentExecutionPolicy } from "../user-intent";
 import {
   createPredictedIntent,
@@ -32,6 +32,27 @@ import type { PrepareExecutionContext } from "./types";
 /* Request Builder      */
 /* ==================== */
 
+const resolveLongOutputFollowUpPolicy = (params: {
+  estimatedOutputScale: string | null;
+  chainRound?: number;
+}): TaskFollowUpPolicy | undefined => {
+  if (params.estimatedOutputScale === "long") {
+    return {
+      mode: "maybe",
+      reason: "long_output",
+    };
+  }
+
+  if ((params.chainRound ?? 0) >= 1) {
+    return {
+      mode: "maybe",
+      reason: "long_output",
+    };
+  }
+
+  return undefined;
+};
+
 /**
  * 根据已解析的 intent policy 构造 PREPARE_CONVERSATION 请求。
  * @description
@@ -40,6 +61,7 @@ import type { PrepareExecutionContext } from "./types";
  */
 export function createPrepareConversationIntentRequest(
   policy: IntentExecutionPolicy,
+  followUpPolicy?: TaskFollowUpPolicy,
 ): PrepareConversationIntentRequest {
   return {
     source: IntentRequestSource.PREDICTION,
@@ -61,6 +83,7 @@ export function createPrepareConversationIntentRequest(
       topicRelation: policy.topicRelation,
       shouldIsolateConversation: policy.shouldIsolateConversation,
       responseStrategyText: policy.responseStrategyText,
+      followUpPolicy,
     },
   };
 }
@@ -95,6 +118,7 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
     needsMemorySave: fallbackIntent.needsMemorySave,
     memoryQuery: fallbackIntent.memoryQuery,
     confidence: fallbackIntent.confidence,
+    estimatedOutputScale: fallbackIntent.estimatedOutputScale,
     outputBudget: {
       maxOutputTokens: outputBudget?.maxOutputTokens ?? null,
       requestTokenReserve: outputBudget?.requestTokenReserve ?? null,
@@ -107,7 +131,7 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
       deps.exportIntentPrompt(),
       deps.exportUserPrompt(),
       {
-        maxOutputTokens: 120,
+        maxOutputTokens: 1024,
         modelProfile: deps.getTransportModelProfile("basic"),
         schema: IntentPredictionSchema,
         schemaName: "intent_prediction",
@@ -123,6 +147,8 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
         parsedIntent.needsMemorySave ?? fallbackIntent.needsMemorySave,
       memoryQuery: parsedIntent.memoryQuery?.trim() ?? fallbackIntent.memoryQuery,
       confidence: parsedIntent.confidence ?? fallbackIntent.confidence,
+      estimatedOutputScale:
+        parsedIntent.estimatedOutputScale ?? fallbackIntent.estimatedOutputScale,
     };
   } catch {}
 
@@ -140,5 +166,19 @@ export const prepareExecutionContext: PrepareExecutionContext = async (
     shouldIsolateConversation: topicIsolation.shouldIsolateConversation,
   });
 
-  return createPrepareConversationIntentRequest(policy);
+  const followUpPolicy = resolveLongOutputFollowUpPolicy({
+    estimatedOutputScale: predictedIntentInput.estimatedOutputScale,
+    chainRound: task.chainRound,
+  });
+
+  deps.logger?.debugJson("Intent predicted", {
+    estimatedOutputScale: predictedIntentInput.estimatedOutputScale,
+    chainRound: task.chainRound,
+    followUpPolicy,
+  });
+
+  return createPrepareConversationIntentRequest(
+    policy,
+    followUpPolicy,
+  );
 };

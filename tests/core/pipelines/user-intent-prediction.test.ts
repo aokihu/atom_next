@@ -66,11 +66,6 @@ describe("userIntentPredictionPipeline", () => {
     });
     expect(runtime.prepareExecutionContext).toHaveBeenCalledWith(task);
     expect(runtime.executeIntentRequests).not.toHaveBeenCalled();
-    expect(updateTask).toHaveBeenCalledWith(
-      task.id,
-      { state: TaskState.COMPLETED },
-      { shouldSyncEvent: false },
-    );
     expect(addTask).not.toHaveBeenCalled();
   });
 
@@ -113,11 +108,6 @@ describe("userIntentPredictionPipeline", () => {
     expect(runtime.executeIntentRequests).toHaveBeenCalledWith(
       task,
       [predictionRequest],
-    );
-    expect(updateTask).toHaveBeenCalledWith(
-      task.id,
-      { state: TaskState.COMPLETED },
-      { shouldSyncEvent: false },
     );
     expect(addTask).not.toHaveBeenCalled();
   });
@@ -165,13 +155,10 @@ describe("userIntentPredictionPipeline", () => {
 
     expect(result).toEqual({
       type: "enqueue",
+      transition: "dispatch",
+      task,
       nextTask,
     });
-    expect(updateTask).toHaveBeenCalledWith(
-      task.id,
-      { state: TaskState.FOLLOW_UP },
-      { shouldSyncEvent: false },
-    );
     expect(addTask).not.toHaveBeenCalled();
   });
 });

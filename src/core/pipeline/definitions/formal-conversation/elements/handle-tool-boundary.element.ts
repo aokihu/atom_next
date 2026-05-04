@@ -1,5 +1,4 @@
 import type { PipelineElement } from "@/core/pipeline";
-import { TaskState } from "@/types/task";
 import type {
   FormalConversationConversationOutput,
   FormalConversationFlowState,
@@ -21,21 +20,27 @@ const buildToolExecutionFailureMessage = (reason: string) => {
 };
 
 export const handleToolBoundaryElement: PipelineElement<
-  FormalConversationConversationOutput,
+  FormalConversationFlowState,
   FormalConversationFlowState
 > = {
   name: "HandleToolBoundary",
   kind: "boundary",
   async process(input) {
-    if (!shouldExecutePendingToolCalls(input)) {
+    if (input.mode === "ready_to_finalize") {
+      return input;
+    }
+
+    const output = input.output;
+
+    if (!shouldExecutePendingToolCalls(output)) {
       return {
         mode: "intent_requests",
-        output: input,
+        output,
       };
     }
 
-    const toolExecutionResult = await input.env.runtime.executeConversationToolCalls(
-      input.transportResult.pendingToolCalls ?? [],
+    const toolExecutionResult = await output.env.runtime.executeConversationToolCalls(
+      output.transportResult.pendingToolCalls ?? [],
     );
 
     if (!toolExecutionResult.ok) {
@@ -46,34 +51,29 @@ export const handleToolBoundaryElement: PipelineElement<
       return {
         mode: "ready_to_finalize",
         finalization: {
-          env: input.env,
+          type: "complete",
+          env: output.env,
           transportResult: {
-            ...input.transportResult,
+            ...output.transportResult,
             text: visibleTextBuffer,
           },
           visibleTextBuffer,
           hasStreamedVisibleOutput: false,
-          shouldComplete: true,
         },
       };
     }
 
-    input.env.taskQueue.updateTask(
-      input.env.task.id,
-      { state: TaskState.FOLLOW_UP },
-      { shouldSyncEvent: false },
-    );
-
     return {
       mode: "ready_to_finalize",
       finalization: {
-        env: input.env,
-        transportResult: input.transportResult,
-        visibleTextBuffer: input.state.visibleTextBuffer,
-        hasStreamedVisibleOutput: input.state.hasStreamedVisibleOutput,
-        shouldComplete: false,
-        nextTask: input.env.runtime.createContinuationFormalConversationTask(
-          input.env.task,
+        type: "enqueue",
+        transition: "follow_up",
+        env: output.env,
+        transportResult: output.transportResult,
+        visibleTextBuffer: output.state.visibleTextBuffer,
+        hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
+        nextTask: output.env.runtime.createContinuationFormalConversationTask(
+          output.env.task,
         ),
       },
     };

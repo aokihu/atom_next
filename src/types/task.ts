@@ -28,8 +28,18 @@ export enum TaskState {
   PROCESSING = "processing", // 任务正在被Core Runtime处理,正在被transport上传到LLM执行
   COMPLETED = "completed", // 任务已完成
   FAILED = "failed", // 任务执行失败
-  FOLLOW_UP = "follow_up", // 任务没有办法一次性完成执行,需要跟进任务
+  FOLLOW_UP = "follow_up", // 同一 task 链内接力，continuation task 继续当前对话
+  DISPATCHED = "dispatched", // 当前 task 已完成自身职责，并孵化出一个独立新 task
 }
+
+/* ==================== */
+/* Follow-Up Policy     */
+/* ==================== */
+
+export type TaskFollowUpPolicy = {
+  mode: "none" | "maybe" | "required";
+  reason?: "long_output" | "tool_loop" | "intent_chain" | "unknown";
+};
 
 /* ==================== */
 /* Input Models         */
@@ -97,6 +107,8 @@ export type RawTaskItem = {
   /* --- 任务时间 --- */
   createdAt: number; // 任务创建的时间,可用于调试
   updatedAt: number; // 任务更新的时间,可用于调试
+  /* --- 续跑策略 --- */
+  followUpPolicy?: TaskFollowUpPolicy;
 };
 
 /**
@@ -108,7 +120,7 @@ export type TaskItemInput = Pick<RawTaskItem, "sessionId" | "chatId"> &
   Partial<
     Pick<
       RawTaskItem,
-      "priority" | "payload" | "eventTarget" | "channel" | "pipeline"
+      "priority" | "payload" | "eventTarget" | "channel" | "pipeline" | "followUpPolicy"
     >
   >;
 
@@ -131,6 +143,7 @@ export type InternalTaskItemInput = Pick<
       | "eventTarget"
       | "channel"
       | "pipeline"
+      | "followUpPolicy"
     >
   >;
 

@@ -13,6 +13,7 @@ import { syncRuntimeTaskElement } from "./elements/sync-runtime-task.element";
 import { exportPromptsElement } from "./elements/export-prompts.element";
 import { transformPromptsToTransportPayloadElement } from "./elements/transform-prompts-to-transport-payload.element";
 import { transformTransportOutputToConversationOutputElement } from "./elements/transform-transport-output-to-conversation-output.element";
+import { handleLengthBoundaryElement } from "./elements/handle-length-boundary.element";
 import { handleToolBoundaryElement } from "./elements/handle-tool-boundary.element";
 import { parseIntentRequestsElement } from "./elements/parse-intent-requests.element";
 import { executeIntentRequestsElement } from "./elements/execute-intent-requests.element";
@@ -51,6 +52,7 @@ export const formalConversationPipeline: PipelineDefinition<
           serviceManager: deps.serviceManager,
         }),
         transformTransportOutputToConversationOutputElement,
+        handleLengthBoundaryElement,
         handleToolBoundaryElement,
         parseIntentRequestsElement,
         executeIntentRequestsElement,

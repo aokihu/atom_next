@@ -1,5 +1,4 @@
 import type { PipelineElement } from "@/core/pipeline";
-import { TaskState } from "@/types";
 import type {
   PredictionExecution,
   RunUserIntentPredictionPipelineResult,
@@ -15,12 +14,6 @@ export const finalizeUserIntentPredictionElement: PipelineElement<
     const result = input.requestExecutionResult;
 
     if (!result) {
-      input.env.taskQueue.updateTask(
-        input.env.task.id,
-        { state: TaskState.COMPLETED },
-        { shouldSyncEvent: false },
-      );
-
       return {
         type: "complete",
         task: input.env.task,
@@ -28,29 +21,17 @@ export const finalizeUserIntentPredictionElement: PipelineElement<
     }
 
     if (result.status === "continue") {
-      input.env.taskQueue.updateTask(
-        input.env.task.id,
-        { state: TaskState.COMPLETED },
-        { shouldSyncEvent: false },
-      );
-
       return {
         type: "complete",
         task: input.env.task,
       };
     }
 
-    if (result.nextState) {
-      input.env.taskQueue.updateTask(
-        input.env.task.id,
-        { state: result.nextState },
-        { shouldSyncEvent: false },
-      );
-    }
-
     if (result.nextTask) {
       return {
         type: "enqueue",
+        transition: "dispatch",
+        task: input.env.task,
         nextTask: result.nextTask,
       };
     }

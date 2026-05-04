@@ -34,6 +34,7 @@ export type {
   TaskItemInput,
   TaskItem,
   TaskItems,
+  TaskFollowUpPolicy,
 } from "./task";
 
 /* ==================== */

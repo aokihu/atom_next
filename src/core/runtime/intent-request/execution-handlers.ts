@@ -250,7 +250,7 @@ const processPrepareConversationIntentRequest = (
   return {
     status: "stop",
     nextState: TaskState.FOLLOW_UP,
-    nextTask: createFormalConversationTask(task),
+    nextTask: createFormalConversationTask(task, request.params.followUpPolicy),
   };
 };
 

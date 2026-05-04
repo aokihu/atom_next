@@ -18,16 +18,17 @@
   "needsMemory": true,
   "needsMemorySave": false,
   "memoryQuery": "",
-  "confidence": 0.95
+  "confidence": 0.95,
+  "estimatedOutputScale": "short | long"
 }
 ```
 
 规则：
 
-- 如果用户明显在询问“之前记住了什么”“有没有相关记忆”“你还记得吗”，则：
+- 如果用户明显在询问"之前记住了什么""有没有相关记忆""你还记得吗"，则：
   - `"type": "memory_lookup"`
   - `"needsMemory": true`
-- 如果用户明确要求“记住”“保存这个规则”“以后按这个来”，则：
+- 如果用户明确要求"记住""保存这个规则""以后按这个来"，则：
   - `"type": "memory_save"`
   - `"needsMemorySave": true`
 - 如果当前输入不依赖长期记忆，`"needsMemory": false`
@@ -42,6 +43,10 @@
   - `"needsMemory": false`
   - `"needsMemorySave": false`
   - `"memoryQuery": ""`
+- 估算用户问题需要的输出规模：
+  - 如果用户问题可以用简短篇幅回答（如简单事实、定义、是否类问题）→ `"estimatedOutputScale": "short"`
+  - 如果用户问题需要大量展开（如完整指南、技术方案、长文章、分章节介绍），可能超出单次输出限制 → `"estimatedOutputScale": "long"`
+  - 不确定时默认 `"estimatedOutputScale": "short"`
 
 示例：
 
@@ -58,7 +63,8 @@
   "needsMemory": true,
   "needsMemorySave": false,
   "memoryQuery": "AGENTS md",
-  "confidence": 0.96
+  "confidence": 0.96,
+  "estimatedOutputScale": "short"
 }
 ```
 
@@ -75,6 +81,25 @@
   "needsMemory": false,
   "needsMemorySave": true,
   "memoryQuery": "",
-  "confidence": 0.98
+  "confidence": 0.98,
+  "estimatedOutputScale": "short"
+}
+```
+
+用户输入：
+```text
+请你写一篇面向普通读者的《世界历史大脉络》。要求至少 10000 字，分时期详细展开，不要用"篇幅有限"提前结束。
+```
+
+输出：
+```json
+{
+  "type": "direct_answer",
+  "topicRelation": "unrelated",
+  "needsMemory": false,
+  "needsMemorySave": false,
+  "memoryQuery": "",
+  "confidence": 0.92,
+  "estimatedOutputScale": "long"
 }
 ```

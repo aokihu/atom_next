@@ -1,7 +1,6 @@
 import type { PipelineElement, PipelineResult } from "@/core/pipeline";
 import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
-import { TaskState } from "@/types/task";
 import type { FormalConversationFlowState } from "../types";
 
 const emitChatOutputUpdatedEvent = (
@@ -33,13 +32,11 @@ export const finalizeConversationElement: PipelineElement<
       throw new Error("Formal conversation pipeline did not reach finalize state");
     }
 
-    if (!input.finalization.shouldComplete) {
-      if (!input.finalization.nextTask) {
-        throw new Error("FinalizeConversation expected nextTask for enqueue result");
-      }
-
+    if (input.finalization.type === "enqueue") {
       return {
         type: "enqueue",
+        transition: input.finalization.transition,
+        task: input.finalization.env.task,
         nextTask: input.finalization.nextTask,
       };
     }
@@ -63,12 +60,6 @@ export const finalizeConversationElement: PipelineElement<
         finalizationResult.visibleChunk,
       );
     }
-
-    input.finalization.env.taskQueue.updateTask(
-      input.finalization.env.task.id,
-      { state: TaskState.COMPLETED },
-      { shouldSyncEvent: false },
-    );
 
     input.finalization.env.task.eventTarget?.emit(
       ChatEvents.CHAT_COMPLETED,

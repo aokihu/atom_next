@@ -1,5 +1,4 @@
 import type { PipelineElement } from "@/core/pipeline";
-import { TaskState } from "@/types";
 import type {
   PreparedPostFollowUp,
   RunPostFollowUpPipelineResult,
@@ -12,14 +11,10 @@ export const finalizePostFollowUpElement: PipelineElement<
   name: "FinalizePostFollowUp",
   kind: "sink",
   async process(input) {
-    input.env.taskQueue.updateTask(
-      input.env.task.id,
-      { state: TaskState.COMPLETED },
-      { shouldSyncEvent: false },
-    );
-
     return {
       type: "enqueue",
+      transition: "dispatch",
+      task: input.env.task,
       nextTask: input.nextTask,
     };
   },

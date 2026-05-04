@@ -23,6 +23,7 @@ import {
 } from "./intent-request";
 import {
   createContinuationFormalConversationTask as runCreateContinuationFormalConversationTask,
+  createLengthLimitedPostFollowUpTask as runCreateLengthLimitedPostFollowUpTask,
 } from "./intent-request/execution-helpers";
 import {
   exportPredictionPrompt as runExportPredictionPrompt,
@@ -667,6 +668,13 @@ export class Runtime {
   }
 
   /**
+   * 构造一个 length 截断续跑 POST_FOLLOW_UP 任务。
+   */
+  public createLengthLimitedPostFollowUpTask(task: TaskItem) {
+    return runCreateLengthLimitedPostFollowUpTask(task);
+  }
+
+  /**
    * 创建当前正式对话轮次的工具执行上下文。
    * @description
    * Runtime 只负责把当前运行态转换成 ToolService 可消费的高层输入：
@@ -815,6 +823,7 @@ export class Runtime {
     task: TaskItem,
   ): Promise<PrepareConversationIntentRequest | null> {
     return runPrepareExecutionContext(task, {
+      logger: this.#logger,
       generateObject: (systemPrompt, userPrompt, options) => {
         return generateTransportObject(
           this.#serviceManager,

@@ -13,7 +13,7 @@ import type {
   MemoryScope,
   SearchMemoryIntentRequest,
 } from "@/types";
-import { TaskPipeline, TaskSource, type TaskItem } from "@/types/task";
+import { TaskPipeline, TaskSource, type TaskItem, type TaskFollowUpPolicy } from "@/types/task";
 import { isNumber } from "radashi";
 import type { RuntimeIntentRequestExecutionContext } from "./types";
 
@@ -56,6 +56,7 @@ export const createFollowUpTask = (
     eventTarget: task.eventTarget,
     channel: task.channel,
     pipeline: TaskPipeline.POST_FOLLOW_UP,
+    followUpPolicy: task.followUpPolicy,
     payload: [
       {
         type: "text",
@@ -86,6 +87,7 @@ export const createFollowUpWithToolsTask = (
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
+    followUpPolicy: task.followUpPolicy,
     payload: [],
   });
 };
@@ -113,6 +115,7 @@ export const createRepeatedSearchClosureTask = (
     priority: 1,
     eventTarget: task.eventTarget,
     channel: task.channel,
+    followUpPolicy: task.followUpPolicy,
     payload: [
       {
         type: "text",
@@ -127,7 +130,10 @@ export const createRepeatedSearchClosureTask = (
   });
 };
 
-export const createFormalConversationTask = (task: TaskItem) => {
+export const createFormalConversationTask = (
+  task: TaskItem,
+  followUpPolicy?: TaskFollowUpPolicy,
+) => {
   return createInternalTaskItem({
     sessionId: task.sessionId,
     chatId: task.chatId,
@@ -139,6 +145,7 @@ export const createFormalConversationTask = (task: TaskItem) => {
     channel: task.channel,
     payload: task.payload,
     pipeline: TaskPipeline.FORMAL_CONVERSATION,
+    followUpPolicy: followUpPolicy ?? task.followUpPolicy,
   });
 };
 
@@ -154,6 +161,32 @@ export const createContinuationFormalConversationTask = (task: TaskItem) => {
     channel: task.channel,
     payload: [],
     pipeline: TaskPipeline.FORMAL_CONVERSATION,
+    followUpPolicy: task.followUpPolicy,
+  });
+};
+
+export const createLengthLimitedPostFollowUpTask = (task: TaskItem) => {
+  return createInternalTaskItem({
+    sessionId: task.sessionId,
+    chatId: task.chatId,
+    chainId: task.chainId,
+    parentTaskId: task.id,
+    chainRound: (task.chainRound ?? 0) + 1,
+    priority: 1,
+    eventTarget: task.eventTarget,
+    channel: task.channel,
+    pipeline: TaskPipeline.POST_FOLLOW_UP,
+    followUpPolicy: task.followUpPolicy,
+    payload: [
+      {
+        type: "text",
+        data: [
+          "本轮回答因为输出长度限制被截断，但没有生成 FOLLOW_UP Intent Request。",
+          "请基于当前已累计输出，生成 continuation summary、nextPrompt 和 avoidRepeat。",
+          "下一轮需要从上一段自然继续，不要重复已经输出的内容，不要重新开始。",
+        ].join("\n"),
+      },
+    ],
   });
 };
 

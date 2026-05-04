@@ -32,6 +32,8 @@ export type PipelineDefinition<TInput, TOutput> = {
   ): void | PipelineSetupCleanup;
 };
 
+export type PipelineEnqueueTransition = "follow_up" | "dispatch";
+
 export type PipelineResult =
   | {
       type: "complete";
@@ -39,6 +41,8 @@ export type PipelineResult =
     }
   | {
       type: "enqueue";
+      transition: PipelineEnqueueTransition;
+      task: TaskItem;
       nextTask: TaskItem;
     };
 

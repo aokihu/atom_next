@@ -51,6 +51,7 @@ export type PredictedIntent = {
   needsMemorySave: boolean;
   memoryQuery: string;
   confidence: number | null;
+  estimatedOutputScale: "short" | "long" | null;
   outputBudget: PredictedIntentOutputBudget;
   updatedAt: number | null;
 };
@@ -62,6 +63,7 @@ export const IntentPredictionSchema = z.object({
   needsMemorySave: z.boolean().optional(),
   memoryQuery: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
+  estimatedOutputScale: z.enum(["short", "long"]).optional(),
 }).passthrough();
 
 /* ==================== */
@@ -77,6 +79,7 @@ export const createPredictedIntent = (): PredictedIntent => {
     needsMemorySave: false,
     memoryQuery: "",
     confidence: null,
+    estimatedOutputScale: null,
     outputBudget: {
       maxOutputTokens: null,
       requestTokenReserve: null,
@@ -99,6 +102,7 @@ export const parseIntentPredictionText = (text: string) => {
       needsMemorySave: false,
       memoryQuery: "",
       confidence: null,
+      estimatedOutputScale: null,
     };
   }
 
@@ -114,6 +118,7 @@ export const parseIntentPredictionText = (text: string) => {
       needsMemorySave: false,
       memoryQuery: "",
       confidence: null,
+      estimatedOutputScale: null,
     };
   }
 
@@ -127,6 +132,7 @@ export const parseIntentPredictionText = (text: string) => {
       needsMemorySave: false,
       memoryQuery: "",
       confidence: null,
+      estimatedOutputScale: null,
     };
   }
 
@@ -137,5 +143,6 @@ export const parseIntentPredictionText = (text: string) => {
     needsMemorySave: parsed.data.needsMemorySave ?? false,
     memoryQuery: parsed.data.memoryQuery?.trim() ?? "",
     confidence: parsed.data.confidence ?? null,
+    estimatedOutputScale: parsed.data.estimatedOutputScale ?? null,
   };
 };

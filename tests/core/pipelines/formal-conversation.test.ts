@@ -229,7 +229,6 @@ describe("formalConversationPipeline", () => {
     expect(clearContinuationContext).toHaveBeenCalledTimes(1);
     expect(updateTask.mock.calls).toEqual([
       [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
-      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
     expect(outputUpdated.mock.calls.length).toBeGreaterThan(0);
     expect(completed).toHaveBeenCalledTimes(1);
@@ -440,7 +439,6 @@ describe("formalConversationPipeline", () => {
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用已完成");
     expect(updateTask.mock.calls).toEqual([
       [task.id, { state: TaskState.PROCESSING }, { shouldSyncEvent: false }],
-      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
     ]);
   });
 
@@ -654,9 +652,6 @@ describe("formalConversationPipeline", () => {
     expect(completed).toHaveBeenCalledTimes(1);
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("工具调用失败");
     expect(completed.mock.calls[0]?.[0]?.message.data).toContain("The file does not exist");
-    expect(updateTask.mock.calls).toEqual([
-      [task.id, { state: TaskState.COMPLETED }, { shouldSyncEvent: false }],
-    ]);
   });
 
   test("finalizes when tool-calls returns without any executed tools", async () => {
@@ -820,6 +815,8 @@ describe("formalConversationPipeline", () => {
 
     expect(result).toEqual({
       type: "enqueue",
+      transition: "follow_up",
+      task,
       nextTask,
     });
     expect(runtime.executeConversationToolCalls).toHaveBeenCalledWith([
@@ -829,11 +826,6 @@ describe("formalConversationPipeline", () => {
         input: { filepath: "/tmp/demo.txt" },
       },
     ]);
-    expect(updateTask).toHaveBeenCalledWith(
-      task.id,
-      { state: TaskState.FOLLOW_UP },
-      { shouldSyncEvent: false },
-    );
   });
 
   test("finalizes with runtime tool execution failure message when pending tool call cannot be executed", async () => {
