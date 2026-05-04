@@ -2,14 +2,12 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import type {
-  UserIntentPredictionPipelineInput,
-  RunUserIntentPredictionPipelineResult,
-} from "./types";
-import { createUserIntentPredictionPipelineEnv } from "./types";
-import { syncRuntimeTaskElement } from "./elements/sync-runtime-task.element";
+import { createPipelineEnv } from "../..";
+import type { UserIntentPredictionPipelineInput } from "./types";
+import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
 import { preparePredictionRequestElement } from "./elements/prepare-prediction-request.element";
 import { executePredictionRequestElement } from "./elements/execute-prediction-request.element";
+import { applyPredictionExecutionElement } from "./elements/apply-prediction-execution.element";
 import { finalizeUserIntentPredictionElement } from "./elements/finalize-user-intent-prediction.element";
 
 export const userIntentPredictionPipeline: PipelineDefinition<
@@ -20,7 +18,7 @@ export const userIntentPredictionPipeline: PipelineDefinition<
 
   createInput(task, deps) {
     return {
-      env: createUserIntentPredictionPipelineEnv(
+      env: createPipelineEnv(
         task,
         deps.taskQueue,
         deps.runtime,
@@ -35,10 +33,9 @@ export const userIntentPredictionPipeline: PipelineDefinition<
         syncRuntimeTaskElement,
         preparePredictionRequestElement,
         executePredictionRequestElement,
+        applyPredictionExecutionElement,
         finalizeUserIntentPredictionElement,
       ],
     };
   },
 };
-
-export type { RunUserIntentPredictionPipelineResult };

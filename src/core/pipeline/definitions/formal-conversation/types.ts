@@ -1,17 +1,10 @@
-import type { PipelineEnqueueTransition, PipelineResult } from "@/core/pipeline";
+import type { PipelineEnv, PipelineFinalizationInput } from "@/core/pipeline";
 import type {
   TransportOutput,
   TransportPayload,
-} from "@/core/elements/transport.element";
-import type { TaskQueue } from "@/core/queue";
-import type { Runtime } from "@/core/runtime";
-import type { TaskItem } from "@/types/task";
+} from "@element/transport.element";
 
-export type FormalConversationPipelineEnv = {
-  task: TaskItem;
-  taskQueue: TaskQueue;
-  runtime: Runtime;
-};
+export type FormalConversationPipelineEnv = PipelineEnv;
 
 export type FormalConversationPipelineState = {
   visibleTextBuffer: string;
@@ -45,48 +38,42 @@ export type FormalConversationConversationOutput =
     transportResult: TransportOutput;
   };
 
-type FormalConversationFinalizationBase = {
-  env: FormalConversationPipelineEnv;
+type FormalConversationFinalizationExtra = {
   transportResult: TransportOutput;
   visibleTextBuffer: string;
   hasStreamedVisibleOutput: boolean;
 };
 
 export type FormalConversationFinalizationInput =
-  | (FormalConversationFinalizationBase & {
-      type: "complete";
-    })
-  | (FormalConversationFinalizationBase & {
-      type: "enqueue";
-      transition: PipelineEnqueueTransition;
-      nextTask: TaskItem;
-    });
+  PipelineFinalizationInput<FormalConversationPipelineEnv> &
+    FormalConversationFinalizationExtra;
 
 export type FormalConversationFlowState =
   | {
-      mode: "intent_requests";
+      mode: "conversation_output";
       output: FormalConversationConversationOutput;
-      intentRequestResult?: ReturnType<Runtime["parseIntentRequest"]>;
-      requestExecutionResult?: Awaited<
-        ReturnType<Runtime["executeIntentRequests"]>
+    }
+  | {
+      mode: "intent_parsed";
+      output: FormalConversationConversationOutput;
+      intentRequestResult: ReturnType<
+        import("@/core/runtime").Runtime["parseIntentRequest"]
+      >;
+    }
+  | {
+      mode: "intent_executed";
+      output: FormalConversationConversationOutput;
+      intentRequestResult: ReturnType<
+        import("@/core/runtime").Runtime["parseIntentRequest"]
+      >;
+      requestExecutionResult: Awaited<
+        ReturnType<import("@/core/runtime").Runtime["executeIntentRequests"]>
       >;
     }
   | {
       mode: "ready_to_finalize";
       finalization: FormalConversationFinalizationInput;
     };
-
-export const createFormalConversationPipelineEnv = (
-  task: TaskItem,
-  taskQueue: TaskQueue,
-  runtime: Runtime,
-): FormalConversationPipelineEnv => {
-  return {
-    task,
-    taskQueue,
-    runtime,
-  };
-};
 
 export const createFormalConversationPipelineState =
   (): FormalConversationPipelineState => {
@@ -98,5 +85,3 @@ export const createFormalConversationPipelineState =
       toolFailureMessages: [],
     };
   };
-
-export type RunFormalConversationPipelineResult = PipelineResult;

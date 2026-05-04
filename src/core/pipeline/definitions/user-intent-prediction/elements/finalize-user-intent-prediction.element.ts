@@ -1,44 +1,21 @@
 import type { PipelineElement } from "@/core/pipeline";
+import { toPipelineResult } from "@/core/pipeline";
 import type {
-  PredictionExecution,
+  UserIntentPredictionFlowState,
   RunUserIntentPredictionPipelineResult,
 } from "../types";
 
 export const finalizeUserIntentPredictionElement: PipelineElement<
-  PredictionExecution,
+  UserIntentPredictionFlowState,
   RunUserIntentPredictionPipelineResult
 > = {
   name: "FinalizeUserIntentPrediction",
   kind: "sink",
   async process(input) {
-    const result = input.requestExecutionResult;
-
-    if (!result) {
-      return {
-        type: "complete",
-        task: input.env.task,
-      };
+    if (input.mode !== "ready_to_finalize") {
+      throw new Error("User intent prediction pipeline did not reach finalize state");
     }
 
-    if (result.status === "continue") {
-      return {
-        type: "complete",
-        task: input.env.task,
-      };
-    }
-
-    if (result.nextTask) {
-      return {
-        type: "enqueue",
-        transition: "dispatch",
-        task: input.env.task,
-        nextTask: result.nextTask,
-      };
-    }
-
-    return {
-      type: "complete",
-      task: input.env.task,
-    };
+    return toPipelineResult(input.finalization);
   },
 };

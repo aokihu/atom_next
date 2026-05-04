@@ -2,13 +2,11 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import type {
-  PostFollowUpPipelineInput,
-  RunPostFollowUpPipelineResult,
-} from "./types";
-import { createPostFollowUpPipelineEnv } from "./types";
-import { syncRuntimeTaskElement } from "./elements/sync-runtime-task.element";
+import { createPipelineEnv } from "../..";
+import type { PostFollowUpPipelineInput } from "./types";
+import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
 import { prepareContinuationElement } from "./elements/prepare-continuation.element";
+import { applyPostFollowUpContinuationElement } from "./elements/apply-post-follow-up-continuation.element";
 import { finalizePostFollowUpElement } from "./elements/finalize-post-follow-up.element";
 
 export const postFollowUpPipeline: PipelineDefinition<
@@ -19,7 +17,7 @@ export const postFollowUpPipeline: PipelineDefinition<
 
   createInput(task, deps) {
     return {
-      env: createPostFollowUpPipelineEnv(
+      env: createPipelineEnv(
         task,
         deps.taskQueue,
         deps.runtime,
@@ -33,10 +31,9 @@ export const postFollowUpPipeline: PipelineDefinition<
       elements: [
         syncRuntimeTaskElement,
         prepareContinuationElement,
+        applyPostFollowUpContinuationElement,
         finalizePostFollowUpElement,
       ],
     };
   },
 };
-
-export type { RunPostFollowUpPipelineResult };

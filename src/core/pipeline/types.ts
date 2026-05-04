@@ -11,6 +11,24 @@ export type PipelineRunDeps = {
   serviceManager: ServiceManager;
 };
 
+export type PipelineEnv = {
+  task: TaskItem;
+  taskQueue: TaskQueue;
+  runtime: Runtime;
+};
+
+export const createPipelineEnv = (
+  task: TaskItem,
+  taskQueue: TaskQueue,
+  runtime: Runtime,
+): PipelineEnv => {
+  return {
+    task,
+    taskQueue,
+    runtime,
+  };
+};
+
 export type PipelineSetupCleanup = () => void;
 
 export type PipelineDefinition<TInput, TOutput> = {

@@ -8,7 +8,7 @@ export const parseIntentRequestsElement: PipelineElement<
   name: "ParseIntentRequests",
   kind: "boundary",
   async process(input) {
-    if (input.mode === "ready_to_finalize") {
+    if (input.mode !== "conversation_output") {
       return input;
     }
 
@@ -23,7 +23,8 @@ export const parseIntentRequestsElement: PipelineElement<
     });
 
     return {
-      ...input,
+      mode: "intent_parsed",
+      output: input.output,
       intentRequestResult: input.output.env.runtime.parseIntentRequest(
         input.output.transportResult.intentRequestText,
       ),

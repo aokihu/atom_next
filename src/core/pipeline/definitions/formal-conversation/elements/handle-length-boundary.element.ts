@@ -1,11 +1,8 @@
 import type { PipelineElement } from "@/core/pipeline";
 import type { TaskFollowUpPolicy } from "@/types/task";
 import type { TaskItem } from "@/types/task";
-import type { TransportOutput } from "@/core/elements/transport.element";
-import type {
-  FormalConversationConversationOutput,
-  FormalConversationFlowState,
-} from "../types";
+import type { TransportOutput } from "@element/transport.element";
+import type { FormalConversationFlowState } from "../types";
 
 const normalizeFollowUpPolicy = (
   policy?: TaskFollowUpPolicy,
@@ -28,32 +25,35 @@ const shouldUseFollowUpFallback = (
 };
 
 export const handleLengthBoundaryElement: PipelineElement<
-  FormalConversationConversationOutput,
+  FormalConversationFlowState,
   FormalConversationFlowState
 > = {
   name: "HandleLengthBoundary",
   kind: "boundary",
   async process(input) {
-    if (shouldUseFollowUpFallback(input.env.task, input.transportResult)) {
+    if (input.mode !== "conversation_output") {
+      return input;
+    }
+
+    const output = input.output;
+
+    if (shouldUseFollowUpFallback(output.env.task, output.transportResult)) {
       return {
         mode: "ready_to_finalize",
         finalization: {
           type: "enqueue",
           transition: "follow_up",
-          env: input.env,
-          transportResult: input.transportResult,
-          visibleTextBuffer: input.state.visibleTextBuffer,
-          hasStreamedVisibleOutput: input.state.hasStreamedVisibleOutput,
-          nextTask: input.env.runtime.createLengthLimitedPostFollowUpTask(
-            input.env.task,
+          env: output.env,
+          transportResult: output.transportResult,
+          visibleTextBuffer: output.state.visibleTextBuffer,
+          hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
+          nextTask: output.env.runtime.createLengthLimitedPostFollowUpTask(
+            output.env.task,
           ),
         },
       };
     }
 
-    return {
-      mode: "intent_requests",
-      output: input,
-    };
+    return input;
   },
 };

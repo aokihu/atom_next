@@ -1,32 +1,29 @@
-import type { PipelineResult } from "@/core/pipeline";
-import type { TaskQueue } from "@/core/queue";
-import type { Runtime } from "@/core/runtime";
-import type { TaskItem } from "@/types/task";
+import type {
+  PipelineEnv,
+  PipelineFinalizationInput,
+  PipelineResult,
+} from "@/core/pipeline";
 
-export type PostFollowUpPipelineEnv = {
-  task: TaskItem;
-  taskQueue: TaskQueue;
-  runtime: Runtime;
-};
+export type PostFollowUpPipelineEnv = PipelineEnv;
 
 export type PostFollowUpPipelineInput = {
   env: PostFollowUpPipelineEnv;
 };
 
-export type PreparedPostFollowUp = PostFollowUpPipelineInput & {
-  nextTask: ReturnType<Runtime["createContinuationFormalConversationTask"]>;
-};
+export type PostFollowUpFinalizationInput =
+  PipelineFinalizationInput<PostFollowUpPipelineEnv>;
 
-export const createPostFollowUpPipelineEnv = (
-  task: TaskItem,
-  taskQueue: TaskQueue,
-  runtime: Runtime,
-): PostFollowUpPipelineEnv => {
-  return {
-    task,
-    taskQueue,
-    runtime,
-  };
-};
+export type PostFollowUpFlowState =
+  | {
+      mode: "continuation_prepared";
+      env: PostFollowUpPipelineEnv;
+      nextTask: ReturnType<
+        import("@/core/runtime").Runtime["createContinuationFormalConversationTask"]
+      >;
+    }
+  | {
+      mode: "ready_to_finalize";
+      finalization: PostFollowUpFinalizationInput;
+    };
 
 export type RunPostFollowUpPipelineResult = PipelineResult;

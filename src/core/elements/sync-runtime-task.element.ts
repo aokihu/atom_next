@@ -1,9 +1,9 @@
 import type { PipelineElement } from "@/core/pipeline";
-import type { UserIntentPredictionPipelineInput } from "../types";
+import type { TaskItem } from "@/types/task";
 
 export const syncRuntimeTaskElement: PipelineElement<
-  UserIntentPredictionPipelineInput,
-  UserIntentPredictionPipelineInput
+  { env: { task: TaskItem; runtime: { currentTask: TaskItem | undefined } } },
+  any
 > = {
   name: "SyncRuntimeTask",
   kind: "source",

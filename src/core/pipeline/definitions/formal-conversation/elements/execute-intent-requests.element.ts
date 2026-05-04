@@ -8,16 +8,14 @@ export const executeIntentRequestsElement: PipelineElement<
   name: "ExecuteIntentRequests",
   kind: "boundary",
   async process(input) {
-    if (input.mode === "ready_to_finalize") {
+    if (input.mode !== "intent_parsed") {
       return input;
     }
 
-    if (!input.intentRequestResult) {
-      throw new Error("Intent request result is missing before execution");
-    }
-
     return {
-      ...input,
+      mode: "intent_executed",
+      output: input.output,
+      intentRequestResult: input.intentRequestResult,
       requestExecutionResult: await input.output.env.runtime.executeIntentRequests(
         input.output.env.task,
         input.intentRequestResult.safeRequests,

@@ -15,6 +15,7 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@constant": ["./src/libs/constant.ts"],
+      "@element/*": ["./src/core/elements/*"],
       "@/*": ["./src/*"],
     },
     "noEmit": true,

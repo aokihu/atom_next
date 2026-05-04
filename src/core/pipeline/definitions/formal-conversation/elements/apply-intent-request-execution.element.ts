@@ -9,17 +9,17 @@ const buildToolFailureVisibleMessage = (messages: string[]) => {
 };
 
 const buildToolBoundaryVisibleMessage = (
-  input: Extract<FormalConversationFlowState, { mode: "intent_requests" }>,
+  output: { state: { toolFailureMessages: string[]; }; transportResult: { toolCallCount: number; toolResultCount: number; }; },
 ) => {
-  if (input.output.state.toolFailureMessages.length > 0) {
-    return buildToolFailureVisibleMessage(input.output.state.toolFailureMessages);
+  if (output.state.toolFailureMessages.length > 0) {
+    return buildToolFailureVisibleMessage(output.state.toolFailureMessages);
   }
 
-  if (input.output.transportResult.toolCallCount === 0) {
+  if (output.transportResult.toolCallCount === 0) {
     return "模型进入了工具调用阶段，但没有实际执行任何工具。请调整问题范围，或让我先检查更具体的文件或目录。";
   }
 
-  if (input.output.transportResult.toolResultCount === 0) {
+  if (output.transportResult.toolResultCount === 0) {
     return "工具调用已开始，但没有返回可用结果，当前分析已停止。请调整问题范围，或让我先检查更具体的文件或目录。";
   }
 
@@ -27,12 +27,15 @@ const buildToolBoundaryVisibleMessage = (
 };
 
 const shouldFinalizeToolCallBoundary = (
-  input: Extract<FormalConversationFlowState, { mode: "intent_requests" }>,
+  output: {
+    transportResult: { finishReason: string; intentRequestText: string; };
+  },
+  requestExecutionResult?: { status: string; },
 ) => {
   return (
-    input.output.transportResult.finishReason === "tool-calls"
-    && input.output.transportResult.intentRequestText.trim() === ""
-    && input.requestExecutionResult?.status === "continue"
+    output.transportResult.finishReason === "tool-calls"
+    && output.transportResult.intentRequestText.trim() === ""
+    && requestExecutionResult?.status === "continue"
   );
 };
 
@@ -50,24 +53,23 @@ export const applyIntentRequestExecutionElement: PipelineElement<
   name: "ApplyIntentRequestExecution",
   kind: "boundary",
   async process(input) {
-    if (input.mode === "ready_to_finalize") {
+    if (input.mode !== "intent_executed") {
       return input;
     }
 
-    if (!input.requestExecutionResult) {
-      throw new Error("Intent request execution result is missing before apply");
-    }
+    const output = input.output;
+    const result = input.requestExecutionResult;
 
-    if (shouldFinalizeToolCallBoundary(input)) {
-      const visibleTextBuffer = buildToolBoundaryVisibleMessage(input);
+    if (shouldFinalizeToolCallBoundary(output, result)) {
+      const visibleTextBuffer = buildToolBoundaryVisibleMessage(output);
 
       return {
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: input.output.env,
+          env: output.env,
           transportResult: {
-            ...input.output.transportResult,
+            ...output.transportResult,
             text: visibleTextBuffer,
           },
           visibleTextBuffer,
@@ -76,30 +78,30 @@ export const applyIntentRequestExecutionElement: PipelineElement<
       };
     }
 
-    if (input.requestExecutionResult.status === "continue") {
+    if (result.status === "continue") {
       return {
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: input.output.env,
-          transportResult: input.output.transportResult,
-          visibleTextBuffer: input.output.state.visibleTextBuffer,
-          hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
+          env: output.env,
+          transportResult: output.transportResult,
+          visibleTextBuffer: output.state.visibleTextBuffer,
+          hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
         },
       };
     }
 
-    const nextTask = input.requestExecutionResult.nextTask;
+    const nextTask = result.nextTask;
 
     if (!nextTask) {
       return {
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: input.output.env,
-          transportResult: input.output.transportResult,
-          visibleTextBuffer: input.output.state.visibleTextBuffer,
-          hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
+          env: output.env,
+          transportResult: output.transportResult,
+          visibleTextBuffer: output.state.visibleTextBuffer,
+          hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
         },
       };
     }
@@ -108,11 +110,11 @@ export const applyIntentRequestExecutionElement: PipelineElement<
       mode: "ready_to_finalize",
       finalization: {
         type: "enqueue",
-        transition: resolveEnqueueTransition(input.output.env.task, nextTask),
-        env: input.output.env,
-        transportResult: input.output.transportResult,
-        visibleTextBuffer: input.output.state.visibleTextBuffer,
-        hasStreamedVisibleOutput: input.output.state.hasStreamedVisibleOutput,
+        transition: resolveEnqueueTransition(output.env.task, nextTask),
+        env: output.env,
+        transportResult: output.transportResult,
+        visibleTextBuffer: output.state.visibleTextBuffer,
+        hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
         nextTask,
       },
     };

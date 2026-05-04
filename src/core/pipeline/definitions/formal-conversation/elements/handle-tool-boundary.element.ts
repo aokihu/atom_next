@@ -1,8 +1,6 @@
 import type { PipelineElement } from "@/core/pipeline";
-import type {
-  FormalConversationConversationOutput,
-  FormalConversationFlowState,
-} from "../types";
+import type { FormalConversationFlowState } from "../types";
+import type { FormalConversationConversationOutput } from "../types";
 
 const shouldExecutePendingToolCalls = (
   input: FormalConversationConversationOutput,
@@ -26,17 +24,14 @@ export const handleToolBoundaryElement: PipelineElement<
   name: "HandleToolBoundary",
   kind: "boundary",
   async process(input) {
-    if (input.mode === "ready_to_finalize") {
+    if (input.mode !== "conversation_output") {
       return input;
     }
 
     const output = input.output;
 
     if (!shouldExecutePendingToolCalls(output)) {
-      return {
-        mode: "intent_requests",
-        output,
-      };
+      return input;
     }
 
     const toolExecutionResult = await output.env.runtime.executeConversationToolCalls(

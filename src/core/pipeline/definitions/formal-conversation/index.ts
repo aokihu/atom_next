@@ -2,14 +2,12 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import type {
-  FormalConversationPipelineInput,
-  RunFormalConversationPipelineResult,
-} from "./types";
-import { createFormalConversationPipelineEnv, createFormalConversationPipelineState } from "./types";
+import { createPipelineEnv } from "../..";
+import type { FormalConversationPipelineInput } from "./types";
+import { createFormalConversationPipelineState } from "./types";
 import { registerTransportEventHandler } from "./transport-event-handler";
-import { createTransportElement } from "../../../elements";
-import { syncRuntimeTaskElement } from "./elements/sync-runtime-task.element";
+import { createTransportElement } from "@element/transport.element";
+import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
 import { exportPromptsElement } from "./elements/export-prompts.element";
 import { transformPromptsToTransportPayloadElement } from "./elements/transform-prompts-to-transport-payload.element";
 import { transformTransportOutputToConversationOutputElement } from "./elements/transform-transport-output-to-conversation-output.element";
@@ -27,7 +25,7 @@ export const formalConversationPipeline: PipelineDefinition<
   name: "formal-conversation",
 
   createInput(task, deps) {
-    const env = createFormalConversationPipelineEnv(
+    const env = createPipelineEnv(
       task,
       deps.taskQueue,
       deps.runtime,
@@ -70,5 +68,3 @@ export const formalConversationPipeline: PipelineDefinition<
     );
   },
 };
-
-export type { RunFormalConversationPipelineResult };

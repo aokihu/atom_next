@@ -1,38 +1,39 @@
-import type { PipelineResult } from "@/core/pipeline";
-import type { TaskQueue } from "@/core/queue";
-import type { Runtime } from "@/core/runtime";
-import type { TaskItem } from "@/types/task";
+import type {
+  PipelineEnv,
+  PipelineFinalizationInput,
+  PipelineResult,
+} from "@/core/pipeline";
 
-export type UserIntentPredictionPipelineEnv = {
-  task: TaskItem;
-  taskQueue: TaskQueue;
-  runtime: Runtime;
-};
+export type UserIntentPredictionPipelineEnv = PipelineEnv;
 
 export type UserIntentPredictionPipelineInput = {
   env: UserIntentPredictionPipelineEnv;
 };
 
-export type PreparedPredictionRequest = UserIntentPredictionPipelineInput & {
-  predictionRequest: Awaited<ReturnType<Runtime["prepareExecutionContext"]>>;
-};
+export type UserIntentPredictionFinalizationInput =
+  PipelineFinalizationInput<UserIntentPredictionPipelineEnv>;
 
-export type PredictionExecution = UserIntentPredictionPipelineInput & {
-  requestExecutionResult?: Awaited<
-    ReturnType<Runtime["executeIntentRequests"]>
-  >;
-};
-
-export const createUserIntentPredictionPipelineEnv = (
-  task: TaskItem,
-  taskQueue: TaskQueue,
-  runtime: Runtime,
-): UserIntentPredictionPipelineEnv => {
-  return {
-    task,
-    taskQueue,
-    runtime,
-  };
-};
+export type UserIntentPredictionFlowState =
+  | {
+      mode: "prediction_prepared";
+      env: UserIntentPredictionPipelineEnv;
+      predictionRequest: Awaited<
+        ReturnType<import("@/core/runtime").Runtime["prepareExecutionContext"]>
+      >;
+    }
+  | {
+      mode: "prediction_executed";
+      env: UserIntentPredictionPipelineEnv;
+      predictionRequest: Awaited<
+        ReturnType<import("@/core/runtime").Runtime["prepareExecutionContext"]>
+      >;
+      requestExecutionResult: Awaited<
+        ReturnType<import("@/core/runtime").Runtime["executeIntentRequests"]>
+      >;
+    }
+  | {
+      mode: "ready_to_finalize";
+      finalization: UserIntentPredictionFinalizationInput;
+    };
 
 export type RunUserIntentPredictionPipelineResult = PipelineResult;

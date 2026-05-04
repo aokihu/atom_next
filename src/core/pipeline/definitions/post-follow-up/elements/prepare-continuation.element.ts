@@ -1,12 +1,12 @@
 import type { PipelineElement } from "@/core/pipeline";
 import type {
+  PostFollowUpFlowState,
   PostFollowUpPipelineInput,
-  PreparedPostFollowUp,
 } from "../types";
 
 export const prepareContinuationElement: PipelineElement<
   PostFollowUpPipelineInput,
-  PreparedPostFollowUp
+  PostFollowUpFlowState
 > = {
   name: "PrepareContinuation",
   kind: "transform",
@@ -14,7 +14,8 @@ export const prepareContinuationElement: PipelineElement<
     await input.env.runtime.preparePostFollowUpContinuation();
 
     return {
-      ...input,
+      mode: "continuation_prepared",
+      env: input.env,
       nextTask: input.env.runtime.createContinuationFormalConversationTask(
         input.env.task,
       ),

@@ -1,12 +1,12 @@
 import type { PipelineElement } from "@/core/pipeline";
 import type {
-  FormalConversationConversationOutput,
+  FormalConversationFlowState,
   FormalConversationTransportResponse,
 } from "../types";
 
 export const transformTransportOutputToConversationOutputElement: PipelineElement<
   FormalConversationTransportResponse,
-  FormalConversationConversationOutput
+  FormalConversationFlowState
 > = {
   name: "TransformTransportOutputToConversationOutput",
   kind: "transform",
@@ -14,9 +14,12 @@ export const transformTransportOutputToConversationOutputElement: PipelineElemen
     input.env.runtime.clearContinuationContext();
 
     return {
-      env: input.env,
-      state: input.state,
-      transportResult: input.transportOutput,
+      mode: "conversation_output",
+      output: {
+        env: input.env,
+        state: input.state,
+        transportResult: input.transportOutput,
+      },
     };
   },
 };
