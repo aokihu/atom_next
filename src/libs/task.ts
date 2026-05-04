@@ -127,6 +127,7 @@ export const createTaskItem = (params: TaskItemInput): TaskItem => {
     payload: params.payload,
     eventTarget: params.eventTarget,
     channel: params.channel,
+    followUpPolicy: params.followUpPolicy,
   });
 };
 
@@ -164,5 +165,6 @@ export const createInternalTaskItem = (
     payload: params.payload,
     eventTarget: params.eventTarget,
     channel: params.channel,
+    followUpPolicy: params.followUpPolicy,
   });
 };

@@ -132,6 +132,9 @@ export class Core {
           sessionId: task.sessionId,
           chatId: task.chatId,
           pipeline: taskPipeline,
+          followUpPolicy: task.followUpPolicy,
+          chainRound: task.chainRound,
+          parentTaskId: task.parentTaskId,
         },
       });
 
