@@ -1,3 +1,10 @@
+/**
+ * UserIntentPrediction pipeline definition.
+ *
+ * Element chain:
+ *   SyncRuntimeTask → PreparePredictionRequest → ExecutePredictionRequest →
+ *   ApplyPredictionExecution → FinalizeUserIntentPrediction
+ */
 import type {
   PipelineDefinition,
   PipelineResult,

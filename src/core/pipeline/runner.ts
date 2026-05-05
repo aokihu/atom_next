@@ -1,5 +1,13 @@
 import type { Pipeline, PipelineContext } from "./types";
 
+/**
+ * Generic pipeline executor.
+ *
+ * Runs elements in order, passing each element's output as the next element's input.
+ * Emits non-blocking lifecycle events (started / finished / failed) for every element.
+ * Aborts early when the context signal is cancelled.
+ * Element errors are rethrown after emitting the failed event.
+ */
 export class PipelineRunner {
   async run<I, O>(
     pipeline: Pipeline<I, O>,

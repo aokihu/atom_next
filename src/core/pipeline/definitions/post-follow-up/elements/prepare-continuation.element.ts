@@ -1,3 +1,10 @@
+/**
+ * PrepareContinuation — prepares post follow-up continuation.
+ *
+ * Calls runtime.preparePostFollowUpContinuation to generate summary/nextPrompt/avoidRepeat,
+ * then creates the formal conversation continuation task.
+ * Transitions to continuation_prepared stage.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type {
   PostFollowUpFlowState,

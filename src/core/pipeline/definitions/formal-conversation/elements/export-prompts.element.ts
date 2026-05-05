@@ -1,3 +1,9 @@
+/**
+ * ExportPrompts — reads system and user prompts from runtime.
+ *
+ * Transitions from pipeline input → prompts, extracting system prompt
+ * and user prompt via runtime.exportPrompts().
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type {
   FormalConversationPipelineInput,

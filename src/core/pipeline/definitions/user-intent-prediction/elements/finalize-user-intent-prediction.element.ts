@@ -1,3 +1,9 @@
+/**
+ * FinalizeUserIntentPrediction — terminal element for user intent prediction.
+ *
+ * Only accepts ready_to_finalize; converts the finalization to PipelineResult
+ * via toPipelineResult().
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import { toPipelineResult } from "@/core/pipeline";
 import type {

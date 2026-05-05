@@ -1,3 +1,11 @@
+/**
+ * UserIntentPrediction pipeline types.
+ *
+ * Predicts user intent before the formal conversation starts,
+ * sets the followUpPolicy, and creates the formal conversation task.
+ *
+ * FlowState stages: prediction_prepared → prediction_executed → ready_to_finalize.
+ */
 import type {
   PipelineEnv,
   PipelineFinalizationInput,

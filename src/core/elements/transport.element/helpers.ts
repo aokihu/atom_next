@@ -1,3 +1,9 @@
+/**
+ * Transport element helpers.
+ *
+ * Shared utilities for resolving transport configuration and running
+ * generateText / generateObject requests outside the streaming pipeline.
+ */
 import { generateText as runGenerateText, Output, stepCountIs } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ServiceManager } from "@/libs/service-manage";

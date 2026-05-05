@@ -1,3 +1,10 @@
+/**
+ * ExecutePredictionRequest — executes the PREPARE_CONVERSATION intent request.
+ *
+ * If no prediction request was prepared, generates a continue result.
+ * Otherwise calls runtime.executeIntentRequests to process the prediction.
+ * Transitions from prediction_prepared → prediction_executed.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { UserIntentPredictionFlowState } from "../types";
 

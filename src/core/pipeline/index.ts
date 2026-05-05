@@ -1,3 +1,6 @@
+/**
+ * Core pipeline barrel exports.
+ */
 export type {
   Pipeline,
   PipelineContext,

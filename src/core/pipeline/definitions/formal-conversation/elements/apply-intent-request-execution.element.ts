@@ -1,3 +1,12 @@
+/**
+ * ApplyIntentRequestExecution — converts intent execution results into finalization.
+ *
+ * Three exit paths after intent_executed:
+ * 1. Tool-call boundary → complete (visible boundary message)
+ * 2. status continue → complete
+ * 3. nextTask exists → enqueue (follow_up if same chain, dispatch otherwise)
+ * Falls through to complete if no nextTask.
+ */
 import type { PipelineElement, PipelineEnqueueTransition } from "@/core/pipeline";
 import type { FormalConversationFlowState } from "../types";
 

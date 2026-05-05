@@ -1,3 +1,9 @@
+/**
+ * ExecuteIntentRequests — executes parsed intent requests via runtime.
+ *
+ * Takes the safe intent requests from intent_parsed stage and executes them.
+ * Transitions from intent_parsed → intent_executed.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { FormalConversationFlowState } from "../types";
 
@@ -6,7 +12,7 @@ export const executeIntentRequestsElement: PipelineElement<
   FormalConversationFlowState
 > = {
   name: "ExecuteIntentRequests",
-  kind: "boundary",
+  kind: "transform",
   async process(input) {
     if (input.mode !== "intent_parsed") {
       return input;

@@ -1,3 +1,8 @@
+/**
+ * SyncRuntimeTask — binds the current task as runtime.currentTask.
+ *
+ * Shared source element used by all three pipelines as the first step.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { TaskItem } from "@/types/task";
 

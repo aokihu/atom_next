@@ -1,3 +1,10 @@
+/**
+ * HandleToolBoundary — decides whether pending tool calls need execution.
+ *
+ * If the transport result has pending tool calls, executes them.
+ * Success → enqueue (follow_up continuation). Failure → complete (error message).
+ * If no pending tool calls → passes through to intent_requests stage.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { FormalConversationFlowState } from "../types";
 import type { FormalConversationConversationOutput } from "../types";

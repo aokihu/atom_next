@@ -1,3 +1,9 @@
+/**
+ * ApplyPostFollowUpContinuation — maps prepared continuation to finalization.
+ *
+ * Takes the continuation_prepared state and produces an enqueue finalization
+ * with dispatch transition, spawning the next formal conversation task.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { PostFollowUpFlowState } from "../types";
 

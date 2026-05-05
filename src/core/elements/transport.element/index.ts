@@ -1,3 +1,12 @@
+/**
+ * Transport element — executes the LLM call and emits streaming events.
+ *
+ * createTransportElement produces a transform element that:
+ * 1. Resolves the model from the service manager
+ * 2. Streams the LLM response via the AI SDK
+ * 3. Emits transport.delta / transport.tool.* / transport.failed events
+ * 4. Parses the final output including intent request text
+ */
 import { streamText } from "ai";
 import { finished } from "node:stream/promises";
 import type { ServiceManager } from "@/libs/service-manage";

@@ -1,3 +1,9 @@
+/**
+ * ApplyPredictionExecution — maps prediction execution result to finalization.
+ *
+ * If no result, status is continue, or no nextTask → complete.
+ * Otherwise → enqueue (dispatch, spawning a formal conversation task).
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { UserIntentPredictionFlowState } from "../types";
 

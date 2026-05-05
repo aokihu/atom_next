@@ -1,3 +1,9 @@
+/**
+ * TransformPromptsToTransportPayload — wraps prompts into a transport payload.
+ *
+ * Builds the TransportPayload from system/user prompts, including
+ * maxOutputTokens, maxToolSteps, and tool registry.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type {
   FormalConversationPrompts,

@@ -1,3 +1,11 @@
+/**
+ * Transport event handler for formal conversation pipeline.
+ *
+ * Registers handlers on the PipelineEventBus for transport.delta,
+ * transport.tool.started, transport.tool.finished, and transport.failed.
+ * These handlers update the pipeline state (visibleTextBuffer, tool stats)
+ * in real-time as the transport element streams LLM output.
+ */
 import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
 import { TaskState } from "@/types/task";

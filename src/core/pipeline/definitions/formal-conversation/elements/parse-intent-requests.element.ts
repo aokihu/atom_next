@@ -1,3 +1,10 @@
+/**
+ * ParseIntentRequests — parses intent request text from the LLM output.
+ *
+ * Reads intentRequestText from the transport result, reports conversation
+ * output analysis, and parses intent requests via runtime.parseIntentRequest.
+ * Transitions from conversation_output → intent_parsed.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { FormalConversationFlowState } from "../types";
 
@@ -6,7 +13,7 @@ export const parseIntentRequestsElement: PipelineElement<
   FormalConversationFlowState
 > = {
   name: "ParseIntentRequests",
-  kind: "boundary",
+  kind: "transform",
   async process(input) {
     if (input.mode !== "conversation_output") {
       return input;

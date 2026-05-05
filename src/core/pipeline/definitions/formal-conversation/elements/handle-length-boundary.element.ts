@@ -1,3 +1,10 @@
+/**
+ * HandleLengthBoundary — fallback when the LLM output is truncated by token limit.
+ *
+ * If finishReason is "length" and no FOLLOW_UP intent request was generated,
+ * and the task has a long_output followUpPolicy enabled, it enqueues a
+ * POST_FOLLOW_UP task to generate continuation context.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type { TaskFollowUpPolicy } from "@/types/task";
 import type { TaskItem } from "@/types/task";

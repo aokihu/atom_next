@@ -1,3 +1,10 @@
+/**
+ * PostFollowUp pipeline definition.
+ *
+ * Element chain:
+ *   SyncRuntimeTask → PrepareContinuation →
+ *   ApplyPostFollowUpContinuation → FinalizePostFollowUp
+ */
 import type {
   PipelineDefinition,
   PipelineResult,

@@ -1,3 +1,10 @@
+/**
+ * FinalizeConversation — terminal element for the formal conversation pipeline.
+ *
+ * Enqueue path: passes through the finalization intent to PipelineResult.
+ * Complete path: calls runtime.finalizeChatTurn, emits final visible chunk
+ * if not already streamed, emits CHAT_COMPLETED, returns PipelineResult.
+ */
 import type { PipelineElement, PipelineResult } from "@/core/pipeline";
 import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";

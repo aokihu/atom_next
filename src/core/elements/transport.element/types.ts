@@ -1,3 +1,9 @@
+/**
+ * Transport element types.
+ *
+ * Defines the transport payload, output, and related configuration types
+ * consumed by createTransportElement and its helpers.
+ */
 import type { FinishReason, LanguageModelUsage } from "ai";
 import type { ZodType } from "zod";
 import type { ToolDefinitionMap } from "@/services/tools";

@@ -1,3 +1,11 @@
+/**
+ * FormalConversation pipeline types.
+ *
+ * Defines the full type chain for the formal conversation pipeline:
+ * env → state → input → prompts → transport → output → flow state → finalization.
+ *
+ * FlowState stages: conversation_output → intent_parsed → intent_executed → ready_to_finalize.
+ */
 import type { PipelineEnv, PipelineFinalizationInput } from "@/core/pipeline";
 import type {
   TransportOutput,

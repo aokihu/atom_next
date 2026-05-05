@@ -1,3 +1,13 @@
+/**
+ * FormalConversation pipeline definition.
+ *
+ * Full element chain:
+ *   SyncRuntimeTask → ExportPrompts → TransformPromptsToTransportPayload →
+ *   Transport → TransformTransportOutputToConversationOutput →
+ *   HandleLengthBoundary → HandleToolBoundary →
+ *   ParseIntentRequests → ExecuteIntentRequests →
+ *   ApplyIntentRequestExecution → FinalizeConversation
+ */
 import type {
   PipelineDefinition,
   PipelineResult,

@@ -1,3 +1,9 @@
+/**
+ * TransformTransportOutputToConversationOutput — extracts transport result into pipeline output.
+ *
+ * Clears continuation context and wraps the raw transport output into the
+ * pipeline's conversation output shape. Transitions into conversation_output stage.
+ */
 import type { PipelineElement } from "@/core/pipeline";
 import type {
   FormalConversationFlowState,

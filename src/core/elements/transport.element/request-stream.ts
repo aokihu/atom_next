@@ -1,3 +1,10 @@
+/**
+ * Request stream parser.
+ *
+ * Parses transport stream output for the <<<REQUEST>>> marker that delimits
+ * visible text from intent request text. Used by the transport element to
+ * split streaming output into visible output and intent requests.
+ */
 import { Transform, type TransformCallback } from "node:stream";
 import { isString } from "radashi";
 
