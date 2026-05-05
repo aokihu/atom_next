@@ -41,7 +41,7 @@ export const handleToolBoundaryElement: PipelineElement<
       return input;
     }
 
-    const toolExecutionResult = await output.env.runtime.executeConversationToolCalls(
+    const toolExecutionResult = await output.context.executeConversationToolCalls(
       output.transportResult.pendingToolCalls ?? [],
     );
 
@@ -54,7 +54,7 @@ export const handleToolBoundaryElement: PipelineElement<
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: output.env,
+          context: output.context,
           transportResult: {
             ...output.transportResult,
             text: visibleTextBuffer,
@@ -70,13 +70,11 @@ export const handleToolBoundaryElement: PipelineElement<
       finalization: {
         type: "enqueue",
         transition: "follow_up",
-        env: output.env,
+        context: output.context,
         transportResult: output.transportResult,
         visibleTextBuffer: output.state.visibleTextBuffer,
         hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
-        nextTask: output.env.runtime.createContinuationFormalConversationTask(
-          output.env.task,
-        ),
+        nextTask: output.context.createContinuationFormalConversationTask(),
       },
     };
   },

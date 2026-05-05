@@ -76,7 +76,7 @@ export const applyIntentRequestExecutionElement: PipelineElement<
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: output.env,
+          context: output.context,
           transportResult: {
             ...output.transportResult,
             text: visibleTextBuffer,
@@ -92,7 +92,7 @@ export const applyIntentRequestExecutionElement: PipelineElement<
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: output.env,
+          context: output.context,
           transportResult: output.transportResult,
           visibleTextBuffer: output.state.visibleTextBuffer,
           hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
@@ -107,7 +107,7 @@ export const applyIntentRequestExecutionElement: PipelineElement<
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: output.env,
+          context: output.context,
           transportResult: output.transportResult,
           visibleTextBuffer: output.state.visibleTextBuffer,
           hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
@@ -119,8 +119,8 @@ export const applyIntentRequestExecutionElement: PipelineElement<
       mode: "ready_to_finalize",
       finalization: {
         type: "enqueue",
-        transition: resolveEnqueueTransition(output.env.task, nextTask),
-        env: output.env,
+        transition: resolveEnqueueTransition(output.context.task, nextTask),
+        context: output.context,
         transportResult: output.transportResult,
         visibleTextBuffer: output.state.visibleTextBuffer,
         hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,

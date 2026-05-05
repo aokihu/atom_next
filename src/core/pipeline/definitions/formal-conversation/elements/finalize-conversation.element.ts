@@ -43,39 +43,36 @@ export const finalizeConversationElement: PipelineElement<
       return {
         type: "enqueue",
         transition: input.finalization.transition,
-        task: input.finalization.env.task,
+        task: input.finalization.context.task,
         nextTask: input.finalization.nextTask,
       };
     }
 
-    const finalizationResult = input.finalization.env.runtime.finalizeChatTurn(
-      input.finalization.env.task,
-      {
-        resultText: input.finalization.transportResult.text,
-        visibleTextBuffer: input.finalization.visibleTextBuffer,
-      },
-    );
+    const finalizationResult = input.finalization.context.finalizeChatTurn({
+      resultText: input.finalization.transportResult.text,
+      visibleTextBuffer: input.finalization.visibleTextBuffer,
+    });
 
     if (
       !input.finalization.hasStreamedVisibleOutput
       && finalizationResult.visibleChunk
     ) {
       emitChatOutputUpdatedEvent(
-        input.finalization.env.task.sessionId,
-        input.finalization.env.task.chatId,
-        input.finalization.env.task.eventTarget,
+        input.finalization.context.task.sessionId,
+        input.finalization.context.task.chatId,
+        input.finalization.context.task.eventTarget,
         finalizationResult.visibleChunk,
       );
     }
 
-    input.finalization.env.task.eventTarget?.emit(
+    input.finalization.context.task.eventTarget?.emit(
       ChatEvents.CHAT_COMPLETED,
       finalizationResult.completedPayload,
     );
 
     return {
       type: "complete",
-      task: input.finalization.env.task,
+      task: input.finalization.context.task,
     };
   },
 };

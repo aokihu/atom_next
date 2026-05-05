@@ -72,10 +72,12 @@ export class UserIntentPredictionManager {
     this.setPredictedIntent(sessionId, {
       sessionId,
       type: fallbackIntent.type,
+      topicRelation: fallbackIntent.topicRelation,
       needsMemory: fallbackIntent.needsMemory,
       needsMemorySave: fallbackIntent.needsMemorySave,
       memoryQuery: fallbackIntent.memoryQuery,
       confidence: fallbackIntent.confidence,
+      estimatedOutputScale: fallbackIntent.estimatedOutputScale,
       outputBudget: fallbackIntent.outputBudget,
     });
   }

@@ -17,7 +17,7 @@ export const exportPromptsElement: PipelineElement<
   name: "ExportPrompts",
   kind: "source",
   async process(input) {
-    const [systemPrompt, userPrompt] = await input.env.runtime.exportPrompts();
+    const [systemPrompt, userPrompt] = await input.context.exportPrompts();
 
     return {
       ...input,

@@ -8,22 +8,22 @@
  */
 import { ChatEvents, type ChatOutputUpdatedEventPayload } from "@/types/event";
 import { ChatStatus } from "@/types/chat";
-import { TaskState } from "@/types/task";
 import type { PipelineEventBus, PipelineEventMap } from "@/core/pipeline";
-import type { FormalConversationPipelineEnv, FormalConversationPipelineState } from "./types";
+import type { FormalConversationPipelineState } from "./types";
+import type { FormalConversationPipelineContext } from "./context";
 
 const emitChatOutputUpdatedEvent = (
-  env: FormalConversationPipelineEnv,
+  context: FormalConversationPipelineContext,
   delta: string,
 ): void => {
   const payload: ChatOutputUpdatedEventPayload = {
-    sessionId: env.task.sessionId,
-    chatId: env.task.chatId,
+    sessionId: context.task.sessionId,
+    chatId: context.task.chatId,
     status: ChatStatus.PROCESSING,
     delta,
   };
 
-  env.task.eventTarget?.emit(ChatEvents.CHAT_OUTPUT_UPDATED, payload);
+  context.task.eventTarget?.emit(ChatEvents.CHAT_OUTPUT_UPDATED, payload);
 };
 
 const getToolFailureMessage = (value: unknown) => {
@@ -47,30 +47,26 @@ const stringifyToolError = (value: unknown) => {
 
 export const registerTransportEventHandler = (
   eventBus: PipelineEventBus<PipelineEventMap>,
-  env: FormalConversationPipelineEnv,
+  context: FormalConversationPipelineContext,
   state: FormalConversationPipelineState,
 ) => {
   let hasSyncedProcessingState = false;
 
   const offDelta = eventBus.on("transport.delta", ({ textDelta }) => {
     if (!hasSyncedProcessingState) {
-      env.taskQueue.updateTask(
-        env.task.id,
-        { state: TaskState.PROCESSING },
-        { shouldSyncEvent: false },
-      );
+      context.markTaskProcessing();
       hasSyncedProcessingState = true;
     }
 
-    env.runtime.appendAssistantOutput(textDelta);
-    emitChatOutputUpdatedEvent(env, textDelta);
+    context.appendAssistantOutput(textDelta);
+    emitChatOutputUpdatedEvent(context, textDelta);
     state.hasStreamedVisibleOutput = true;
     state.visibleTextBuffer += textDelta;
   });
 
   const offToolStarted = eventBus.on("transport.tool.started", (event) => {
     state.toolCallStartCount += 1;
-    env.runtime.reportToolCallStarted(event);
+    context.reportToolCallStarted(event);
   });
 
   const offToolFinished = eventBus.on("transport.tool.finished", (event) => {
@@ -86,7 +82,7 @@ export const registerTransportEventHandler = (
       }
     }
 
-    env.runtime.reportToolCallFinished(event);
+    context.reportToolCallFinished(event);
   });
 
   const offFailed = eventBus.on("transport.failed", () => {

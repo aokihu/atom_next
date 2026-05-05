@@ -22,8 +22,7 @@ export const executeIntentRequestsElement: PipelineElement<
       mode: "intent_executed",
       output: input.output,
       intentRequestResult: input.intentRequestResult,
-      requestExecutionResult: await input.output.env.runtime.executeIntentRequests(
-        input.output.env.task,
+      requestExecutionResult: await input.output.context.executeIntentRequests(
         input.intentRequestResult.safeRequests,
       ),
     };

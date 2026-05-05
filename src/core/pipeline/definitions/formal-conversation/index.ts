@@ -12,9 +12,9 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import { createPipelineEnv } from "../..";
 import type { FormalConversationPipelineInput } from "./types";
 import { createFormalConversationPipelineState } from "./types";
+import { createFormalConversationPipelineContext } from "./context";
 import { registerTransportEventHandler } from "./transport-event-handler";
 import { createTransportElement } from "@element/transport.element";
 import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
@@ -35,16 +35,14 @@ export const formalConversationPipeline: PipelineDefinition<
   name: "formal-conversation",
 
   createInput(task, deps) {
-    const env = createPipelineEnv(
-      task,
-      deps.taskQueue,
-      deps.runtime,
-    );
-
     const state = createFormalConversationPipelineState();
+    const context = createFormalConversationPipelineContext(task, {
+      taskQueue: deps.taskQueue,
+      runtime: deps.runtime,
+    });
 
     return {
-      env,
+      context,
       state,
     };
   },
@@ -73,7 +71,7 @@ export const formalConversationPipeline: PipelineDefinition<
   setup(eventBus, input) {
     return registerTransportEventHandler(
       eventBus,
-      input.env,
+      input.context,
       input.state,
     );
   },

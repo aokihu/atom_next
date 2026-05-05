@@ -19,7 +19,7 @@ export const parseIntentRequestsElement: PipelineElement<
       return input;
     }
 
-    input.output.env.runtime.reportConversationOutputAnalysis({
+    input.output.context.reportConversationOutputAnalysis({
       finishReason: String(input.output.transportResult.finishReason),
       visibleTextCharLength: input.output.state.visibleTextBuffer.length,
       intentRequestText: input.output.transportResult.intentRequestText,
@@ -32,7 +32,7 @@ export const parseIntentRequestsElement: PipelineElement<
     return {
       mode: "intent_parsed",
       output: input.output,
-      intentRequestResult: input.output.env.runtime.parseIntentRequest(
+      intentRequestResult: input.output.context.parseIntentRequest(
         input.output.transportResult.intentRequestText,
       ),
     };

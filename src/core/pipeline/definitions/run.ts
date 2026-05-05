@@ -38,7 +38,7 @@ export async function runPipeline(
   deps: PipelineRunDeps,
   runner: PipelineRunner,
 ): Promise<PipelineResult> {
-  const definition = pipelines[pipeline];
+  const definition: PipelineDefinition<any, PipelineResult> = pipelines[pipeline];
 
   if (!definition) {
     throw new Error(`Unknown pipeline: ${pipeline}`);

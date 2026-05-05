@@ -44,19 +44,17 @@ export const handleLengthBoundaryElement: PipelineElement<
 
     const output = input.output;
 
-    if (shouldUseFollowUpFallback(output.env.task, output.transportResult)) {
+    if (shouldUseFollowUpFallback(output.context.task, output.transportResult)) {
       return {
         mode: "ready_to_finalize",
         finalization: {
           type: "enqueue",
           transition: "follow_up",
-          env: output.env,
+          context: output.context,
           transportResult: output.transportResult,
           visibleTextBuffer: output.state.visibleTextBuffer,
           hasStreamedVisibleOutput: output.state.hasStreamedVisibleOutput,
-          nextTask: output.env.runtime.createLengthLimitedPostFollowUpTask(
-            output.env.task,
-          ),
+          nextTask: output.context.createLengthLimitedPostFollowUpTask(),
         },
       };
     }

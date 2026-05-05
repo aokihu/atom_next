@@ -17,12 +17,12 @@ export const transformTransportOutputToConversationOutputElement: PipelineElemen
   name: "TransformTransportOutputToConversationOutput",
   kind: "transform",
   async process(input) {
-    input.env.runtime.clearContinuationContext();
+    input.context.clearContinuationContext();
 
     return {
       mode: "conversation_output",
       output: {
-        env: input.env,
+        context: input.context,
         state: input.state,
         transportResult: input.transportOutput,
       },

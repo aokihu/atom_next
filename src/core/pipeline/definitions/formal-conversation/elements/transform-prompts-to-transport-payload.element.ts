@@ -17,15 +17,19 @@ export const transformPromptsToTransportPayloadElement: PipelineElement<
   name: "TransformPromptsToTransportPayload",
   kind: "transform",
   async process(input) {
+    const tools =
+      input.context.transport.tools
+      ?? input.context.createConversationToolRegistry();
+
     return {
       ...input,
       transportPayload: {
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
         options: {
-          maxOutputTokens: input.env.runtime.getFormalConversationMaxOutputTokens(),
-          maxToolSteps: input.env.runtime.getFormalConversationMaxToolSteps(),
-          tools: input.env.runtime.createConversationToolRegistry(),
+          maxOutputTokens: input.context.transport.maxOutputTokens,
+          maxToolSteps: input.context.transport.maxToolSteps,
+          tools,
         },
       },
     };

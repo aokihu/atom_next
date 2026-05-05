@@ -2,17 +2,17 @@
  * FormalConversation pipeline types.
  *
  * Defines the full type chain for the formal conversation pipeline:
- * env → state → input → prompts → transport → output → flow state → finalization.
+ * context → state → input → prompts → transport → output → flow state → finalization.
  *
  * FlowState stages: conversation_output → intent_parsed → intent_executed → ready_to_finalize.
  */
-import type { PipelineEnv, PipelineFinalizationInput } from "@/core/pipeline";
+import type { PipelineEnqueueTransition } from "@/core/pipeline";
+import type { TaskItem } from "@/types/task";
 import type {
   TransportOutput,
   TransportPayload,
 } from "@element/transport.element";
-
-export type FormalConversationPipelineEnv = PipelineEnv;
+import type { FormalConversationPipelineContext } from "./context";
 
 export type FormalConversationPipelineState = {
   visibleTextBuffer: string;
@@ -23,7 +23,7 @@ export type FormalConversationPipelineState = {
 };
 
 export type FormalConversationPipelineInput = {
-  env: FormalConversationPipelineEnv;
+  context: FormalConversationPipelineContext;
   state: FormalConversationPipelineState;
 };
 
@@ -52,9 +52,19 @@ type FormalConversationFinalizationExtra = {
   hasStreamedVisibleOutput: boolean;
 };
 
+type FormalConversationBaseFinalizationInput = {
+  context: FormalConversationPipelineContext;
+} & FormalConversationFinalizationExtra;
+
 export type FormalConversationFinalizationInput =
-  PipelineFinalizationInput<FormalConversationPipelineEnv> &
-    FormalConversationFinalizationExtra;
+  | ({
+      type: "complete";
+    } & FormalConversationBaseFinalizationInput)
+  | ({
+      type: "enqueue";
+      transition: PipelineEnqueueTransition;
+      nextTask: TaskItem;
+    } & FormalConversationBaseFinalizationInput);
 
 export type FormalConversationFlowState =
   | {
