@@ -9,8 +9,9 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import { createPipelineEnv } from "../..";
 import type { PostFollowUpPipelineInput } from "./types";
+import { createPostFollowUpPipelineContext } from "./context";
+import { createPostFollowUpPipelineState } from "./types";
 import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
 import { prepareContinuationElement } from "./elements/prepare-continuation.element";
 import { applyPostFollowUpContinuationElement } from "./elements/apply-post-follow-up-continuation.element";
@@ -24,11 +25,10 @@ export const postFollowUpPipeline: PipelineDefinition<
 
   createInput(task, deps) {
     return {
-      env: createPipelineEnv(
-        task,
-        deps.taskQueue,
-        deps.runtime,
-      ),
+      context: createPostFollowUpPipelineContext(task, {
+        runtime: deps.runtime,
+      }),
+      state: createPostFollowUpPipelineState(),
     };
   },
 

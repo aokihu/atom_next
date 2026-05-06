@@ -7,24 +7,35 @@
  * FlowState stages: continuation_prepared → ready_to_finalize.
  */
 import type {
-  PipelineEnv,
-  PipelineFinalizationInput,
   PipelineResult,
 } from "@/core/pipeline";
+import type { TaskItem } from "@/types/task";
+import type { PostFollowUpPipelineContext } from "./context";
 
-export type PostFollowUpPipelineEnv = PipelineEnv;
+export type PostFollowUpPipelineState = Record<string, never>;
 
 export type PostFollowUpPipelineInput = {
-  env: PostFollowUpPipelineEnv;
+  context: PostFollowUpPipelineContext;
+  state: PostFollowUpPipelineState;
 };
 
 export type PostFollowUpFinalizationInput =
-  PipelineFinalizationInput<PostFollowUpPipelineEnv>;
+  | {
+      type: "complete";
+      context: PostFollowUpPipelineContext;
+    }
+  | {
+      type: "enqueue";
+      context: PostFollowUpPipelineContext;
+      transition: "dispatch";
+      nextTask: TaskItem;
+    };
 
 export type PostFollowUpFlowState =
   | {
       mode: "continuation_prepared";
-      env: PostFollowUpPipelineEnv;
+      context: PostFollowUpPipelineContext;
+      state: PostFollowUpPipelineState;
       nextTask: ReturnType<
         import("@/core/runtime").Runtime["createContinuationFormalConversationTask"]
       >;
@@ -35,3 +46,7 @@ export type PostFollowUpFlowState =
     };
 
 export type RunPostFollowUpPipelineResult = PipelineResult;
+
+export const createPostFollowUpPipelineState = (): PostFollowUpPipelineState => {
+  return {};
+};

@@ -5,7 +5,6 @@
  * via toPipelineResult().
  */
 import type { PipelineElement } from "@/core/pipeline";
-import { toPipelineResult } from "@/core/pipeline";
 import type {
   PostFollowUpFlowState,
   RunPostFollowUpPipelineResult,
@@ -22,6 +21,18 @@ export const finalizePostFollowUpElement: PipelineElement<
       throw new Error("Post follow-up pipeline did not reach finalize state");
     }
 
-    return toPipelineResult(input.finalization);
+    if (input.finalization.type === "enqueue") {
+      return {
+        type: "enqueue",
+        transition: input.finalization.transition,
+        task: input.finalization.context.task,
+        nextTask: input.finalization.nextTask,
+      };
+    }
+
+    return {
+      type: "complete",
+      task: input.finalization.context.task,
+    };
   },
 };

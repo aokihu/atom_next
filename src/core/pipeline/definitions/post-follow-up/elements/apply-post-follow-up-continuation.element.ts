@@ -22,7 +22,7 @@ export const applyPostFollowUpContinuationElement: PipelineElement<
       mode: "ready_to_finalize",
       finalization: {
         type: "enqueue",
-        env: input.env,
+        context: input.context,
         transition: "dispatch",
         nextTask: input.nextTask,
       },

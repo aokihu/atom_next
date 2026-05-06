@@ -2,7 +2,7 @@
   "name": "atom_next",
   "module": "src/main.ts",
   "type": "module",
-  "version": "0.13.15",
+  "version": "0.13.16",
   "private": true,
   "scripts": {
     "dev": "bun run src/main.ts --workspace ./Playground --log-pipe /tmp/atom-debug",

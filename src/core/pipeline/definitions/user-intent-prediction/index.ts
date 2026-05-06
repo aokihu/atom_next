@@ -9,8 +9,9 @@ import type {
   PipelineDefinition,
   PipelineResult,
 } from "../..";
-import { createPipelineEnv } from "../..";
 import type { UserIntentPredictionPipelineInput } from "./types";
+import { createUserIntentPredictionPipelineContext } from "./context";
+import { createUserIntentPredictionPipelineState } from "./types";
 import { syncRuntimeTaskElement } from "@element/sync-runtime-task.element";
 import { preparePredictionRequestElement } from "./elements/prepare-prediction-request.element";
 import { executePredictionRequestElement } from "./elements/execute-prediction-request.element";
@@ -25,11 +26,10 @@ export const userIntentPredictionPipeline: PipelineDefinition<
 
   createInput(task, deps) {
     return {
-      env: createPipelineEnv(
-        task,
-        deps.taskQueue,
-        deps.runtime,
-      ),
+      context: createUserIntentPredictionPipelineContext(task, {
+        runtime: deps.runtime,
+      }),
+      state: createUserIntentPredictionPipelineState(),
     };
   },
 

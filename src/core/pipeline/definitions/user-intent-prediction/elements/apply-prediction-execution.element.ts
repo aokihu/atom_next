@@ -25,7 +25,7 @@ export const applyPredictionExecutionElement: PipelineElement<
         mode: "ready_to_finalize",
         finalization: {
           type: "complete",
-          env: input.env,
+          context: input.context,
         },
       };
     }
@@ -34,7 +34,7 @@ export const applyPredictionExecutionElement: PipelineElement<
       mode: "ready_to_finalize",
       finalization: {
         type: "enqueue",
-        env: input.env,
+        context: input.context,
         transition: "dispatch",
         nextTask: result.nextTask,
       },

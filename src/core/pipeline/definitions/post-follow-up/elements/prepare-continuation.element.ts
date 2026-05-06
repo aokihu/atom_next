@@ -18,14 +18,13 @@ export const prepareContinuationElement: PipelineElement<
   name: "PrepareContinuation",
   kind: "transform",
   async process(input) {
-    await input.env.runtime.preparePostFollowUpContinuation();
+    await input.context.preparePostFollowUpContinuation();
 
     return {
       mode: "continuation_prepared",
-      env: input.env,
-      nextTask: input.env.runtime.createContinuationFormalConversationTask(
-        input.env.task,
-      ),
+      context: input.context,
+      state: input.state,
+      nextTask: input.context.createContinuationFormalConversationTask(),
     };
   },
 };

@@ -22,7 +22,8 @@ export const executePredictionRequestElement: PipelineElement<
     if (!input.predictionRequest) {
       return {
         mode: "prediction_executed",
-        env: input.env,
+        context: input.context,
+        state: input.state,
         predictionRequest: input.predictionRequest,
         requestExecutionResult: { status: "continue" },
       };
@@ -30,10 +31,10 @@ export const executePredictionRequestElement: PipelineElement<
 
     return {
       mode: "prediction_executed",
-      env: input.env,
+      context: input.context,
+      state: input.state,
       predictionRequest: input.predictionRequest,
-      requestExecutionResult: await input.env.runtime.executeIntentRequests(
-        input.env.task,
+      requestExecutionResult: await input.context.executeIntentRequests(
         [input.predictionRequest],
       ),
     };

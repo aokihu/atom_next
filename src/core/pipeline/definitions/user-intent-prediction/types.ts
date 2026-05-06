@@ -7,31 +7,43 @@
  * FlowState stages: prediction_prepared → prediction_executed → ready_to_finalize.
  */
 import type {
-  PipelineEnv,
-  PipelineFinalizationInput,
   PipelineResult,
 } from "@/core/pipeline";
+import type { TaskItem } from "@/types/task";
+import type { UserIntentPredictionPipelineContext } from "./context";
 
-export type UserIntentPredictionPipelineEnv = PipelineEnv;
+export type UserIntentPredictionPipelineState = Record<string, never>;
 
 export type UserIntentPredictionPipelineInput = {
-  env: UserIntentPredictionPipelineEnv;
+  context: UserIntentPredictionPipelineContext;
+  state: UserIntentPredictionPipelineState;
 };
 
 export type UserIntentPredictionFinalizationInput =
-  PipelineFinalizationInput<UserIntentPredictionPipelineEnv>;
+  | {
+      type: "complete";
+      context: UserIntentPredictionPipelineContext;
+    }
+  | {
+      type: "enqueue";
+      context: UserIntentPredictionPipelineContext;
+      transition: "dispatch";
+      nextTask: TaskItem;
+    };
 
 export type UserIntentPredictionFlowState =
   | {
       mode: "prediction_prepared";
-      env: UserIntentPredictionPipelineEnv;
+      context: UserIntentPredictionPipelineContext;
+      state: UserIntentPredictionPipelineState;
       predictionRequest: Awaited<
         ReturnType<import("@/core/runtime").Runtime["prepareExecutionContext"]>
       >;
     }
   | {
       mode: "prediction_executed";
-      env: UserIntentPredictionPipelineEnv;
+      context: UserIntentPredictionPipelineContext;
+      state: UserIntentPredictionPipelineState;
       predictionRequest: Awaited<
         ReturnType<import("@/core/runtime").Runtime["prepareExecutionContext"]>
       >;
@@ -45,3 +57,8 @@ export type UserIntentPredictionFlowState =
     };
 
 export type RunUserIntentPredictionPipelineResult = PipelineResult;
+
+export const createUserIntentPredictionPipelineState =
+  (): UserIntentPredictionPipelineState => {
+    return {};
+  };
